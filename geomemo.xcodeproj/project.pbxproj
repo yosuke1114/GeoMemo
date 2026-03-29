@@ -6,6 +6,11 @@
 	objectVersion = 77;
 	objects = {
 
+/* Begin PBXBuildFile section */
+		405B25182F78FA4A00A13AFF /* OnboardingView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 405B25172F78FA4A00A13AFF /* OnboardingView.swift */; };
+		405B251A2F7906BA00A13AFF /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 405B25192F7906BA00A13AFF /* SettingsView.swift */; };
+/* End PBXBuildFile section */
+
 /* Begin PBXContainerItemProxy section */
 		406866942F7559FC00057BF3 /* PBXContainerItemProxy */ = {
 			isa = PBXContainerItemProxy;
@@ -24,6 +29,8 @@
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXFileReference section */
+		405B25172F78FA4A00A13AFF /* OnboardingView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnboardingView.swift; sourceTree = "<group>"; };
+		405B25192F7906BA00A13AFF /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
 		406866842F7559FA00057BF3 /* geomemo.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = geomemo.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		406866932F7559FC00057BF3 /* geomemoTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = geomemoTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		4068669D2F7559FC00057BF3 /* geomemoUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = geomemoUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -79,6 +86,8 @@
 				406866962F7559FC00057BF3 /* geomemoTests */,
 				406866A02F7559FC00057BF3 /* geomemoUITests */,
 				406866852F7559FA00057BF3 /* Products */,
+				405B25172F78FA4A00A13AFF /* OnboardingView.swift */,
+				405B25192F7906BA00A13AFF /* SettingsView.swift */,
 			);
 			sourceTree = "<group>";
 		};
@@ -195,6 +204,8 @@
 			);
 			mainGroup = 4068667B2F7559FA00057BF3;
 			minimizedProjectReferenceProxies = 1;
+			packageReferences = (
+			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = 406866852F7559FA00057BF3 /* Products */;
 			projectDirPath = "";
@@ -236,6 +247,8 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				405B251A2F7906BA00A13AFF /* SettingsView.swift in Sources */,
+				405B25182F78FA4A00A13AFF /* OnboardingView.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
