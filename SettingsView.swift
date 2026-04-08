@@ -13,30 +13,77 @@ import UserNotifications
 struct SettingsView: View {
     @Environment(\.dismiss) private var dismiss
 
+    @AppStorage("appearanceMode") private var appearanceMode: String = AppearanceMode.system.rawValue
     @AppStorage("notificationsEnabled") private var notificationsEnabled = true
     @AppStorage("notifyOnEntry") private var notifyOnEntry = true
     @AppStorage("notifyOnExit") private var notifyOnExit = true
     @AppStorage("defaultRadius") private var defaultRadius: Double = 100
+    @AppStorage("mapStyle") private var mapStyleRaw: String = GeoMapStyle.mono.rawValue
 
-    @State private var locationStatus: String = "確認中..."
-    @State private var notificationStatus: String = "確認中..."
+    @State private var locationStatus: String = String(localized: "Checking...")
+    @State private var notificationStatus: String = String(localized: "Checking...")
     @State private var showRadiusPicker = false
-
-    private let brandBlue = Color(hex: "3D3BF3")
-    private let brandBlack = Color(hex: "1A1A1A")
 
     var body: some View {
         List {
             // MARK: - NOTIFICATIONS
             Section {
-                Toggle("通知", isOn: $notificationsEnabled)
-                    .tint(brandBlue)
-                Toggle("到着時に通知", isOn: $notifyOnEntry)
-                    .tint(brandBlue)
-                Toggle("離脱時に通知", isOn: $notifyOnExit)
-                    .tint(brandBlue)
+                Toggle("Notifications", isOn: $notificationsEnabled)
+                    .tint(Brand.blue)
+                Toggle("Notify on arrival", isOn: $notifyOnEntry)
+                    .tint(Brand.blue)
+                Toggle("Notify on departure", isOn: $notifyOnExit)
+                    .tint(Brand.blue)
             } header: {
                 Text("NOTIFICATIONS")
+            }
+
+            // MARK: - APPEARANCE
+            Section {
+                ForEach(AppearanceMode.allCases, id: \.self) { mode in
+                    Button {
+                        HapticManager.selection()
+                        appearanceMode = mode.rawValue
+                    } label: {
+                        HStack {
+                            Text(mode.displayName)
+                                .foregroundColor(Brand.primaryText)
+                            Spacer()
+                            if appearanceMode == mode.rawValue {
+                                Image("ph-check-bold")
+                                    .resizable()
+                                    .frame(width: 14, height: 14)
+                                    .foregroundColor(Brand.blue)
+                            }
+                        }
+                    }
+                }
+            } header: {
+                Text("APPEARANCE")
+            }
+
+            // MARK: - MAP STYLE
+            Section {
+                ForEach(GeoMapStyle.allCases, id: \.self) { style in
+                    Button {
+                        HapticManager.selection()
+                        mapStyleRaw = style.rawValue
+                    } label: {
+                        HStack {
+                            Text(style.displayName)
+                                .foregroundColor(Brand.primaryText)
+                            Spacer()
+                            if mapStyleRaw == style.rawValue {
+                                Image("ph-check-bold")
+                                    .resizable()
+                                    .frame(width: 14, height: 14)
+                                    .foregroundColor(Brand.blue)
+                            }
+                        }
+                    }
+                }
+            } header: {
+                Text("MAP STYLE")
             }
 
             // MARK: - DEFAULTS
@@ -45,15 +92,15 @@ struct SettingsView: View {
                     showRadiusPicker = true
                 } label: {
                     HStack {
-                        Text("デフォルト半径")
-                            .foregroundColor(brandBlack)
+                        Text("Default Radius")
+                            .foregroundColor(Brand.primaryText)
                         Spacer()
                         Text(radiusLabel)
-                            .foregroundColor(.gray)
+                            .foregroundColor(Brand.secondaryText)
                         Image("ph-caret-right-bold")
                             .resizable()
                             .frame(width: 12, height: 12)
-                            .foregroundColor(.gray)
+                            .foregroundColor(Brand.secondaryText)
                     }
                 }
             } header: {
@@ -66,15 +113,15 @@ struct SettingsView: View {
                     openSettings()
                 } label: {
                     HStack {
-                        Text("位置情報")
-                            .foregroundColor(brandBlack)
+                        Text("Location")
+                            .foregroundColor(Brand.primaryText)
                         Spacer()
                         Text(locationStatus)
-                            .foregroundColor(.gray)
+                            .foregroundColor(Brand.secondaryText)
                         Image("ph-caret-right-bold")
                             .resizable()
                             .frame(width: 12, height: 12)
-                            .foregroundColor(.gray)
+                            .foregroundColor(Brand.secondaryText)
                     }
                 }
 
@@ -82,15 +129,15 @@ struct SettingsView: View {
                     openSettings()
                 } label: {
                     HStack {
-                        Text("通知")
-                            .foregroundColor(brandBlack)
+                        Text("Notifications")
+                            .foregroundColor(Brand.primaryText)
                         Spacer()
                         Text(notificationStatus)
-                            .foregroundColor(.gray)
+                            .foregroundColor(Brand.secondaryText)
                         Image("ph-caret-right-bold")
                             .resizable()
                             .frame(width: 12, height: 12)
-                            .foregroundColor(.gray)
+                            .foregroundColor(Brand.secondaryText)
                     }
                 }
             } header: {
@@ -100,18 +147,26 @@ struct SettingsView: View {
             // MARK: - ABOUT
             Section {
                 HStack {
-                    Text("バージョン")
-                        .foregroundColor(brandBlack)
+                    Text("Version")
+                        .foregroundColor(Brand.primaryText)
                     Spacer()
                     Text(appVersion)
-                        .foregroundColor(.gray)
+                        .foregroundColor(Brand.secondaryText)
+                }
+
+                HStack {
+                    Text("iCloud Sync")
+                        .foregroundColor(Brand.primaryText)
+                    Spacer()
+                    Text(FileManager.default.ubiquityIdentityToken != nil ? String(localized: "Enabled") : String(localized: "Disabled"))
+                        .foregroundColor(Brand.secondaryText)
                 }
 
                 NavigationLink {
                     LicenseView()
                 } label: {
-                    Text("ライセンス")
-                        .foregroundColor(brandBlack)
+                    Text("Licenses")
+                        .foregroundColor(Brand.primaryText)
                 }
             } header: {
                 Text("ABOUT")
@@ -119,7 +174,7 @@ struct SettingsView: View {
         }
         .listStyle(.insetGrouped)
         .scrollContentBackground(.hidden)
-        .background(Color(hex: "F9F9F9"))
+        .background(Brand.tertiaryBackground)
         .navigationTitle("SETTINGS")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
@@ -131,10 +186,10 @@ struct SettingsView: View {
                         Image("ph-caret-left-bold")
                             .resizable()
                             .frame(width: 16, height: 16)
-                        Text("戻る")
+                        Text("Back")
                             .font(.system(size: 16))
                     }
-                    .foregroundColor(brandBlue)
+                    .foregroundColor(Brand.blue)
                 }
             }
         }
@@ -177,12 +232,12 @@ struct SettingsView: View {
         let locStatus = CLLocationManager().authorizationStatus
         let locText: String
         switch locStatus {
-        case .authorizedAlways: locText = "常に許可"
-        case .authorizedWhenInUse: locText = "使用中のみ"
-        case .denied: locText = "拒否"
-        case .restricted: locText = "制限あり"
-        case .notDetermined: locText = "未設定"
-        @unknown default: locText = "不明"
+        case .authorizedAlways: locText = String(localized: "Always")
+        case .authorizedWhenInUse: locText = String(localized: "While Using")
+        case .denied: locText = String(localized: "Denied")
+        case .restricted: locText = String(localized: "Restricted")
+        case .notDetermined: locText = String(localized: "Not Set")
+        @unknown default: locText = String(localized: "Unknown")
         }
         locationStatus = locText
 
@@ -190,12 +245,12 @@ struct SettingsView: View {
         let settings = await UNUserNotificationCenter.current().notificationSettings()
         let notifText: String
         switch settings.authorizationStatus {
-        case .authorized: notifText = "許可"
-        case .denied: notifText = "拒否"
-        case .provisional: notifText = "仮許可"
-        case .notDetermined: notifText = "未設定"
-        case .ephemeral: notifText = "一時的"
-        @unknown default: notifText = "不明"
+        case .authorized: notifText = String(localized: "Authorized")
+        case .denied: notifText = String(localized: "Denied")
+        case .provisional: notifText = String(localized: "Provisional")
+        case .notDetermined: notifText = String(localized: "Not Set")
+        case .ephemeral: notifText = String(localized: "Ephemeral")
+        @unknown default: notifText = String(localized: "Unknown")
         }
         notificationStatus = notifText
     }
@@ -206,9 +261,6 @@ struct SettingsView: View {
 private struct RadiusPickerSheet: View {
     @Environment(\.dismiss) private var dismiss
     @Binding var selectedRadius: Double
-
-    private let brandBlue = Color(hex: "3D3BF3")
-    private let brandBlack = Color(hex: "1A1A1A")
 
     private let options: [(label: String, value: Double)] = [
         ("50M", 50),
@@ -227,13 +279,13 @@ private struct RadiusPickerSheet: View {
                     } label: {
                         HStack {
                             Text(option.label)
-                                .foregroundColor(brandBlack)
+                                .foregroundColor(Brand.primaryText)
                             Spacer()
                             if selectedRadius == option.value {
                                 Image("ph-check-bold")
                                     .resizable()
                                     .frame(width: 14, height: 14)
-                                    .foregroundColor(brandBlue)
+                                    .foregroundColor(Brand.blue)
                             }
                         }
                     }
@@ -241,15 +293,15 @@ private struct RadiusPickerSheet: View {
             }
             .listStyle(.insetGrouped)
             .scrollContentBackground(.hidden)
-            .background(Color(hex: "F9F9F9"))
-            .navigationTitle("デフォルト半径")
+            .background(Brand.tertiaryBackground)
+            .navigationTitle("Default Radius")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .navigationBarTrailing) {
-                    Button("完了") {
+                    Button("Done") {
                         dismiss()
                     }
-                    .foregroundColor(brandBlue)
+                    .foregroundColor(Brand.blue)
                 }
             }
         }
@@ -259,45 +311,23 @@ private struct RadiusPickerSheet: View {
 // MARK: - License View
 
 struct LicenseView: View {
-    private let brandBlack = Color(hex: "1A1A1A")
-
     var body: some View {
         List {
             Section {
-                Text("このアプリはオープンソースライブラリを使用していません。")
+                Text("This app does not use any open source libraries.")
                     .font(.system(size: 14))
-                    .foregroundColor(.gray)
+                    .foregroundColor(Brand.secondaryText)
             }
         }
         .listStyle(.insetGrouped)
         .scrollContentBackground(.hidden)
-        .background(Color(hex: "F9F9F9"))
-        .navigationTitle("ライセンス")
+        .background(Brand.tertiaryBackground)
+        .navigationTitle("Licenses")
         .navigationBarTitleDisplayMode(.inline)
     }
 }
 
-// MARK: - Color Extension
-
-private extension Color {
-    init(hex: String) {
-        let hexSanitized = hex.trimmingCharacters(in: CharacterSet.alphanumerics.inverted)
-        var int: UInt64 = 0
-        Scanner(string: hexSanitized).scanHexInt64(&int)
-        let a, r, g, b: UInt64
-        switch hexSanitized.count {
-        case 3:
-            (a, r, g, b) = (255, (int >> 8) * 17, (int >> 4 & 0xF) * 17, (int & 0xF) * 17)
-        case 6:
-            (a, r, g, b) = (255, int >> 16, int >> 8 & 0xFF, int & 0xFF)
-        case 8:
-            (a, r, g, b) = (int >> 24, int >> 16 & 0xFF, int >> 8 & 0xFF, int & 0xFF)
-        default:
-            (a, r, g, b) = (255, 255, 255, 255)
-        }
-        self.init(.sRGB, red: Double(r) / 255, green: Double(g) / 255, blue: Double(b) / 255, opacity: Double(a) / 255)
-    }
-}
+// Brand colors and Color(hex:) are defined in Theme.swift
 
 // MARK: - Preview
 

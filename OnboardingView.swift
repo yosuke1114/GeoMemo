@@ -12,9 +12,6 @@ struct OnboardingView: View {
     @AppStorage("hasCompletedOnboarding") private var hasCompletedOnboarding = false
     @State private var currentPage = 0
 
-    private let brandBlue = Color(hex: "3D3BF3")
-    private let brandBlack = Color(hex: "1A1A1A")
-
     var body: some View {
         VStack(spacing: 0) {
             TabView(selection: $currentPage) {
@@ -28,24 +25,26 @@ struct OnboardingView: View {
             HStack(spacing: 8) {
                 ForEach(0..<3, id: \.self) { index in
                     Circle()
-                        .fill(index == currentPage ? brandBlue : Color(hex: "D0D0D0"))
+                        .fill(index == currentPage ? Brand.blue : Brand.inactiveIndicator)
                         .frame(width: 8, height: 8)
+                        .accessibilityHidden(true)
                 }
             }
             .padding(.bottom, 32)
+            .accessibilityLabel("Page \(currentPage + 1) of 3")
 
             // Action area
             VStack(spacing: 0) {
                 primaryButton(
-                    title: currentPage == 0 ? "はじめる" : "許可する",
+                    title: currentPage == 0 ? String(localized: "Get Started") : String(localized: "Allow"),
                     action: handlePrimaryAction
                 )
 
                 if currentPage > 0 {
                     Button(action: handleSkip) {
-                        Text("あとで設定する")
+                        Text("Set up later")
                             .font(.system(size: 14))
-                            .foregroundColor(.gray)
+                            .foregroundColor(Brand.secondaryText)
                     }
                     .padding(.top, 12)
                 }
@@ -54,7 +53,7 @@ struct OnboardingView: View {
             .padding(.horizontal, 24)
             .padding(.bottom, 48)
         }
-        .background(Color.white)
+        .background(Brand.background)
         .toolbar(.hidden, for: .navigationBar)
     }
 
@@ -69,12 +68,12 @@ struct OnboardingView: View {
 
             Text("GEOMEMO")
                 .font(.system(size: 28, weight: .bold))
-                .foregroundColor(brandBlack)
+                .foregroundColor(Brand.primaryText)
                 .padding(.bottom, 8)
 
-            Text("場所にメモを残そう")
+            Text("Leave memos at places")
                 .font(.system(size: 16))
-                .foregroundColor(.gray)
+                .foregroundColor(Brand.secondaryText)
 
             Spacer()
         }
@@ -87,7 +86,7 @@ struct OnboardingView: View {
             HStack {
                 Text("GeoMemo")
                     .font(.system(size: 20, weight: .bold))
-                    .foregroundColor(brandBlack)
+                    .foregroundColor(Brand.primaryText)
                 Spacer()
             }
             .padding(.horizontal, 24)
@@ -98,17 +97,17 @@ struct OnboardingView: View {
             Image("ph-navigation-arrow-fill")
                 .resizable()
                 .frame(width: 80, height: 80)
-                .foregroundColor(brandBlue)
+                .foregroundColor(Brand.blue)
                 .padding(.bottom, 24)
 
-            Text("位置情報を許可")
+            Text("Allow Location")
                 .font(.system(size: 24, weight: .bold))
-                .foregroundColor(brandBlack)
+                .foregroundColor(Brand.primaryText)
                 .padding(.bottom, 12)
 
-            Text("エリアに近づいたときにメモをお知らせ\nするために使用します")
+            Text("Used to notify you when\nyou approach a memo area")
                 .font(.system(size: 15))
-                .foregroundColor(.gray)
+                .foregroundColor(Brand.secondaryText)
                 .multilineTextAlignment(.center)
 
             Spacer()
@@ -122,7 +121,7 @@ struct OnboardingView: View {
             HStack {
                 Text("GeoMemo")
                     .font(.system(size: 20, weight: .bold))
-                    .foregroundColor(brandBlack)
+                    .foregroundColor(Brand.primaryText)
                 Spacer()
             }
             .padding(.horizontal, 24)
@@ -133,17 +132,17 @@ struct OnboardingView: View {
             Image("ph-bell-fill")
                 .resizable()
                 .frame(width: 80, height: 80)
-                .foregroundColor(brandBlue)
+                .foregroundColor(Brand.blue)
                 .padding(.bottom, 24)
 
-            Text("通知を許可")
+            Text("Allow Notifications")
                 .font(.system(size: 24, weight: .bold))
-                .foregroundColor(brandBlack)
+                .foregroundColor(Brand.primaryText)
                 .padding(.bottom, 12)
 
-            Text("登録した場所に近づいたとき・\n離れたときにお知らせします")
+            Text("Get notified when you enter\nor leave a saved location")
                 .font(.system(size: 15))
-                .foregroundColor(.gray)
+                .foregroundColor(Brand.secondaryText)
                 .multilineTextAlignment(.center)
 
             Spacer()
@@ -159,7 +158,7 @@ struct OnboardingView: View {
                 .foregroundColor(.white)
                 .frame(maxWidth: .infinity)
                 .frame(height: 52)
-                .background(brandBlue)
+                .background(Brand.blue)
                 .clipShape(RoundedRectangle(cornerRadius: 8))
         }
         .buttonStyle(.plain)
@@ -168,6 +167,7 @@ struct OnboardingView: View {
     // MARK: - Actions
 
     private func handlePrimaryAction() {
+        HapticManager.impact(.light)
         switch currentPage {
         case 0:
             withAnimation { currentPage = 1 }
@@ -185,6 +185,7 @@ struct OnboardingView: View {
     }
 
     private func handleSkip() {
+        HapticManager.selection()
         switch currentPage {
         case 1:
             withAnimation { currentPage = 2 }
@@ -196,27 +197,7 @@ struct OnboardingView: View {
     }
 }
 
-// MARK: - Color Extension
-
-private extension Color {
-    init(hex: String) {
-        let hexSanitized = hex.trimmingCharacters(in: CharacterSet.alphanumerics.inverted)
-        var int: UInt64 = 0
-        Scanner(string: hexSanitized).scanHexInt64(&int)
-        let a, r, g, b: UInt64
-        switch hexSanitized.count {
-        case 3:
-            (a, r, g, b) = (255, (int >> 8) * 17, (int >> 4 & 0xF) * 17, (int & 0xF) * 17)
-        case 6:
-            (a, r, g, b) = (255, int >> 16, int >> 8 & 0xFF, int & 0xFF)
-        case 8:
-            (a, r, g, b) = (int >> 24, int >> 16 & 0xFF, int >> 8 & 0xFF, int & 0xFF)
-        default:
-            (a, r, g, b) = (255, 255, 255, 255)
-        }
-        self.init(.sRGB, red: Double(r) / 255, green: Double(g) / 255, blue: Double(b) / 255, opacity: Double(a) / 255)
-    }
-}
+// Brand colors and Color(hex:) are defined in Theme.swift
 
 // MARK: - Preview
 

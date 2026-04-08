@@ -4,34 +4,7 @@ import MapKit
 // Phosphor icons loaded from local Assets.xcassets
 import PhotosUI
 
-// MARK: - Brand Colors
-private enum Brand {
-    static let white = Color.white
-    static let black = Color(hex: "1A1A1A")
-    static let blue = Color(hex: "3D3BF3")
-    static let lightGray = Color(hex: "F5F5F5")
-}
-
-// MARK: - Color Extension
-private extension Color {
-    init(hex: String) {
-        let hexSanitized = hex.trimmingCharacters(in: CharacterSet.alphanumerics.inverted)
-        var int: UInt64 = 0
-        Scanner(string: hexSanitized).scanHexInt64(&int)
-        let a, r, g, b: UInt64
-        switch hexSanitized.count {
-        case 3:
-            (a, r, g, b) = (255, (int >> 8) * 17, (int >> 4 & 0xF) * 17, (int & 0xF) * 17)
-        case 6:
-            (a, r, g, b) = (255, int >> 16, int >> 8 & 0xFF, int & 0xFF)
-        case 8:
-            (a, r, g, b) = (int >> 24, int >> 16 & 0xFF, int >> 8 & 0xFF, int & 0xFF)
-        default:
-            (a, r, g, b) = (255, 255, 255, 255)
-        }
-        self.init(.sRGB, red: Double(r) / 255, green: Double(g) / 255, blue: Double(b) / 255, opacity: Double(a) / 255)
-    }
-}
+// Brand colors and Color(hex:) are defined in Theme.swift
 
 // MARK: - Editor Mode
 enum MemoEditorMode {
@@ -40,15 +13,15 @@ enum MemoEditorMode {
 
     var navigationTitle: String {
         switch self {
-        case .create: return "NEW MEMO"
-        case .edit:   return "EDIT MEMO"
+        case .create: return String(localized: "NEW MEMO")
+        case .edit:   return String(localized: "EDIT MEMO")
         }
     }
 
     var saveButtonLabel: String {
         switch self {
-        case .create: return "SAVE"
-        case .edit:   return "UPDATE"
+        case .create: return String(localized: "SAVE")
+        case .edit:   return String(localized: "UPDATE")
         }
     }
 }
@@ -57,6 +30,8 @@ enum MemoEditorMode {
 struct MemoEditorView: View {
     @Environment(\.modelContext) private var modelContext
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.colorScheme) private var colorScheme
+    @AppStorage("mapStyle") private var mapStyleRaw: String = GeoMapStyle.mono.rawValue
 
     let mode: MemoEditorMode
     var onDelete: (() -> Void)?
@@ -82,6 +57,7 @@ struct MemoEditorView: View {
     @State private var hasDayFilter = false
     @State private var activeDays: Set<Int> = [1, 2, 3, 4, 5]
 
+    @State private var selectedColorIndex: Int
     @State private var cameraPosition: MapCameraPosition
     @State private var currentCoordinate: CLLocationCoordinate2D
 
@@ -99,8 +75,9 @@ struct MemoEditorView: View {
             _selectedRadius = State(initialValue: defaults.object(forKey: "defaultRadius") as? Double ?? 100)
             _notifyOnEntry = State(initialValue: defaults.object(forKey: "notifyOnEntry") as? Bool ?? true)
             _notifyOnExit = State(initialValue: defaults.object(forKey: "notifyOnExit") as? Bool ?? true)
-            _locationName = State(initialValue: "取得中...")
+            _locationName = State(initialValue: String(localized: "Loading..."))
             _photoData = State(initialValue: nil)
+            _selectedColorIndex = State(initialValue: 0)
             _currentCoordinate = State(initialValue: coordinate)
             _cameraPosition = State(initialValue: .camera(
                 MapCamera(centerCoordinate: coordinate, distance: 500)
@@ -114,6 +91,7 @@ struct MemoEditorView: View {
             _notifyOnExit = State(initialValue: memo.notifyOnExit)
             _locationName = State(initialValue: memo.locationName)
             _photoData = State(initialValue: memo.imageData)
+            _selectedColorIndex = State(initialValue: memo.colorIndex)
             _currentCoordinate = State(initialValue: memo.coordinate)
             _cameraPosition = State(initialValue: .camera(
                 MapCamera(centerCoordinate: memo.coordinate, distance: 500)
@@ -146,31 +124,37 @@ struct MemoEditorView: View {
                     titleSection
 
                     Divider()
-                        .background(Brand.black.opacity(0.1))
+                        .background(Brand.primaryText.opacity(0.1))
 
                     // Memo Field
                     memoSection
 
                     Divider()
-                        .background(Brand.black.opacity(0.1))
+                        .background(Brand.primaryText.opacity(0.1))
 
                     // Add Photo
                     photoSection
 
                     Divider()
-                        .background(Brand.black.opacity(0.1))
+                        .background(Brand.primaryText.opacity(0.1))
 
                     // Radius Selector
                     radiusSection
 
                     Divider()
-                        .background(Brand.black.opacity(0.1))
+                        .background(Brand.primaryText.opacity(0.1))
+
+                    // Color Selector
+                    colorSection
+
+                    Divider()
+                        .background(Brand.primaryText.opacity(0.1))
 
                     // Notify Section
                     notifySection
 
                     Divider()
-                        .background(Brand.black.opacity(0.1))
+                        .background(Brand.primaryText.opacity(0.1))
 
                     // Trigger Conditions
                     triggerConditionsSection
@@ -181,7 +165,7 @@ struct MemoEditorView: View {
                     }
                 }
             }
-            .background(Brand.white)
+            .background(Brand.background)
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .navigationBarLeading) {
@@ -190,24 +174,27 @@ struct MemoEditorView: View {
                             Image("ph-arrow-left-bold")
                                 .resizable()
                                 .frame(width: 20, height: 20)
-                                .foregroundColor(Brand.black)
+                                .foregroundColor(Brand.primaryText)
                         }
 
                         Text(mode.navigationTitle)
                             .font(.system(size: 18, weight: .bold))
-                            .foregroundColor(Brand.black)
+                            .foregroundColor(Brand.primaryText)
                     }
                 }
 
                 ToolbarItem(placement: .navigationBarTrailing) {
-                    Button(action: saveOrUpdate) {
+                    Button(action: {
+                        HapticManager.notification(.success)
+                        saveOrUpdate()
+                    }) {
                         Text(mode.saveButtonLabel)
                             .font(.system(size: 16, weight: .bold))
                             .foregroundColor(Brand.blue)
                     }
                 }
             }
-            .toolbarBackground(Brand.white, for: .navigationBar)
+            .toolbarBackground(Brand.background, for: .navigationBar)
             .toolbarBackground(.visible, for: .navigationBar)
         }
         .onAppear {
@@ -230,13 +217,14 @@ struct MemoEditorView: View {
             .presentationDetents([.large])
             .presentationDragIndicator(.hidden)
         }
-        .alert("このメモを削除しますか？", isPresented: $showDeleteAlert) {
-            Button("削除", role: .destructive) {
+        .alert("Delete this memo?", isPresented: $showDeleteAlert) {
+            Button("Delete", role: .destructive) {
+                HapticManager.notification(.warning)
                 deleteMemo()
             }
-            Button("キャンセル", role: .cancel) {}
+            Button("Cancel", role: .cancel) {}
         } message: {
-            Text("この操作は取り消せません。")
+            Text("This action cannot be undone.")
         }
     }
 
@@ -247,10 +235,10 @@ struct MemoEditorView: View {
                 Annotation("", coordinate: currentCoordinate) {
                     ZStack {
                         Circle()
-                            .fill(Brand.black)
+                            .fill(Brand.primaryText)
                             .frame(width: 12, height: 12)
                         Circle()
-                            .stroke(Brand.white, lineWidth: 2)
+                            .stroke(Brand.background, lineWidth: 2)
                             .frame(width: 12, height: 12)
                     }
                 }
@@ -260,8 +248,18 @@ struct MemoEditorView: View {
                     .foregroundStyle(Brand.blue.opacity(0.08))
                     .stroke(Brand.blue, lineWidth: 1.5)
             }
-            .mapStyle(.standard(elevation: .flat, emphasis: .muted, pointsOfInterest: .excludingAll, showsTraffic: false))
-            .grayscale(1.0)
+            .mapStyle({
+                let style = GeoMapStyle(rawValue: mapStyleRaw) ?? .mono
+                switch style {
+                case .satellite: return .imagery
+                default: return .standard(elevation: .flat, emphasis: .muted, pointsOfInterest: .excludingAll, showsTraffic: false)
+                }
+            }())
+            .grayscale({
+                let style = GeoMapStyle(rawValue: mapStyleRaw) ?? .mono
+                return style == .mono && colorScheme != .dark ? 1.0 : 0
+            }())
+            .id(mapStyleRaw)
             .frame(height: 160)
             .onTapGesture {
                 showLocationPicker = true
@@ -272,19 +270,19 @@ struct MemoEditorView: View {
                 Image("ph-map-pin-fill")
                     .resizable()
                     .frame(width: 14, height: 14)
-                    .foregroundColor(Brand.black)
+                    .foregroundColor(Brand.primaryText)
 
                 Text(locationName.uppercased())
                     .font(.system(size: 12, weight: .bold))
-                    .foregroundColor(Brand.black)
+                    .foregroundColor(Brand.primaryText)
             }
             .padding(.horizontal, 12)
             .padding(.vertical, 8)
-            .background(Brand.white)
+            .background(Brand.background)
             .clipShape(Capsule())
             .overlay(
                 Capsule()
-                    .stroke(Brand.black, lineWidth: 1)
+                    .stroke(Brand.primaryText, lineWidth: 1)
             )
             .padding(.leading, 16)
             .padding(.bottom, 16)
@@ -298,10 +296,10 @@ struct MemoEditorView: View {
     private var titleSection: some View {
         TextField("Title", text: $title)
             .font(.system(size: 20, weight: .semibold))
-            .foregroundColor(Brand.black)
+            .foregroundColor(Brand.primaryText)
             .padding(.horizontal, 20)
             .padding(.vertical, 16)
-            .background(Brand.white)
+            .background(Brand.background)
     }
 
     // MARK: - Memo Section
@@ -310,20 +308,20 @@ struct MemoEditorView: View {
             if note.isEmpty {
                 Text("Memo")
                     .font(.system(size: 16, weight: .regular))
-                    .foregroundColor(Brand.black.opacity(0.3))
+                    .foregroundColor(Brand.primaryText.opacity(0.3))
                     .padding(.horizontal, 24)
                     .padding(.vertical, 20)
             }
 
             TextEditor(text: $note)
                 .font(.system(size: 16, weight: .regular))
-                .foregroundColor(Brand.black)
+                .foregroundColor(Brand.primaryText)
                 .scrollContentBackground(.hidden)
                 .frame(height: 120)
                 .padding(.horizontal, 16)
                 .padding(.vertical, 12)
         }
-        .background(Brand.white)
+        .background(Brand.background)
     }
 
     // MARK: - Photo Section
@@ -339,6 +337,7 @@ struct MemoEditorView: View {
                     Text("ADD PHOTO")
                         .font(.system(size: 16, weight: .bold))
                         .foregroundColor(Brand.blue)
+
 
                     Spacer()
                 }
@@ -371,7 +370,7 @@ struct MemoEditorView: View {
         VStack(alignment: .leading, spacing: 12) {
             Text("RADIUS")
                 .font(.system(size: 13, weight: .semibold))
-                .foregroundColor(Brand.black.opacity(0.5))
+                .foregroundColor(Brand.primaryText.opacity(0.5))
                 .padding(.horizontal, 20)
                 .padding(.top, 16)
 
@@ -381,7 +380,7 @@ struct MemoEditorView: View {
                 radiusButton(value: 500, label: "500M")
                 radiusButton(value: 1000, label: "1KM")
             }
-            .background(Brand.lightGray)
+            .background(Brand.secondaryBackground)
             .clipShape(RoundedRectangle(cornerRadius: 8))
             .padding(.horizontal, 20)
             .padding(.bottom, 16)
@@ -390,25 +389,65 @@ struct MemoEditorView: View {
 
     private func radiusButton(value: Double, label: String) -> some View {
         Button(action: {
+            HapticManager.selection()
             selectedRadius = value
         }) {
             Text(label)
                 .font(.system(size: 15, weight: selectedRadius == value ? .bold : .semibold))
-                .foregroundColor(selectedRadius == value ? Brand.blue : Brand.black.opacity(0.5))
+                .foregroundColor(selectedRadius == value ? Brand.blue : Brand.primaryText.opacity(0.5))
                 .frame(maxWidth: .infinity)
                 .frame(height: 44)
-                .background(selectedRadius == value ? Brand.white : Color.clear)
+                .background(selectedRadius == value ? Brand.background : Color.clear)
                 .clipShape(RoundedRectangle(cornerRadius: 6))
                 .padding(2)
+        }
+    }
+
+    // MARK: - Color Section
+    private var colorSection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("COLOR")
+                .font(.system(size: 13, weight: .semibold))
+                .foregroundColor(Brand.primaryText.opacity(0.5))
+                .padding(.horizontal, 20)
+                .padding(.top, 16)
+
+            HStack(spacing: 16) {
+                ForEach(MemoColor.allCases, id: \.rawValue) { memoColor in
+                    Button(action: {
+                        HapticManager.selection()
+                        selectedColorIndex = memoColor.rawValue
+                    }) {
+                        Circle()
+                            .fill(memoColor.color)
+                            .frame(width: 24, height: 24)
+                            .overlay(
+                                Circle()
+                                    .stroke(Brand.primaryText, lineWidth: 2)
+                                    .opacity(selectedColorIndex == memoColor.rawValue ? 1 : 0)
+                            )
+                            .overlay(
+                                Circle()
+                                    .stroke(Brand.background, lineWidth: 2)
+                                    .padding(2)
+                                    .opacity(selectedColorIndex == memoColor.rawValue ? 1 : 0)
+                            )
+                    }
+                    .accessibilityLabel(memoColor.accessibilityName)
+                    .accessibilityAddTraits(selectedColorIndex == memoColor.rawValue ? .isSelected : [])
+                }
+            }
+            .padding(.horizontal, 20)
+            .padding(.bottom, 16)
         }
     }
 
     // MARK: - Notify Section
     private var notifySection: some View {
         VStack(alignment: .leading, spacing: 0) {
-            Text("NOTIFY")
+            Text("NOTIFICATIONS")
                 .font(.system(size: 13, weight: .semibold))
-                .foregroundColor(Brand.black.opacity(0.5))
+                .foregroundColor(Brand.primaryText.opacity(0.5))
                 .padding(.horizontal, 20)
                 .padding(.top, 16)
                 .padding(.bottom, 12)
@@ -417,7 +456,7 @@ struct MemoEditorView: View {
             HStack {
                 Text("ON ENTRY")
                     .font(.system(size: 17, weight: .semibold))
-                    .foregroundColor(Brand.black)
+                    .foregroundColor(Brand.primaryText)
 
                 Spacer()
 
@@ -429,14 +468,14 @@ struct MemoEditorView: View {
             .padding(.vertical, 12)
 
             Divider()
-                .background(Brand.black.opacity(0.1))
+                .background(Brand.primaryText.opacity(0.1))
                 .padding(.horizontal, 20)
 
             // ON EXIT
             HStack {
                 Text("ON EXIT")
                     .font(.system(size: 17, weight: .semibold))
-                    .foregroundColor(Brand.black)
+                    .foregroundColor(Brand.primaryText)
 
                 Spacer()
 
@@ -454,16 +493,16 @@ struct MemoEditorView: View {
         VStack(alignment: .leading, spacing: 0) {
             Text("TRIGGER CONDITIONS")
                 .font(.system(size: 13, weight: .semibold))
-                .foregroundColor(Brand.black.opacity(0.5))
+                .foregroundColor(Brand.primaryText.opacity(0.5))
                 .padding(.horizontal, 20)
                 .padding(.top, 16)
                 .padding(.bottom, 12)
 
             // 期限 (EXPIRY)
             HStack {
-                Text("期限 (EXPIRY)")
+                Text("EXPIRY")
                     .font(.system(size: 17, weight: .semibold))
-                    .foregroundColor(Brand.black)
+                    .foregroundColor(Brand.primaryText)
                 Spacer()
                 Toggle("", isOn: $hasDeadline)
                     .labelsHidden()
@@ -479,7 +518,7 @@ struct MemoEditorView: View {
                     displayedComponents: .date
                 )
                 .datePickerStyle(.compact)
-                .environment(\.locale, Locale(identifier: "ja_JP"))
+                .environment(\.locale, .autoupdatingCurrent)
                 .labelsHidden()
                 .padding(.horizontal, 20)
                 .padding(.bottom, 12)
@@ -487,14 +526,14 @@ struct MemoEditorView: View {
             }
 
             Divider()
-                .background(Brand.black.opacity(0.1))
+                .background(Brand.primaryText.opacity(0.1))
                 .padding(.horizontal, 20)
 
             // 時間帯 (TIME)
             HStack {
-                Text("時間帯 (TIME)")
+                Text("TIME WINDOW")
                     .font(.system(size: 17, weight: .semibold))
-                    .foregroundColor(Brand.black)
+                    .foregroundColor(Brand.primaryText)
                 Spacer()
                 Toggle("", isOn: $hasTimeWindow)
                     .labelsHidden()
@@ -508,13 +547,13 @@ struct MemoEditorView: View {
                     DatePicker("", selection: $timeStart,
                         displayedComponents: .hourAndMinute)
                         .labelsHidden()
-                        .environment(\.locale, Locale(identifier: "ja_JP"))
+                        .environment(\.locale, .autoupdatingCurrent)
                     Text("〜")
-                        .foregroundColor(Brand.black.opacity(0.5))
+                        .foregroundColor(Brand.primaryText.opacity(0.5))
                     DatePicker("", selection: $timeEnd,
                         displayedComponents: .hourAndMinute)
                         .labelsHidden()
-                        .environment(\.locale, Locale(identifier: "ja_JP"))
+                        .environment(\.locale, .autoupdatingCurrent)
                 }
                 .padding(.horizontal, 20)
                 .padding(.bottom, 12)
@@ -522,14 +561,14 @@ struct MemoEditorView: View {
             }
 
             Divider()
-                .background(Brand.black.opacity(0.1))
+                .background(Brand.primaryText.opacity(0.1))
                 .padding(.horizontal, 20)
 
             // 曜日 (DAYS)
             HStack {
-                Text("曜日 (DAYS)")
+                Text("DAYS")
                     .font(.system(size: 17, weight: .semibold))
-                    .foregroundColor(Brand.black)
+                    .foregroundColor(Brand.primaryText)
                 Spacer()
                 Toggle("", isOn: $hasDayFilter)
                     .labelsHidden()
@@ -541,26 +580,34 @@ struct MemoEditorView: View {
             if hasDayFilter {
                 HStack(spacing: 8) {
                     ForEach([
-                        (1, "月"), (2, "火"), (3, "水"),
-                        (4, "木"), (5, "金"), (6, "土"), (0, "日")
-                    ], id: \.0) { day, label in
+                        (1, String(localized: "Mon"), String(localized: "Monday")),
+                        (2, String(localized: "Tue"), String(localized: "Tuesday")),
+                        (3, String(localized: "Wed"), String(localized: "Wednesday")),
+                        (4, String(localized: "Thu"), String(localized: "Thursday")),
+                        (5, String(localized: "Fri"), String(localized: "Friday")),
+                        (6, String(localized: "Sat"), String(localized: "Saturday")),
+                        (0, String(localized: "Sun"), String(localized: "Sunday"))
+                    ], id: \.0) { day, label, fullName in
                         Button(label) {
+                            HapticManager.selection()
                             if activeDays.contains(day) {
                                 activeDays.remove(day)
                             } else {
                                 activeDays.insert(day)
                             }
                         }
+                        .accessibilityLabel(fullName)
+                        .accessibilityAddTraits(activeDays.contains(day) ? .isSelected : [])
                         .frame(width: 36, height: 36)
                         .background(
                             activeDays.contains(day)
                                 ? Brand.blue
-                                : Brand.lightGray
+                                : Brand.secondaryBackground
                         )
                         .foregroundColor(
                             activeDays.contains(day)
                                 ? .white
-                                : Brand.black
+                                : Brand.primaryText
                         )
                         .cornerRadius(8)
                         .font(.system(size: 13, weight: .medium))
@@ -595,7 +642,7 @@ struct MemoEditorView: View {
         case .create:
             let cal = Calendar.current
             let newMemo = GeoMemo(
-                title: title.isEmpty ? "（タイトルなし）" : title,
+                title: title.isEmpty ? String(localized: "Untitled") : title,
                 note: note,
                 latitude: currentCoordinate.latitude,
                 longitude: currentCoordinate.longitude,
@@ -611,7 +658,8 @@ struct MemoEditorView: View {
                 timeWindowEnd: hasTimeWindow
                     ? cal.component(.hour, from: timeEnd) * 60 + cal.component(.minute, from: timeEnd)
                     : nil,
-                activeDays: hasDayFilter ? Array(activeDays) : nil
+                activeDays: hasDayFilter ? Array(activeDays) : nil,
+                colorIndex: selectedColorIndex
             )
             modelContext.insert(newMemo)
             registerGeofencing(for: newMemo)
@@ -623,7 +671,7 @@ struct MemoEditorView: View {
             locationManager.stopMonitoring(memoID: memo.id.uuidString)
 
             // Update SwiftData object
-            memo.title = title.isEmpty ? "（タイトルなし）" : title
+            memo.title = title.isEmpty ? String(localized: "Untitled") : title
             memo.note = note
             memo.latitude = currentCoordinate.latitude
             memo.longitude = currentCoordinate.longitude
@@ -640,11 +688,13 @@ struct MemoEditorView: View {
                 ? cal.component(.hour, from: timeEnd) * 60 + cal.component(.minute, from: timeEnd)
                 : nil
             memo.activeDays = hasDayFilter ? Array(activeDays) : nil
+            memo.colorIndex = selectedColorIndex
 
             // Re-register geofencing
             registerGeofencing(for: memo)
         }
 
+        geomemoApp.indexAllMemosInSpotlight()
         dismiss()
     }
 
@@ -657,6 +707,7 @@ struct MemoEditorView: View {
 
         // Delete from SwiftData
         modelContext.delete(memo)
+        geomemoApp.indexAllMemosInSpotlight()
 
         // Dismiss editor, then tell detail view to dismiss too
         dismiss()
@@ -698,13 +749,13 @@ struct MemoEditorView: View {
                     } else if let name = placemark.name {
                         locationName = name
                     } else {
-                        locationName = "Unknown Location"
+                        locationName = String(localized: "Unknown Location")
                     }
                 } else {
-                    locationName = "Unknown Location"
+                    locationName = String(localized: "Unknown Location")
                 }
             } catch {
-                locationName = "Unknown Location"
+                locationName = String(localized: "Unknown Location")
             }
         }
     }

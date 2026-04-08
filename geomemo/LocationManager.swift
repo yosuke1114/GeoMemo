@@ -121,6 +121,9 @@ extension LocationManager: CLLocationManagerDelegate {
     func locationManager(_ manager: CLLocationManager, didEnterRegion region: CLRegion) {
         guard let circularRegion = region as? CLCircularRegion else { return }
         NotificationCenter.default.post(name: .didEnterGeoMemoRegion, object: circularRegion.identifier)
+
+        // Update Live Activity in Dynamic Island
+        LiveActivityManager.shared.triggerMemo(id: circularRegion.identifier)
     }
 
     func locationManager(_ manager: CLLocationManager, didExitRegion region: CLRegion) {

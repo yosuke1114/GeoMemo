@@ -54,7 +54,7 @@ private struct SplashContent: View {
 
     var body: some View {
         ZStack {
-            Color(hex: "3D3BF3")
+            Brand.blue
                 .ignoresSafeArea()
 
             VStack(spacing: 24) {
@@ -65,11 +65,11 @@ private struct SplashContent: View {
 
                 // Text
                 VStack(spacing: 8) {
-                    Text("GEOMEMO")
+                    Text(verbatim: "GEOMEMO")
                         .font(.system(size: 28, weight: .bold))
                         .foregroundColor(.white)
 
-                    Text("ARCHITECTURAL MEMORY ENGINE")
+                    Text(verbatim: "ARCHITECTURAL MEMORY ENGINE")
                         .font(.system(size: 12, weight: .regular))
                         .tracking(3)
                         .foregroundColor(.white.opacity(0.6))
@@ -88,6 +88,11 @@ private struct SplashContent: View {
             ) {
                 pinOffset = 0
                 pinOpacity = 1
+            }
+
+            // Haptic when pin lands
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) {
+                HapticManager.impact(.medium)
             }
 
             // Text fades in with delay
@@ -134,27 +139,7 @@ private struct Triangle: Shape {
     }
 }
 
-// MARK: - Color Extension for Hex
-
-private extension Color {
-    init(hex: String) {
-        let hexSanitized = hex.trimmingCharacters(in: CharacterSet.alphanumerics.inverted)
-        var int: UInt64 = 0
-        Scanner(string: hexSanitized).scanHexInt64(&int)
-        let a, r, g, b: UInt64
-        switch hexSanitized.count {
-        case 3:
-            (a, r, g, b) = (255, (int >> 8) * 17, (int >> 4 & 0xF) * 17, (int & 0xF) * 17)
-        case 6:
-            (a, r, g, b) = (255, int >> 16, int >> 8 & 0xFF, int & 0xFF)
-        case 8:
-            (a, r, g, b) = (int >> 24, int >> 16 & 0xFF, int >> 8 & 0xFF, int & 0xFF)
-        default:
-            (a, r, g, b) = (255, 255, 255, 255)
-        }
-        self.init(.sRGB, red: Double(r) / 255, green: Double(g) / 255, blue: Double(b) / 255, opacity: Double(a) / 255)
-    }
-}
+// Brand colors and Color(hex:) are defined in Theme.swift
 
 // MARK: - Preview
 

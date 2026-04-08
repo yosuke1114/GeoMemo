@@ -4,33 +4,7 @@ import MapKit
 import CoreLocation
 // Phosphor icons loaded from local Assets.xcassets
 
-// MARK: - Color Extension
-private extension Color {
-    init(hex: String) {
-        let hexSanitized = hex.trimmingCharacters(in: CharacterSet.alphanumerics.inverted)
-        var int: UInt64 = 0
-        Scanner(string: hexSanitized).scanHexInt64(&int)
-        let a, r, g, b: UInt64
-        switch hexSanitized.count {
-        case 3: // RGB (12-bit)
-            (a, r, g, b) = (255, (int >> 8) * 17, (int >> 4 & 0xF) * 17, (int & 0xF) * 17)
-        case 6: // RGB (24-bit)
-            (a, r, g, b) = (255, int >> 16, int >> 8 & 0xFF, int & 0xFF)
-        case 8: // ARGB (32-bit)
-            (a, r, g, b) = (int >> 24, int >> 16 & 0xFF, int >> 8 & 0xFF, int & 0xFF)
-        default:
-            (a, r, g, b) = (255, 255, 255, 255)
-        }
-        self.init(.sRGB, red: Double(r) / 255, green: Double(g) / 255, blue: Double(b) / 255, opacity: Double(a) / 255)
-    }
-}
-
-// MARK: - Brand Colors
-private enum Brand {
-    static let white = Color.white
-    static let black = Color(hex: "1A1A1A")
-    static let blue = Color(hex: "3D3BF3")
-}
+// Brand colors and Color(hex:) are defined in Theme.swift
 
 // MARK: - Map Item (single pin or cluster)
 private enum MapItem: Identifiable {
@@ -112,6 +86,8 @@ struct ContentView: View {
     @State private var selectedTab: Tab = .map
     @State private var showSettings = false
     @State private var isSearching = false
+    @State private var deepLinkMemoID: UUID?
+    @State private var intentShowFavorites = false
     
     enum Tab {
         case map
@@ -128,9 +104,9 @@ struct ContentView: View {
                 Group {
                     switch selectedTab {
                     case .map:
-                        MapTabView(isSearching: $isSearching)
+                        MapTabView(isSearching: $isSearching, deepLinkMemoID: $deepLinkMemoID)
                     case .list:
-                        ListTabView()
+                        ListTabView(intentShowFavorites: $intentShowFavorites)
                     }
                 }
                 
@@ -138,12 +114,26 @@ struct ContentView: View {
                 CustomTabBar(selectedTab: $selectedTab)
             }
         }
-        .background(Brand.white)
+        .background(Brand.background)
         .ignoresSafeArea(edges: .bottom)
         .fullScreenCover(isPresented: $showSettings) {
             NavigationStack {
                 SettingsView()
             }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .openGeoMemo)) { notification in
+            if let id = notification.object as? UUID {
+                selectedTab = .map
+                deepLinkMemoID = id
+            }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .showGeoMemoFavorites)) { _ in
+            selectedTab = .list
+            intentShowFavorites = true
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .searchGeoMemos)) { _ in
+            selectedTab = .map
+            isSearching = true
         }
     }
 }
@@ -163,9 +153,9 @@ struct CustomNavigationBar: View {
                 .foregroundColor(Brand.blue)
             
             // Logo Text
-            Text("GEOMEMO")
+            Text(verbatim: "GEOMEMO")
                 .font(.system(size: 24, weight: .heavy, design: .default))
-                .foregroundColor(Brand.black)
+                .foregroundColor(Brand.primaryText)
             
             Spacer()
             
@@ -173,12 +163,13 @@ struct CustomNavigationBar: View {
             if memos.count > 0 {
                 Text(String(format: "%02d", memos.count))
                     .font(.system(size: 11, weight: .semibold, design: .monospaced))
-                    .foregroundColor(Brand.black)
+                    .foregroundColor(Brand.primaryText)
                     .frame(width: 40, height: 28)
                     .overlay(
                         RoundedRectangle(cornerRadius: 4)
-                            .stroke(Brand.black, lineWidth: 1.5)
+                            .stroke(Brand.border, lineWidth: 1.5)
                     )
+                    .accessibilityLabel("\(memos.count) memos")
             }
             
             // Search Button
@@ -186,7 +177,7 @@ struct CustomNavigationBar: View {
                 Image("ph-magnifying-glass-bold")
                     .resizable()
                     .frame(width: 20, height: 20)
-                    .foregroundColor(Brand.black)
+                    .foregroundColor(Brand.primaryText)
                     .frame(width: 32, height: 32)
             }
             
@@ -195,16 +186,16 @@ struct CustomNavigationBar: View {
                 Image("ph-gear-six-bold")
                     .resizable()
                     .frame(width: 20, height: 20)
-                    .foregroundColor(Brand.black)
+                    .foregroundColor(Brand.primaryText)
                     .frame(width: 32, height: 32)
             }
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 12)
-        .background(Brand.white)
+        .background(Brand.background)
         .overlay(
             Rectangle()
-                .fill(Brand.black)
+                .fill(Brand.border)
                 .frame(height: 1),
             alignment: .bottom
         )
@@ -213,13 +204,15 @@ struct CustomNavigationBar: View {
 
 // MARK: - Single Pin View
 private struct SinglePinView: View {
+    var color: Color = Brand.blue
+
     var body: some View {
         Circle()
-            .fill(Brand.blue)
+            .fill(color)
             .frame(width: 12, height: 12)
             .overlay(
                 Circle()
-                    .stroke(Brand.white, lineWidth: 2)
+                    .stroke(Brand.background, lineWidth: 2)
             )
     }
 }
@@ -239,7 +232,7 @@ private struct ClusterPinView: View {
         }
         .overlay(
             Circle()
-                .stroke(Brand.white, lineWidth: 2)
+                .stroke(Brand.background, lineWidth: 2)
                 .frame(width: 32, height: 32)
         )
     }
@@ -254,13 +247,13 @@ private struct CalloutView: View {
         Button(action: onTap) {
             HStack(spacing: 8) {
                 VStack(alignment: .leading, spacing: 2) {
-                    Text(memo.title.isEmpty ? "（タイトルなし）" : memo.title)
+                    Text(memo.title.isEmpty ? String(localized: "Untitled") : memo.title)
                         .font(.system(size: 14, weight: .bold))
-                        .foregroundColor(Brand.black)
+                        .foregroundColor(Brand.primaryText)
                         .lineLimit(1)
-                    Text(memo.locationName.isEmpty ? "Unknown Location" : memo.locationName)
+                    Text(memo.locationName.isEmpty ? String(localized: "Unknown Location") : memo.locationName)
                         .font(.system(size: 12))
-                        .foregroundColor(Color(hex: "6E6E73"))
+                        .foregroundColor(Brand.secondaryText)
                         .lineLimit(1)
                 }
                 Spacer(minLength: 4)
@@ -271,7 +264,7 @@ private struct CalloutView: View {
             }
             .padding(12)
             .frame(width: 220)
-            .background(Brand.white)
+            .background(Brand.surface)
             .cornerRadius(8)
             .shadow(color: .black.opacity(0.08), radius: 4, x: 0, y: 2)
         }
@@ -292,8 +285,8 @@ private struct MapSnapshotView: View {
                     .scaledToFill()
             } else {
                 Rectangle()
-                    .fill(Brand.black.opacity(0.05))
-                    .overlay(ProgressView().tint(Brand.black.opacity(0.3)))
+                    .fill(Brand.primaryText.opacity(0.05))
+                    .overlay(ProgressView().tint(Brand.primaryText.opacity(0.3)))
             }
         }
         .onAppear { generateSnapshot() }
@@ -326,16 +319,16 @@ private struct ClusterListSheet: View {
         VStack(spacing: 0) {
             // Handle
             RoundedRectangle(cornerRadius: 2)
-                .fill(Color(hex: "E5E5EA"))
+                .fill(Brand.separator)
                 .frame(width: 36, height: 4)
                 .padding(.top, 12)
                 .padding(.bottom, 8)
 
             // Header
             HStack {
-                Text("\(memos.count)件のメモ")
+                Text("\(memos.count) memos")
                     .font(.system(size: 16, weight: .bold))
-                    .foregroundColor(Brand.black)
+                    .foregroundColor(Brand.primaryText)
                 Spacer()
             }
             .padding(.horizontal, 20)
@@ -356,20 +349,20 @@ private struct ClusterListSheet: View {
                                     .clipShape(RoundedRectangle(cornerRadius: 6))
 
                                 VStack(alignment: .leading, spacing: 2) {
-                                    Text(memo.title.isEmpty ? "（タイトルなし）" : memo.title)
+                                    Text(memo.title.isEmpty ? String(localized: "Untitled") : memo.title)
                                         .font(.system(size: 14, weight: .semibold))
-                                        .foregroundColor(Brand.black)
+                                        .foregroundColor(Brand.primaryText)
                                         .lineLimit(1)
                                     Text(memo.locationName.isEmpty ? "Unknown Location" : memo.locationName)
                                         .font(.system(size: 12))
-                                        .foregroundColor(Color(hex: "6E6E73"))
+                                        .foregroundColor(Brand.secondaryText)
                                         .lineLimit(1)
                                 }
                                 Spacer()
                                 Image("ph-caret-right-bold")
                                     .resizable()
                                     .frame(width: 12, height: 12)
-                                    .foregroundColor(Color(hex: "6E6E73"))
+                                    .foregroundColor(Brand.secondaryText)
                             }
                             .padding(.horizontal, 20)
                             .padding(.vertical, 12)
@@ -383,7 +376,7 @@ private struct ClusterListSheet: View {
                 }
             }
         }
-        .background(Brand.white)
+        .background(Brand.background)
         .presentationDetents([.medium, .large])
         .presentationDragIndicator(.hidden)
     }
@@ -426,12 +419,22 @@ class SearchCompleterHelper: NSObject, MKLocalSearchCompleterDelegate {
 // MARK: - Map Tab View
 struct MapTabView: View {
     @Environment(\.modelContext) private var modelContext
+    @Environment(\.colorScheme) private var colorScheme
     @Query(sort: \GeoMemo.createdAt, order: .reverse) private var memos: [GeoMemo]
+    @AppStorage("mapStyle") private var mapStyleRaw: String = GeoMapStyle.mono.rawValue
     
     @ObservedObject private var locationManager = LocationManager.shared
     @Binding var isSearching: Bool
+    @Binding var deepLinkMemoID: UUID?
+
+    private var currentMapStyle: GeoMapStyle {
+        GeoMapStyle(rawValue: mapStyleRaw) ?? .mono
+    }
     
-    @State private var cameraPosition: MapCameraPosition = .userLocation(fallback: .automatic)
+    @State private var cameraPosition: MapCameraPosition = .region(
+        MKCoordinateRegion(center: CLLocationCoordinate2D(latitude: 35.6812, longitude: 139.7671),
+                           latitudinalMeters: 5000, longitudinalMeters: 5000)
+    )
     @State private var newMemoCoordinate: CLLocationCoordinate2D?
     @State private var visibleRegion: MKCoordinateRegion?
     @State private var mapItems: [MapItem] = []
@@ -442,6 +445,7 @@ struct MapTabView: View {
     @State private var searchText = ""
     @State private var memoResults: [GeoMemo] = []
     @State private var searchCompleter = SearchCompleterHelper()
+    @State private var searchDebounceTask: Task<Void, Never>?
     
     var body: some View {
         ZStack(alignment: .top) {
@@ -470,6 +474,9 @@ struct MapTabView: View {
                 )
             }
             reRegisterAllGeofences()
+
+            // Start Live Activity for Dynamic Island
+            LiveActivityManager.shared.startMonitoring(count: memos.count)
         }
         .onChange(of: locationManager.location) { oldValue, newValue in
             if oldValue == nil, let userLocation = newValue?.coordinate {
@@ -487,6 +494,25 @@ struct MapTabView: View {
                 mapItems = clusterMemos(memos, in: region)
             }
         }
+        .onChange(of: deepLinkMemoID) { _, newID in
+            guard let id = newID else { return }
+            deepLinkMemoID = nil
+            if let memo = memos.first(where: { $0.id == id }) {
+                calloutMemo = memo
+                withAnimation {
+                    cameraPosition = .region(
+                        MKCoordinateRegion(
+                            center: memo.coordinate,
+                            latitudinalMeters: 500,
+                            longitudinalMeters: 500
+                        )
+                    )
+                }
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                    activeSheet = .memoDetail(memo)
+                }
+            }
+        }
         .onReceive(NotificationCenter.default.publisher(for: Notification.Name.didEnterGeoMemoRegion)) { notification in
             if let id = notification.object as? String,
                let memo = memos.first(where: { $0.id.uuidString == id }) {
@@ -494,7 +520,7 @@ struct MapTabView: View {
                 Task {
                     await NotificationManager.shared.scheduleImmediateNotification(
                         title: memo.title,
-                        body: memo.note.isEmpty ? "エリアに入りました" : memo.note
+                        body: memo.note.isEmpty ? String(localized: "You entered the area") : memo.note
                     )
                 }
             }
@@ -511,7 +537,7 @@ struct MapTabView: View {
                     switch item {
                     case .single(let memo):
                         Annotation("", coordinate: memo.coordinate) {
-                            SinglePinView()
+                            SinglePinView(color: MemoColor(rawValue: memo.colorIndex)?.color ?? Brand.blue)
                                 .onTapGesture {
                                     calloutMemo = memo
                                 }
@@ -538,7 +564,11 @@ struct MapTabView: View {
                     }
                 }
             }
-            .mapStyle(.standard(elevation: .flat, emphasis: .muted, pointsOfInterest: .excludingAll, showsTraffic: false))
+            .mapStyle(currentMapStyle == .satellite
+                ? .imagery
+                : .standard(elevation: .flat, emphasis: .muted, pointsOfInterest: .excludingAll, showsTraffic: false))
+            .grayscale(currentMapStyle == .mono && colorScheme != .dark ? 1.0 : 0)
+            .id(mapStyleRaw)
             .mapControlVisibility(.hidden)
             .onMapCameraChange(frequency: .onEnd) { context in
                 visibleRegion = context.region
@@ -578,11 +608,11 @@ struct MapTabView: View {
                         .frame(width: 20, height: 20)
                         .foregroundColor(Brand.blue)
                         .frame(width: 48, height: 48)
-                        .background(Brand.white)
+                        .background(Brand.background)
                         .clipShape(Circle())
                         .overlay(
                             Circle()
-                                .stroke(Brand.black, lineWidth: 1)
+                                .stroke(Brand.border, lineWidth: 1)
                         )
                 }
                 .padding(.trailing, 16)
@@ -596,6 +626,7 @@ struct MapTabView: View {
         VStack {
             Spacer()
             Button(action: {
+                HapticManager.impact(.medium)
                 let defaultTokyo = CLLocationCoordinate2D(latitude: 35.6812, longitude: 139.7671)
                 let coordinate = newMemoCoordinate
                     ?? locationManager.location?.coordinate
@@ -612,14 +643,14 @@ struct MapTabView: View {
                     Text("ADD MEMO")
                         .font(.system(size: 18, weight: .heavy, design: .default))
                 }
-                .foregroundColor(Brand.black)
+                .foregroundColor(Brand.primaryText)
                 .frame(maxWidth: .infinity)
                 .frame(height: 56)
-                .background(Brand.white)
+                .background(Brand.background)
                 .clipShape(RoundedRectangle(cornerRadius: 8))
                 .overlay(
                     RoundedRectangle(cornerRadius: 8)
-                        .stroke(Brand.black, lineWidth: 2)
+                        .stroke(Brand.border, lineWidth: 2)
                 )
             }
             .frame(maxWidth: UIScreen.main.bounds.width * 0.8)
@@ -662,12 +693,21 @@ struct MapTabView: View {
                 Image("ph-magnifying-glass")
                     .resizable()
                     .frame(width: 16, height: 16)
-                    .foregroundColor(Brand.black.opacity(0.4))
-                TextField("メモ・場所を検索...", text: $searchText)
+                    .foregroundColor(Brand.primaryText.opacity(0.4))
+                TextField("Search memos & places...", text: $searchText)
                     .textFieldStyle(.plain)
                     .font(.system(size: 16))
                     .onChange(of: searchText) { _, newValue in
-                        performSearch(newValue)
+                        searchDebounceTask?.cancel()
+                        if newValue.isEmpty {
+                            performSearch("")
+                        } else {
+                            searchDebounceTask = Task {
+                                try? await Task.sleep(for: .milliseconds(300))
+                                guard !Task.isCancelled else { return }
+                                performSearch(newValue)
+                            }
+                        }
                     }
                 if !searchText.isEmpty {
                     Button {
@@ -678,10 +718,11 @@ struct MapTabView: View {
                         Image("ph-x-circle-fill")
                             .resizable()
                             .frame(width: 16, height: 16)
-                            .foregroundColor(Brand.black.opacity(0.4))
+                            .foregroundColor(Brand.primaryText.opacity(0.4))
                     }
                 }
-                Button("キャンセル") {
+                Button("Cancel") {
+                    HapticManager.selection()
                     withAnimation(.easeInOut(duration: 0.25)) {
                         isSearching = false
                         searchText = ""
@@ -694,10 +735,10 @@ struct MapTabView: View {
             }
             .padding(.horizontal, 16)
             .padding(.vertical, 10)
-            .background(Brand.white)
+            .background(Brand.background)
 
             Rectangle()
-                .fill(Brand.black)
+                .fill(Brand.border)
                 .frame(height: 1)
 
             // Search Results
@@ -804,40 +845,68 @@ struct ListTabView: View {
     @Query(sort: \GeoMemo.createdAt, order: .reverse) private var memos: [GeoMemo]
     
     @ObservedObject private var locationManager = LocationManager.shared
-    
+    @State private var selectedColorFilter: Int? = nil
+    @State private var showFavoritesOnly: Bool = false
+    @Binding var intentShowFavorites: Bool
+
+    private var filteredMemos: [GeoMemo] {
+        var result = memos
+        if showFavoritesOnly {
+            result = result.filter { $0.isFavorite }
+        }
+        if let filter = selectedColorFilter {
+            result = result.filter { $0.colorIndex == filter }
+        }
+        return result
+    }
+
     var body: some View {
         NavigationStack {
             VStack(spacing: 0) {
+                // Color Filter Bar
+                if !memos.isEmpty {
+                    colorFilterBar
+                }
+
                 // Memo List
-                if memos.isEmpty {
+                if filteredMemos.isEmpty && selectedColorFilter != nil {
+                    Spacer()
+                    VStack(spacing: 16) {
+                        Text("No matching memos")
+                            .font(.system(size: 18, weight: .medium))
+                            .foregroundColor(Brand.primaryText.opacity(0.5))
+                    }
+                    Spacer()
+                } else if memos.isEmpty {
                     Spacer()
                     VStack(spacing: 16) {
                         Image("ph-map-trifold-thin")
                             .resizable()
                             .frame(width: 48, height: 48)
-                            .foregroundColor(Brand.black.opacity(0.3))
-                        Text("メモがありません")
+                            .foregroundColor(Brand.primaryText.opacity(0.3))
+                        Text("No memos yet")
                             .font(.system(size: 18, weight: .medium))
-                            .foregroundColor(Brand.black.opacity(0.5))
-                        Text("MAPタブで地図をタップしてメモを追加してください")
+                            .foregroundColor(Brand.primaryText.opacity(0.5))
+                        Text("Tap the map to add a memo")
                             .font(.system(size: 14, weight: .regular))
-                            .foregroundColor(Brand.black.opacity(0.4))
+                            .foregroundColor(Brand.primaryText.opacity(0.4))
                             .multilineTextAlignment(.center)
                             .padding(.horizontal, 32)
                     }
                     Spacer()
                 } else {
                     List {
-                        ForEach(memos) { memo in
+                        ForEach(filteredMemos) { memo in
                             NavigationLink(destination: MemoDetailView(memo: memo)) {
                                 MemoListRow(memo: memo, userLocation: locationManager.location?.coordinate)
                             }
                             .listRowInsets(EdgeInsets(top: 12, leading: 20, bottom: 12, trailing: 20))
                             .listRowSeparator(.visible, edges: .bottom)
-                            .listRowSeparatorTint(Brand.black.opacity(0.1))
-                            .listRowBackground(Brand.white)
+                            .listRowSeparatorTint(Brand.primaryText.opacity(0.1))
+                            .listRowBackground(Brand.background)
                             .swipeActions(edge: .trailing, allowsFullSwipe: true) {
                                 Button(role: .destructive) {
+                                    HapticManager.notification(.warning)
                                     delete(memo)
                                 } label: {
                                     Label("Delete", systemImage: "trash")
@@ -847,17 +916,83 @@ struct ListTabView: View {
                     }
                     .listStyle(.plain)
                     .scrollContentBackground(.hidden)
-                    .background(Brand.white)
+                    .background(Brand.background)
                 }
             }
-            .background(Brand.white)
+            .background(Brand.background)
             .navigationBarHidden(true)
+        }
+        .onChange(of: intentShowFavorites) { _, newValue in
+            if newValue {
+                showFavoritesOnly = true
+                intentShowFavorites = false
+            }
         }
     }
     
+    private var colorFilterBar: some View {
+        HStack(spacing: 12) {
+            // Favorite filter
+            Button(action: {
+                HapticManager.impact(.light)
+                withAnimation(.spring(response: 0.3, dampingFraction: 0.6)) { showFavoritesOnly.toggle() }
+            }) {
+                Image(systemName: showFavoritesOnly ? "heart.fill" : "heart")
+                    .font(.system(size: 12))
+                    .foregroundColor(showFavoritesOnly ? Color(hex: "E5484D") : Brand.primaryText.opacity(0.4))
+                    .frame(width: 20, height: 20)
+                    .scaleEffect(showFavoritesOnly ? 1.15 : 1.0)
+            }
+            .accessibilityLabel(showFavoritesOnly ? "Favorites filter: On" : "Favorites filter: Off")
+
+            // "All" chip
+            Button(action: {
+                HapticManager.selection()
+                selectedColorFilter = nil
+            }) {
+                Circle()
+                    .fill(Brand.primaryText.opacity(0.15))
+                    .frame(width: 20, height: 20)
+                    .overlay(
+                        Circle()
+                            .stroke(Brand.primaryText, lineWidth: selectedColorFilter == nil ? 1.5 : 0)
+                    )
+            }
+            .accessibilityLabel("All colors")
+            .accessibilityAddTraits(selectedColorFilter == nil ? .isSelected : [])
+
+            ForEach(MemoColor.allCases, id: \.rawValue) { memoColor in
+                Button(action: {
+                    HapticManager.selection()
+                    if selectedColorFilter == memoColor.rawValue {
+                        selectedColorFilter = nil
+                    } else {
+                        selectedColorFilter = memoColor.rawValue
+                    }
+                }) {
+                    Circle()
+                        .fill(memoColor.color)
+                        .frame(width: 20, height: 20)
+                        .overlay(
+                            Circle()
+                                .stroke(Brand.primaryText, lineWidth: selectedColorFilter == memoColor.rawValue ? 1.5 : 0)
+                        )
+                }
+                .accessibilityLabel(memoColor.accessibilityName)
+                .accessibilityAddTraits(selectedColorFilter == memoColor.rawValue ? .isSelected : [])
+            }
+
+            Spacer()
+        }
+        .padding(.horizontal, 20)
+        .padding(.vertical, 10)
+        .background(Brand.background)
+    }
+
     private func delete(_ memo: GeoMemo) {
         locationManager.stopMonitoring(memoID: memo.id.uuidString)
         modelContext.delete(memo)
+        geomemoApp.indexAllMemosInSpotlight()
     }
 }
 
@@ -878,10 +1013,10 @@ struct MemoListRow: View {
                         .scaledToFill()
                 } else {
                     Rectangle()
-                        .fill(Brand.black.opacity(0.05))
+                        .fill(Brand.primaryText.opacity(0.05))
                         .overlay(
                             ProgressView()
-                                .tint(Brand.black.opacity(0.3))
+                                .tint(Brand.primaryText.opacity(0.3))
                         )
                 }
             }
@@ -891,16 +1026,29 @@ struct MemoListRow: View {
             // Content
             VStack(alignment: .leading, spacing: 4) {
                 // Title
-                Text(memo.title)
-                    .font(.system(size: 17, weight: .bold))
-                    .foregroundColor(Brand.black)
-                    .lineLimit(1)
+                HStack(spacing: 6) {
+                    if memo.colorIndex != 0 {
+                        Circle()
+                            .fill(MemoColor(rawValue: memo.colorIndex)?.color ?? Brand.blue)
+                            .frame(width: 8, height: 8)
+                    }
+                    if memo.isFavorite {
+                        Image(systemName: "heart.fill")
+                            .font(.system(size: 12))
+                            .foregroundColor(Color(hex: "E5484D"))
+                            .accessibilityLabel("Favorite")
+                    }
+                    Text(memo.title.isEmpty ? String(localized: "Untitled") : memo.title)
+                        .font(.system(size: 17, weight: .bold))
+                        .foregroundColor(Brand.primaryText)
+                        .lineLimit(1)
+                }
                 
                 // Note
                 if !memo.note.isEmpty {
                     Text(memo.note)
                         .font(.system(size: 14, weight: .regular))
-                        .foregroundColor(Brand.black.opacity(0.6))
+                        .foregroundColor(Brand.primaryText.opacity(0.6))
                         .lineLimit(1)
                 }
                 
@@ -908,17 +1056,17 @@ struct MemoListRow: View {
                 HStack(spacing: 4) {
                     Text(locationText)
                         .font(.system(size: 11, weight: .medium))
-                        .foregroundColor(Brand.black.opacity(0.4))
+                        .foregroundColor(Brand.primaryText.opacity(0.4))
                         .textCase(.uppercase)
                     
                     if let distanceText {
                         Text("•")
                             .font(.system(size: 11, weight: .medium))
-                            .foregroundColor(Brand.black.opacity(0.4))
+                            .foregroundColor(Brand.primaryText.opacity(0.4))
                         
                         Text(distanceText)
                             .font(.system(size: 11, weight: .medium))
-                            .foregroundColor(Brand.black.opacity(0.4))
+                            .foregroundColor(Brand.primaryText.opacity(0.4))
                     }
                 }
             }
@@ -933,7 +1081,7 @@ struct MemoListRow: View {
     
     private var locationText: String {
         if memo.locationName.isEmpty || memo.locationName == "LOCATION" {
-            return "未取得"
+            return String(localized: "Not fetched")
         }
         return memo.locationName
     }
@@ -955,25 +1103,16 @@ struct MemoListRow: View {
     }
     
     private func generateMapSnapshot() {
-        let options = MKMapSnapshotter.Options()
-        options.region = MKCoordinateRegion(
-            center: memo.coordinate,
-            latitudinalMeters: 500,
-            longitudinalMeters: 500
-        )
-        options.size = CGSize(width: 120, height: 120)
-        options.mapType = .standard
-        
-        let snapshotter = MKMapSnapshotter(options: options)
-        
         Task {
-            do {
-                let snapshot = try await snapshotter.start()
-                await MainActor.run {
-                    mapSnapshot = snapshot.image
-                }
-            } catch {
-                print("Snapshot error: \(error)")
+            let image = await MapSnapshotCache.shared.snapshot(
+                latitude: memo.latitude,
+                longitude: memo.longitude,
+                colorIndex: memo.colorIndex,
+                mapStyleRaw: 0,
+                size: CGSize(width: 120, height: 120)
+            )
+            await MainActor.run {
+                mapSnapshot = image
             }
         }
     }
@@ -986,7 +1125,11 @@ struct CustomTabBar: View {
     var body: some View {
         HStack(spacing: 0) {
             // MAP Tab
-            Button(action: { selectedTab = .map }) {
+            Button(action: {
+                guard selectedTab != .map else { return }
+                HapticManager.selection()
+                withAnimation(.easeInOut(duration: 0.2)) { selectedTab = .map }
+            }) {
                 VStack(spacing: 6) {
                     Image(selectedTab == .map ? "ph-map-trifold-fill" : "ph-map-trifold")
                         .resizable()
@@ -994,14 +1137,20 @@ struct CustomTabBar: View {
                     Text("MAP")
                         .font(.system(size: 11, weight: .bold, design: .default))
                 }
-                .foregroundColor(selectedTab == .map ? Brand.white : Brand.black)
+                .foregroundColor(selectedTab == .map ? Brand.background : Brand.primaryText)
                 .frame(maxWidth: .infinity)
                 .frame(height: 64)
-                .background(selectedTab == .map ? Brand.blue : Brand.white)
+                .background(selectedTab == .map ? Brand.blue : Brand.background)
             }
+            .accessibilityLabel("Map")
+            .accessibilityAddTraits(selectedTab == .map ? .isSelected : [])
             
             // LIST Tab
-            Button(action: { selectedTab = .list }) {
+            Button(action: {
+                guard selectedTab != .list else { return }
+                HapticManager.selection()
+                withAnimation(.easeInOut(duration: 0.2)) { selectedTab = .list }
+            }) {
                 VStack(spacing: 6) {
                     Image(selectedTab == .list ? "ph-list-bullets-fill" : "ph-list-bullets")
                         .resizable()
@@ -1009,15 +1158,17 @@ struct CustomTabBar: View {
                     Text("LIST")
                         .font(.system(size: 11, weight: .bold, design: .default))
                 }
-                .foregroundColor(selectedTab == .list ? Brand.white : Brand.black)
+                .foregroundColor(selectedTab == .list ? Brand.background : Brand.primaryText)
                 .frame(maxWidth: .infinity)
                 .frame(height: 64)
-                .background(selectedTab == .list ? Brand.blue : Brand.white)
+                .background(selectedTab == .list ? Brand.blue : Brand.background)
             }
+            .accessibilityLabel("List")
+            .accessibilityAddTraits(selectedTab == .list ? .isSelected : [])
         }
         .overlay(
             Rectangle()
-                .fill(Brand.black)
+                .fill(Brand.border)
                 .frame(height: 1),
             alignment: .top
         )
@@ -1035,7 +1186,7 @@ private struct SearchResultsView: View {
         ScrollView {
             LazyVStack(spacing: 0) {
                 if !memoResults.isEmpty {
-                    SectionHeader(title: "登録済みメモ")
+                    SectionHeader(title: String(localized: "SAVED MEMOS"))
                     ForEach(memoResults) { memo in
                         MemoResultRow(memo: memo)
                             .onTapGesture { onMemoSelected(memo) }
@@ -1044,7 +1195,7 @@ private struct SearchResultsView: View {
                 }
 
                 if !placeResults.isEmpty {
-                    SectionHeader(title: "場所")
+                    SectionHeader(title: String(localized: "PLACES"))
                     ForEach(placeResults, id: \.self) { completion in
                         PlaceResultRow(completion: completion)
                             .onTapGesture { onPlaceSelected(completion) }
@@ -1053,14 +1204,14 @@ private struct SearchResultsView: View {
                 }
 
                 if memoResults.isEmpty && placeResults.isEmpty {
-                    Text("結果が見つかりません")
+                    Text("No results found")
                         .font(.system(size: 14))
-                        .foregroundColor(Brand.black.opacity(0.4))
+                        .foregroundColor(Brand.primaryText.opacity(0.4))
                         .padding(24)
                 }
             }
         }
-        .background(Brand.white)
+        .background(Brand.background)
     }
 }
 
@@ -1070,7 +1221,7 @@ private struct SectionHeader: View {
         HStack {
             Text(title)
                 .font(.system(size: 12, weight: .bold))
-                .foregroundColor(Brand.black.opacity(0.4))
+                .foregroundColor(Brand.primaryText.opacity(0.4))
                 .textCase(.uppercase)
             Spacer()
         }
@@ -1094,18 +1245,18 @@ private struct MemoResultRow: View {
                     .foregroundColor(Brand.blue)
             }
             VStack(alignment: .leading, spacing: 2) {
-                Text(memo.title.isEmpty ? "（タイトルなし）" : memo.title)
+                Text(memo.title.isEmpty ? String(localized: "Untitled") : memo.title)
                     .font(.system(size: 14, weight: .semibold))
-                    .foregroundColor(Brand.black)
+                    .foregroundColor(Brand.primaryText)
                 Text(memo.locationName)
                     .font(.system(size: 12))
-                    .foregroundColor(Brand.black.opacity(0.4))
+                    .foregroundColor(Brand.primaryText.opacity(0.4))
             }
             Spacer()
             Image("ph-caret-right-bold")
                 .resizable()
                 .frame(width: 12, height: 12)
-                .foregroundColor(Brand.black.opacity(0.4))
+                .foregroundColor(Brand.primaryText.opacity(0.4))
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 12)
@@ -1119,21 +1270,21 @@ private struct PlaceResultRow: View {
         HStack(spacing: 12) {
             ZStack {
                 Circle()
-                    .fill(Brand.black.opacity(0.08))
+                    .fill(Brand.primaryText.opacity(0.08))
                     .frame(width: 36, height: 36)
                 Image("ph-map-trifold-fill")
                     .resizable()
                     .frame(width: 14, height: 14)
-                    .foregroundColor(Brand.black.opacity(0.4))
+                    .foregroundColor(Brand.primaryText.opacity(0.4))
             }
             VStack(alignment: .leading, spacing: 2) {
                 Text(completion.title)
                     .font(.system(size: 14, weight: .semibold))
-                    .foregroundColor(Brand.black)
+                    .foregroundColor(Brand.primaryText)
                 if !completion.subtitle.isEmpty {
                     Text(completion.subtitle)
                         .font(.system(size: 12))
-                        .foregroundColor(Brand.black.opacity(0.4))
+                        .foregroundColor(Brand.primaryText.opacity(0.4))
                         .lineLimit(1)
                 }
             }
@@ -1141,7 +1292,7 @@ private struct PlaceResultRow: View {
             Image("ph-arrow-up-right-bold")
                 .resizable()
                 .frame(width: 12, height: 12)
-                .foregroundColor(Brand.black.opacity(0.4))
+                .foregroundColor(Brand.primaryText.opacity(0.4))
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 12)

@@ -1,0 +1,87 @@
+{
+  "sourceLanguage" : "en",
+  "strings" : {
+    "Blue" : {
+
+    },
+    "Dark" : {
+
+    },
+    "GeoMemo" : {
+      "shouldTranslate" : false
+    },
+    "Gray" : {
+
+    },
+    "Green" : {
+
+    },
+    "Light" : {
+
+    },
+    "Monitoring" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "監視中"
+          }
+        }
+      }
+    },
+    "Monitoring %lld memos" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%lld件のメモを監視中"
+          }
+        }
+      }
+    },
+    "No memos" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "メモなし"
+          }
+        }
+      }
+    },
+    "Orange" : {
+
+    },
+    "Purple" : {
+
+    },
+    "Red" : {
+
+    },
+    "Shows your latest memos" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "最新のメモを表示"
+          }
+        }
+      }
+    },
+    "System" : {
+
+    },
+    "TAP TO OPEN" : {
+      "comment" : "Dynamic Island prompt",
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "タップして開く"
+          }
+        }
+      }
+    }
+  },
+  "version" : "1.0"
+}

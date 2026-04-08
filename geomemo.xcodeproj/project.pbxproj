@@ -9,6 +9,13 @@
 /* Begin PBXBuildFile section */
 		405B25182F78FA4A00A13AFF /* OnboardingView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 405B25172F78FA4A00A13AFF /* OnboardingView.swift */; };
 		405B251A2F7906BA00A13AFF /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 405B25192F7906BA00A13AFF /* SettingsView.swift */; };
+		40DF00B42F7F7D4800F92924 /* WidgetKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 40DF00B32F7F7D4800F92924 /* WidgetKit.framework */; };
+		40DF00B62F7F7D4800F92924 /* SwiftUI.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 40DF00B52F7F7D4800F92924 /* SwiftUI.framework */; };
+		40DF00C52F7F7D4A00F92924 /* geomemoWidgetExtension.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = 40DF00B12F7F7D4800F92924 /* geomemoWidgetExtension.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
+		40DF00D02F7F887900F92924 /* GeoMemoActivityAttributes.swift in Sources */ = {isa = PBXBuildFile; fileRef = 40DF00CF2F7F887900F92924 /* GeoMemoActivityAttributes.swift */; };
+		40DF00D22F7F888E00F92924 /* LiveActivityManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 40DF00D12F7F888E00F92924 /* LiveActivityManager.swift */; };
+		40DF00D52F7FD3C000F92924 /* GeoMemoActivityAttributes.swift in Sources */ = {isa = PBXBuildFile; fileRef = 40DF00CF2F7F887900F92924 /* GeoMemoActivityAttributes.swift */; };
+		40DF01002F80805200F92924 /* geomemoWatch Watch App.app in Embed Watch Content */ = {isa = PBXBuildFile; fileRef = 40DF00E02F80805000F92924 /* geomemoWatch Watch App.app */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -26,7 +33,60 @@
 			remoteGlobalIDString = 406866832F7559FA00057BF3;
 			remoteInfo = geomemo;
 		};
+		40DF00C32F7F7D4A00F92924 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 4068667C2F7559FA00057BF3 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 40DF00B02F7F7D4800F92924;
+			remoteInfo = geomemoWidgetExtension;
+		};
+		40DF00ED2F80805200F92924 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 4068667C2F7559FA00057BF3 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 40DF00DF2F80805000F92924;
+			remoteInfo = "geomemoWatch Watch App";
+		};
+		40DF00F72F80805200F92924 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 4068667C2F7559FA00057BF3 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 40DF00DF2F80805000F92924;
+			remoteInfo = "geomemoWatch Watch App";
+		};
+		40DF00FE2F80805200F92924 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 4068667C2F7559FA00057BF3 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 40DF00DF2F80805000F92924;
+			remoteInfo = "geomemoWatch Watch App";
+		};
 /* End PBXContainerItemProxy section */
+
+/* Begin PBXCopyFilesBuildPhase section */
+		40DF00CA2F7F7D4A00F92924 /* Embed Foundation Extensions */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = "";
+			dstSubfolderSpec = 13;
+			files = (
+				40DF00C52F7F7D4A00F92924 /* geomemoWidgetExtension.appex in Embed Foundation Extensions */,
+			);
+			name = "Embed Foundation Extensions";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		40DF01042F80805200F92924 /* Embed Watch Content */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = "$(CONTENTS_FOLDER_PATH)/Watch";
+			dstSubfolderSpec = 16;
+			files = (
+				40DF01002F80805200F92924 /* geomemoWatch Watch App.app in Embed Watch Content */,
+			);
+			name = "Embed Watch Content";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
 		405B25172F78FA4A00A13AFF /* OnboardingView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnboardingView.swift; sourceTree = "<group>"; };
@@ -34,11 +94,57 @@
 		406866842F7559FA00057BF3 /* geomemo.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = geomemo.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		406866932F7559FC00057BF3 /* geomemoTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = geomemoTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		4068669D2F7559FC00057BF3 /* geomemoUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = geomemoUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		40DF00B12F7F7D4800F92924 /* geomemoWidgetExtension.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = geomemoWidgetExtension.appex; sourceTree = BUILT_PRODUCTS_DIR; };
+		40DF00B32F7F7D4800F92924 /* WidgetKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = WidgetKit.framework; path = System/Library/Frameworks/WidgetKit.framework; sourceTree = SDKROOT; };
+		40DF00B52F7F7D4800F92924 /* SwiftUI.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = SwiftUI.framework; path = System/Library/Frameworks/SwiftUI.framework; sourceTree = SDKROOT; };
+		40DF00CB2F7F7DAF00F92924 /* geomemoWidgetExtension.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = geomemoWidgetExtension.entitlements; sourceTree = "<group>"; };
+		40DF00CF2F7F887900F92924 /* GeoMemoActivityAttributes.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GeoMemoActivityAttributes.swift; sourceTree = "<group>"; };
+		40DF00D12F7F888E00F92924 /* LiveActivityManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LiveActivityManager.swift; sourceTree = "<group>"; };
+		40DF00E02F80805000F92924 /* geomemoWatch Watch App.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "geomemoWatch Watch App.app"; sourceTree = BUILT_PRODUCTS_DIR; };
+		40DF00EC2F80805200F92924 /* geomemoWatch Watch AppTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = "geomemoWatch Watch AppTests.xctest"; sourceTree = BUILT_PRODUCTS_DIR; };
+		40DF00F62F80805200F92924 /* geomemoWatch Watch AppUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = "geomemoWatch Watch AppUITests.xctest"; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
+
+/* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
+		402C1B4A2F7F767500692EA3 /* Exceptions for "geomemo" folder in "geomemo" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				Info.plist,
+			);
+			target = 406866832F7559FA00057BF3 /* geomemo */;
+		};
+		40DF00C92F7F7D4A00F92924 /* Exceptions for "geomemoWidget" folder in "geomemoWidgetExtension" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				Info.plist,
+			);
+			target = 40DF00B02F7F7D4800F92924 /* geomemoWidgetExtension */;
+		};
+		40DF00CD2F7F7E6C00F92924 /* Exceptions for "geomemo" folder in "geomemoWidgetExtension" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				GeoMemo.swift,
+				Theme.swift,
+			);
+			target = 40DF00B02F7F7D4800F92924 /* geomemoWidgetExtension */;
+		};
+		40DF010C2F8080F600F92924 /* Exceptions for "geomemo" folder in "geomemoWatch Watch App" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				GeoMemo.swift,
+			);
+			target = 40DF00DF2F80805000F92924 /* geomemoWatch Watch App */;
+		};
+/* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
 		406866862F7559FA00057BF3 /* geomemo */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+				402C1B4A2F7F767500692EA3 /* Exceptions for "geomemo" folder in "geomemo" target */,
+				40DF00CD2F7F7E6C00F92924 /* Exceptions for "geomemo" folder in "geomemoWidgetExtension" target */,
+				40DF010C2F8080F600F92924 /* Exceptions for "geomemo" folder in "geomemoWatch Watch App" target */,
+			);
 			path = geomemo;
 			sourceTree = "<group>";
 		};
@@ -50,6 +156,29 @@
 		406866A02F7559FC00057BF3 /* geomemoUITests */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
 			path = geomemoUITests;
+			sourceTree = "<group>";
+		};
+		40DF00B72F7F7D4800F92924 /* geomemoWidget */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+				40DF00C92F7F7D4A00F92924 /* Exceptions for "geomemoWidget" folder in "geomemoWidgetExtension" target */,
+			);
+			path = geomemoWidget;
+			sourceTree = "<group>";
+		};
+		40DF00E12F80805000F92924 /* geomemoWatch Watch App */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = "geomemoWatch Watch App";
+			sourceTree = "<group>";
+		};
+		40DF00EF2F80805200F92924 /* geomemoWatch Watch AppTests */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = "geomemoWatch Watch AppTests";
+			sourceTree = "<group>";
+		};
+		40DF00F92F80805200F92924 /* geomemoWatch Watch AppUITests */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = "geomemoWatch Watch AppUITests";
 			sourceTree = "<group>";
 		};
 /* End PBXFileSystemSynchronizedRootGroup section */
@@ -76,18 +205,56 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		40DF00AE2F7F7D4800F92924 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				40DF00B62F7F7D4800F92924 /* SwiftUI.framework in Frameworks */,
+				40DF00B42F7F7D4800F92924 /* WidgetKit.framework in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		40DF00DD2F80805000F92924 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		40DF00E92F80805200F92924 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		40DF00F32F80805200F92924 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
 		4068667B2F7559FA00057BF3 = {
 			isa = PBXGroup;
 			children = (
+				40DF00CB2F7F7DAF00F92924 /* geomemoWidgetExtension.entitlements */,
 				406866862F7559FA00057BF3 /* geomemo */,
 				406866962F7559FC00057BF3 /* geomemoTests */,
 				406866A02F7559FC00057BF3 /* geomemoUITests */,
+				40DF00B72F7F7D4800F92924 /* geomemoWidget */,
+				40DF00E12F80805000F92924 /* geomemoWatch Watch App */,
+				40DF00EF2F80805200F92924 /* geomemoWatch Watch AppTests */,
+				40DF00F92F80805200F92924 /* geomemoWatch Watch AppUITests */,
+				40DF00B22F7F7D4800F92924 /* Frameworks */,
 				406866852F7559FA00057BF3 /* Products */,
 				405B25172F78FA4A00A13AFF /* OnboardingView.swift */,
 				405B25192F7906BA00A13AFF /* SettingsView.swift */,
+				40DF00CF2F7F887900F92924 /* GeoMemoActivityAttributes.swift */,
+				40DF00D12F7F888E00F92924 /* LiveActivityManager.swift */,
 			);
 			sourceTree = "<group>";
 		};
@@ -97,8 +264,21 @@
 				406866842F7559FA00057BF3 /* geomemo.app */,
 				406866932F7559FC00057BF3 /* geomemoTests.xctest */,
 				4068669D2F7559FC00057BF3 /* geomemoUITests.xctest */,
+				40DF00B12F7F7D4800F92924 /* geomemoWidgetExtension.appex */,
+				40DF00E02F80805000F92924 /* geomemoWatch Watch App.app */,
+				40DF00EC2F80805200F92924 /* geomemoWatch Watch AppTests.xctest */,
+				40DF00F62F80805200F92924 /* geomemoWatch Watch AppUITests.xctest */,
 			);
 			name = Products;
+			sourceTree = "<group>";
+		};
+		40DF00B22F7F7D4800F92924 /* Frameworks */ = {
+			isa = PBXGroup;
+			children = (
+				40DF00B32F7F7D4800F92924 /* WidgetKit.framework */,
+				40DF00B52F7F7D4800F92924 /* SwiftUI.framework */,
+			);
+			name = Frameworks;
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
@@ -111,10 +291,14 @@
 				406866802F7559FA00057BF3 /* Sources */,
 				406866812F7559FA00057BF3 /* Frameworks */,
 				406866822F7559FA00057BF3 /* Resources */,
+				40DF00CA2F7F7D4A00F92924 /* Embed Foundation Extensions */,
+				40DF01042F80805200F92924 /* Embed Watch Content */,
 			);
 			buildRules = (
 			);
 			dependencies = (
+				40DF00C42F7F7D4A00F92924 /* PBXTargetDependency */,
+				40DF00FF2F80805200F92924 /* PBXTargetDependency */,
 			);
 			fileSystemSynchronizedGroups = (
 				406866862F7559FA00057BF3 /* geomemo */,
@@ -172,6 +356,96 @@
 			productReference = 4068669D2F7559FC00057BF3 /* geomemoUITests.xctest */;
 			productType = "com.apple.product-type.bundle.ui-testing";
 		};
+		40DF00B02F7F7D4800F92924 /* geomemoWidgetExtension */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 40DF00C62F7F7D4A00F92924 /* Build configuration list for PBXNativeTarget "geomemoWidgetExtension" */;
+			buildPhases = (
+				40DF00AD2F7F7D4800F92924 /* Sources */,
+				40DF00AE2F7F7D4800F92924 /* Frameworks */,
+				40DF00AF2F7F7D4800F92924 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			fileSystemSynchronizedGroups = (
+				40DF00B72F7F7D4800F92924 /* geomemoWidget */,
+			);
+			name = geomemoWidgetExtension;
+			packageProductDependencies = (
+			);
+			productName = geomemoWidgetExtension;
+			productReference = 40DF00B12F7F7D4800F92924 /* geomemoWidgetExtension.appex */;
+			productType = "com.apple.product-type.app-extension";
+		};
+		40DF00DF2F80805000F92924 /* geomemoWatch Watch App */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 40DF01012F80805200F92924 /* Build configuration list for PBXNativeTarget "geomemoWatch Watch App" */;
+			buildPhases = (
+				40DF00DC2F80805000F92924 /* Sources */,
+				40DF00DD2F80805000F92924 /* Frameworks */,
+				40DF00DE2F80805000F92924 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			fileSystemSynchronizedGroups = (
+				40DF00E12F80805000F92924 /* geomemoWatch Watch App */,
+			);
+			name = "geomemoWatch Watch App";
+			packageProductDependencies = (
+			);
+			productName = "geomemoWatch Watch App";
+			productReference = 40DF00E02F80805000F92924 /* geomemoWatch Watch App.app */;
+			productType = "com.apple.product-type.application";
+		};
+		40DF00EB2F80805200F92924 /* geomemoWatch Watch AppTests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 40DF01052F80805200F92924 /* Build configuration list for PBXNativeTarget "geomemoWatch Watch AppTests" */;
+			buildPhases = (
+				40DF00E82F80805200F92924 /* Sources */,
+				40DF00E92F80805200F92924 /* Frameworks */,
+				40DF00EA2F80805200F92924 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				40DF00EE2F80805200F92924 /* PBXTargetDependency */,
+			);
+			fileSystemSynchronizedGroups = (
+				40DF00EF2F80805200F92924 /* geomemoWatch Watch AppTests */,
+			);
+			name = "geomemoWatch Watch AppTests";
+			packageProductDependencies = (
+			);
+			productName = "geomemoWatch Watch AppTests";
+			productReference = 40DF00EC2F80805200F92924 /* geomemoWatch Watch AppTests.xctest */;
+			productType = "com.apple.product-type.bundle.unit-test";
+		};
+		40DF00F52F80805200F92924 /* geomemoWatch Watch AppUITests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 40DF01082F80805200F92924 /* Build configuration list for PBXNativeTarget "geomemoWatch Watch AppUITests" */;
+			buildPhases = (
+				40DF00F22F80805200F92924 /* Sources */,
+				40DF00F32F80805200F92924 /* Frameworks */,
+				40DF00F42F80805200F92924 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				40DF00F82F80805200F92924 /* PBXTargetDependency */,
+			);
+			fileSystemSynchronizedGroups = (
+				40DF00F92F80805200F92924 /* geomemoWatch Watch AppUITests */,
+			);
+			name = "geomemoWatch Watch AppUITests";
+			packageProductDependencies = (
+			);
+			productName = "geomemoWatch Watch AppUITests";
+			productReference = 40DF00F62F80805200F92924 /* geomemoWatch Watch AppUITests.xctest */;
+			productType = "com.apple.product-type.bundle.ui-testing";
+		};
 /* End PBXNativeTarget section */
 
 /* Begin PBXProject section */
@@ -179,7 +453,7 @@
 			isa = PBXProject;
 			attributes = {
 				BuildIndependentTargetsInParallel = 1;
-				LastSwiftUpdateCheck = 2620;
+				LastSwiftUpdateCheck = 2640;
 				LastUpgradeCheck = 2620;
 				TargetAttributes = {
 					406866832F7559FA00057BF3 = {
@@ -192,6 +466,20 @@
 					4068669C2F7559FC00057BF3 = {
 						CreatedOnToolsVersion = 26.2;
 						TestTargetID = 406866832F7559FA00057BF3;
+					};
+					40DF00B02F7F7D4800F92924 = {
+						CreatedOnToolsVersion = 26.4;
+					};
+					40DF00DF2F80805000F92924 = {
+						CreatedOnToolsVersion = 26.4;
+					};
+					40DF00EB2F80805200F92924 = {
+						CreatedOnToolsVersion = 26.4;
+						TestTargetID = 40DF00DF2F80805000F92924;
+					};
+					40DF00F52F80805200F92924 = {
+						CreatedOnToolsVersion = 26.4;
+						TestTargetID = 40DF00DF2F80805000F92924;
 					};
 				};
 			};
@@ -214,6 +502,10 @@
 				406866832F7559FA00057BF3 /* geomemo */,
 				406866922F7559FC00057BF3 /* geomemoTests */,
 				4068669C2F7559FC00057BF3 /* geomemoUITests */,
+				40DF00B02F7F7D4800F92924 /* geomemoWidgetExtension */,
+				40DF00DF2F80805000F92924 /* geomemoWatch Watch App */,
+				40DF00EB2F80805200F92924 /* geomemoWatch Watch AppTests */,
+				40DF00F52F80805200F92924 /* geomemoWatch Watch AppUITests */,
 			);
 		};
 /* End PBXProject section */
@@ -240,6 +532,34 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		40DF00AF2F7F7D4800F92924 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		40DF00DE2F80805000F92924 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		40DF00EA2F80805200F92924 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		40DF00F42F80805200F92924 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXResourcesBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
@@ -248,6 +568,8 @@
 			buildActionMask = 2147483647;
 			files = (
 				405B251A2F7906BA00A13AFF /* SettingsView.swift in Sources */,
+				40DF00D22F7F888E00F92924 /* LiveActivityManager.swift in Sources */,
+				40DF00D02F7F887900F92924 /* GeoMemoActivityAttributes.swift in Sources */,
 				405B25182F78FA4A00A13AFF /* OnboardingView.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -266,6 +588,35 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		40DF00AD2F7F7D4800F92924 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				40DF00D52F7FD3C000F92924 /* GeoMemoActivityAttributes.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		40DF00DC2F80805000F92924 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		40DF00E82F80805200F92924 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		40DF00F22F80805200F92924 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXSourcesBuildPhase section */
 
 /* Begin PBXTargetDependency section */
@@ -278,6 +629,26 @@
 			isa = PBXTargetDependency;
 			target = 406866832F7559FA00057BF3 /* geomemo */;
 			targetProxy = 4068669E2F7559FC00057BF3 /* PBXContainerItemProxy */;
+		};
+		40DF00C42F7F7D4A00F92924 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 40DF00B02F7F7D4800F92924 /* geomemoWidgetExtension */;
+			targetProxy = 40DF00C32F7F7D4A00F92924 /* PBXContainerItemProxy */;
+		};
+		40DF00EE2F80805200F92924 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 40DF00DF2F80805000F92924 /* geomemoWatch Watch App */;
+			targetProxy = 40DF00ED2F80805200F92924 /* PBXContainerItemProxy */;
+		};
+		40DF00F82F80805200F92924 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 40DF00DF2F80805000F92924 /* geomemoWatch Watch App */;
+			targetProxy = 40DF00F72F80805200F92924 /* PBXContainerItemProxy */;
+		};
+		40DF00FF2F80805200F92924 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 40DF00DF2F80805000F92924 /* geomemoWatch Watch App */;
+			targetProxy = 40DF00FE2F80805200F92924 /* PBXContainerItemProxy */;
 		};
 /* End PBXTargetDependency section */
 
@@ -406,10 +777,13 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_ENTITLEMENTS = geomemo/geomemo.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = 65X8BH2L5R;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = geomemo/Info.plist;
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
@@ -437,10 +811,13 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_ENTITLEMENTS = geomemo/geomemo.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = 65X8BH2L5R;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = geomemo/Info.plist;
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
@@ -543,6 +920,228 @@
 			};
 			name = Release;
 		};
+		40DF00C72F7F7D4A00F92924 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				ASSETCATALOG_COMPILER_WIDGET_BACKGROUND_COLOR_NAME = WidgetBackground;
+				CODE_SIGN_ENTITLEMENTS = geomemoWidgetExtension.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = 65X8BH2L5R;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = geomemoWidget/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = geomemoWidget;
+				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				IPHONEOS_DEPLOYMENT_TARGET = 26.2;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.yokuro.geomemo.geomemoWidget;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SKIP_INSTALL = YES;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+		40DF00C82F7F7D4A00F92924 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				ASSETCATALOG_COMPILER_WIDGET_BACKGROUND_COLOR_NAME = WidgetBackground;
+				CODE_SIGN_ENTITLEMENTS = geomemoWidgetExtension.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = 65X8BH2L5R;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = geomemoWidget/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = geomemoWidget;
+				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				IPHONEOS_DEPLOYMENT_TARGET = 26.2;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.yokuro.geomemo.geomemoWidget;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SKIP_INSTALL = YES;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Release;
+		};
+		40DF01022F80805200F92924 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_ENTITLEMENTS = "geomemoWatch Watch App/geomemoWatch Watch App.entitlements";
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = 65X8BH2L5R;
+				ENABLE_PREVIEWS = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_CFBundleDisplayName = geomemoWatch;
+				INFOPLIST_KEY_UISupportedInterfaceOrientations = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown";
+				INFOPLIST_KEY_WKCompanionAppBundleIdentifier = com.yokuro.geomemo;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.yokuro.geomemo.watchkitapp;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = watchos;
+				SKIP_INSTALL = YES;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = 4;
+				WATCHOS_DEPLOYMENT_TARGET = 26.4;
+			};
+			name = Debug;
+		};
+		40DF01032F80805200F92924 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_ENTITLEMENTS = "geomemoWatch Watch App/geomemoWatch Watch App.entitlements";
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = 65X8BH2L5R;
+				ENABLE_PREVIEWS = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_CFBundleDisplayName = geomemoWatch;
+				INFOPLIST_KEY_UISupportedInterfaceOrientations = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown";
+				INFOPLIST_KEY_WKCompanionAppBundleIdentifier = com.yokuro.geomemo;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.yokuro.geomemo.watchkitapp;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = watchos;
+				SKIP_INSTALL = YES;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = 4;
+				WATCHOS_DEPLOYMENT_TARGET = 26.4;
+			};
+			name = Release;
+		};
+		40DF01062F80805200F92924 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = 65X8BH2L5R;
+				GENERATE_INFOPLIST_FILE = YES;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = "com.yokuro.geomemo.geomemoWatch-Watch-AppTests";
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = watchos;
+				STRING_CATALOG_GENERATE_SYMBOLS = NO;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = 4;
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/geomemoWatch Watch App.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/geomemoWatch Watch App";
+				WATCHOS_DEPLOYMENT_TARGET = 26.4;
+			};
+			name = Debug;
+		};
+		40DF01072F80805200F92924 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = 65X8BH2L5R;
+				GENERATE_INFOPLIST_FILE = YES;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = "com.yokuro.geomemo.geomemoWatch-Watch-AppTests";
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = watchos;
+				STRING_CATALOG_GENERATE_SYMBOLS = NO;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = 4;
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/geomemoWatch Watch App.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/geomemoWatch Watch App";
+				WATCHOS_DEPLOYMENT_TARGET = 26.4;
+			};
+			name = Release;
+		};
+		40DF01092F80805200F92924 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = 65X8BH2L5R;
+				GENERATE_INFOPLIST_FILE = YES;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = "com.yokuro.geomemo.geomemoWatch-Watch-AppUITests";
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = watchos;
+				STRING_CATALOG_GENERATE_SYMBOLS = NO;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = 4;
+				TEST_TARGET_NAME = "geomemoWatch Watch App";
+				WATCHOS_DEPLOYMENT_TARGET = 26.4;
+			};
+			name = Debug;
+		};
+		40DF010A2F80805200F92924 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = 65X8BH2L5R;
+				GENERATE_INFOPLIST_FILE = YES;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = "com.yokuro.geomemo.geomemoWatch-Watch-AppUITests";
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = watchos;
+				STRING_CATALOG_GENERATE_SYMBOLS = NO;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = 4;
+				TEST_TARGET_NAME = "geomemoWatch Watch App";
+				WATCHOS_DEPLOYMENT_TARGET = 26.4;
+			};
+			name = Release;
+		};
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
@@ -578,6 +1177,42 @@
 			buildConfigurations = (
 				406866AE2F7559FD00057BF3 /* Debug */,
 				406866AF2F7559FD00057BF3 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		40DF00C62F7F7D4A00F92924 /* Build configuration list for PBXNativeTarget "geomemoWidgetExtension" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				40DF00C72F7F7D4A00F92924 /* Debug */,
+				40DF00C82F7F7D4A00F92924 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		40DF01012F80805200F92924 /* Build configuration list for PBXNativeTarget "geomemoWatch Watch App" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				40DF01022F80805200F92924 /* Debug */,
+				40DF01032F80805200F92924 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		40DF01052F80805200F92924 /* Build configuration list for PBXNativeTarget "geomemoWatch Watch AppTests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				40DF01062F80805200F92924 /* Debug */,
+				40DF01072F80805200F92924 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		40DF01082F80805200F92924 /* Build configuration list for PBXNativeTarget "geomemoWatch Watch AppUITests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				40DF01092F80805200F92924 /* Debug */,
+				40DF010A2F80805200F92924 /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
