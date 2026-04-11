@@ -1,6 +1,36 @@
 {
   "sourceLanguage" : "en",
   "strings" : {
+    "Complete" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "完了"
+          }
+        }
+      }
+    },
+    "Complete (%lld)" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "完了済み（%lld）"
+          }
+        }
+      }
+    },
+    "Restore" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "元に戻す"
+          }
+        }
+      }
+    },
     "Add Memo" : {
       "localizations" : {
         "ja" : {
@@ -52,7 +82,7 @@
       }
     },
     "GeoMemo" : {
-
+      "shouldTranslate" : false
     },
     "Getting location..." : {
       "localizations" : {

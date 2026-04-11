@@ -1,30 +1,41 @@
 import SwiftUI
 import SwiftData
+import WatchKit
 
 struct WatchMemoDetailView: View {
     @Bindable var memo: GeoMemo
     @Environment(\.modelContext) private var modelContext
     @Environment(\.dismiss) private var dismiss
     @State private var showDeleteConfirm = false
+    @State private var showDoneAnimation = false
 
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 12) {
                 // Color bar
                 RoundedRectangle(cornerRadius: 2)
-                    .fill(WatchMemoColor.color(for: memo.colorIndex))
+                    .fill(memo.isDone ? Color.gray.opacity(0.3) : WatchMemoColor.color(for: memo.colorIndex))
                     .frame(height: 4)
 
                 // Title
-                Text(memo.title.isEmpty ? String(localized: "Untitled") : memo.title)
-                    .font(.headline)
+                HStack(spacing: 6) {
+                    if memo.isDone {
+                        Image(systemName: "checkmark.circle.fill")
+                            .foregroundStyle(.green)
+                            .font(.caption)
+                    }
+                    Text(memo.title.isEmpty ? String(localized: "Untitled") : memo.title)
+                        .font(.headline)
+                        .strikethrough(memo.isDone)
+                        .foregroundStyle(memo.isDone ? .secondary : .primary)
+                }
 
                 // Location
                 if !memo.locationName.isEmpty {
                     HStack(spacing: 4) {
                         Image(systemName: "mappin.circle.fill")
                             .font(.caption)
-                            .foregroundStyle(WatchMemoColor.color(for: memo.colorIndex))
+                            .foregroundStyle(memo.isDone ? .secondary : WatchMemoColor.color(for: memo.colorIndex))
                         Text(memo.locationName)
                             .font(.caption)
                             .foregroundStyle(.secondary)
@@ -35,7 +46,7 @@ struct WatchMemoDetailView: View {
                 if !memo.note.isEmpty {
                     Text(memo.note)
                         .font(.body)
-                        .foregroundStyle(.primary)
+                        .foregroundStyle(memo.isDone ? .secondary : .primary)
                 }
 
                 Divider()
@@ -49,6 +60,32 @@ struct WatchMemoDetailView: View {
                         .font(.caption2)
                         .foregroundStyle(.secondary)
                 }
+
+                // Complete / Restore button
+                Button {
+                    if memo.isDone {
+                        memo.isDone = false
+                        try? modelContext.save()
+                        WKInterfaceDevice.current().play(.click)
+                    } else {
+                        memo.isDone = true
+                        showDoneAnimation = true
+                        try? modelContext.save()
+                        WKInterfaceDevice.current().play(.success)
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) {
+                            dismiss()
+                        }
+                    }
+                } label: {
+                    HStack {
+                        Image(systemName: memo.isDone ? "arrow.uturn.left" : "checkmark")
+                            .foregroundStyle(memo.isDone ? WatchBrand.blue : .green)
+                        Text(memo.isDone ? "Restore" : "Complete")
+                            .font(.caption)
+                    }
+                }
+                .buttonStyle(.bordered)
+                .tint(memo.isDone ? WatchBrand.blue : .green)
 
                 // Favorite toggle
                 Button {
@@ -88,5 +125,19 @@ struct WatchMemoDetailView: View {
             }
             Button("Cancel", role: .cancel) {}
         }
+        .overlay {
+            if showDoneAnimation {
+                ZStack {
+                    Color.black.opacity(0.6)
+                    Image(systemName: "checkmark.circle.fill")
+                        .font(.system(size: 48))
+                        .foregroundStyle(.green)
+                        .transition(.scale.combined(with: .opacity))
+                }
+                .ignoresSafeArea()
+                .transition(.opacity)
+            }
+        }
+        .animation(.easeInOut(duration: 0.3), value: showDoneAnimation)
     }
 }

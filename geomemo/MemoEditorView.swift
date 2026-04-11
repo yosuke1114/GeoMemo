@@ -61,6 +61,20 @@ struct MemoEditorView: View {
     @State private var cameraPosition: MapCameraPosition
     @State private var currentCoordinate: CLLocationCoordinate2D
 
+    // Route trigger
+    @State private var isRouteTrigger: Bool = false
+    @State private var routeWaypoints: [RouteWaypoint] = []
+    @State private var showRouteEditor = false
+    @State private var exitDelayMinutes: Int? = nil
+
+    // Tags (Phase 2)
+    @State private var selectedTags: Set<Int> = []
+    @State private var customTags: [String] = []
+    @State private var suggestedTags: [PresetTag] = []
+    @State private var newCustomTag: String = ""
+    @State private var showCustomTagInput = false
+    @State private var tagSuggestTask: Task<Void, Never>? = nil
+
     @ObservedObject private var locationManager = LocationManager.shared
 
     init(mode: MemoEditorMode, onDelete: (() -> Void)? = nil) {
@@ -110,6 +124,11 @@ struct MemoEditorView: View {
                 _hasDayFilter = State(initialValue: true)
                 _activeDays = State(initialValue: Set(days))
             }
+            _isRouteTrigger = State(initialValue: memo.isRouteTrigger)
+            _routeWaypoints = State(initialValue: memo.routeWaypoints)
+            _exitDelayMinutes = State(initialValue: memo.exitDelayMinutes)
+            _selectedTags = State(initialValue: Set(memo.tags))
+            _customTags = State(initialValue: memo.customTags)
         }
     }
 
@@ -146,6 +165,12 @@ struct MemoEditorView: View {
 
                     // Color Selector
                     colorSection
+
+                    Divider()
+                        .background(Brand.primaryText.opacity(0.1))
+
+                    // Tag Section
+                    tagSection
 
                     Divider()
                         .background(Brand.primaryText.opacity(0.1))
@@ -201,7 +226,12 @@ struct MemoEditorView: View {
             if case .create = mode {
                 reverseGeocode()
             }
+            if case .edit = mode {
+                refreshSuggestions()
+            }
         }
+        .onChange(of: title) { refreshSuggestionsDebounced() }
+        .onChange(of: locationName) { refreshSuggestionsDebounced() }
         .sheet(isPresented: $showLocationPicker) {
             LocationPickerSheetV2(
                 initialCoordinate: currentCoordinate,
@@ -213,6 +243,14 @@ struct MemoEditorView: View {
                         MapCamera(centerCoordinate: newCoordinate, distance: 500)
                     )
                 }
+            )
+            .presentationDetents([.large])
+            .presentationDragIndicator(.hidden)
+        }
+        .sheet(isPresented: $showRouteEditor) {
+            RouteEditorView(
+                waypoints: $routeWaypoints,
+                initialCoordinate: currentCoordinate
             )
             .presentationDetents([.large])
             .presentationDragIndicator(.hidden)
@@ -232,21 +270,7 @@ struct MemoEditorView: View {
     private var mapSection: some View {
         ZStack(alignment: .bottomLeading) {
             Map(position: $cameraPosition, interactionModes: []) {
-                Annotation("", coordinate: currentCoordinate) {
-                    ZStack {
-                        Circle()
-                            .fill(Brand.primaryText)
-                            .frame(width: 12, height: 12)
-                        Circle()
-                            .stroke(Brand.background, lineWidth: 2)
-                            .frame(width: 12, height: 12)
-                    }
-                }
-
-                // Radius circle
-                MapCircle(center: currentCoordinate, radius: selectedRadius)
-                    .foregroundStyle(Brand.blue.opacity(0.08))
-                    .stroke(Brand.blue, lineWidth: 1.5)
+                mapContent
             }
             .mapStyle({
                 let style = GeoMapStyle(rawValue: mapStyleRaw) ?? .mono
@@ -261,34 +285,102 @@ struct MemoEditorView: View {
             }())
             .id(mapStyleRaw)
             .frame(height: 160)
-            .onTapGesture {
-                showLocationPicker = true
+            .allowsHitTesting(false)
+            .onChange(of: routeWaypoints) { _, newValue in
+                guard isRouteTrigger, newValue.count >= 2 else { return }
+                let coords = newValue.map { $0.coordinate }
+                let minLat = coords.map { $0.latitude }.min()!
+                let maxLat = coords.map { $0.latitude }.max()!
+                let minLon = coords.map { $0.longitude }.min()!
+                let maxLon = coords.map { $0.longitude }.max()!
+                let center = CLLocationCoordinate2D(
+                    latitude: (minLat + maxLat) / 2,
+                    longitude: (minLon + maxLon) / 2
+                )
+                cameraPosition = .region(MKCoordinateRegion(
+                    center: center,
+                    span: MKCoordinateSpan(
+                        latitudeDelta: max((maxLat - minLat) * 1.8, 0.01),
+                        longitudeDelta: max((maxLon - minLon) * 1.8, 0.01)
+                    )
+                ))
             }
 
-            // Location Badge
-            HStack(spacing: 6) {
-                Image("ph-map-pin-fill")
-                    .resizable()
-                    .frame(width: 14, height: 14)
-                    .foregroundColor(Brand.primaryText)
+            // Location Badge — 場所変更の唯一のタップ領域
+            Button {
+                HapticManager.impact(.light)
+                if isRouteTrigger {
+                    showRouteEditor = true
+                } else {
+                    showLocationPicker = true
+                }
+            } label: {
+                HStack(spacing: 6) {
+                    Image("ph-map-pin-fill")
+                        .resizable()
+                        .frame(width: 14, height: 14)
+                        .foregroundColor(Brand.primaryText)
 
-                Text(locationName.uppercased())
+                    Group {
+                        if isRouteTrigger {
+                            Text(routeWaypoints.isEmpty
+                                ? String(localized: "TAP TO ADD ROUTE")
+                                : String(format: String(localized: "%d WAYPOINTS"), routeWaypoints.count))
+                        } else {
+                            Text(locationName.uppercased())
+                        }
+                    }
                     .font(.system(size: 12, weight: .bold))
                     .foregroundColor(Brand.primaryText)
+
+                    Image(systemName: "pencil")
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundColor(Brand.primaryText.opacity(0.7))
+                }
+                .padding(.horizontal, 12)
+                .padding(.vertical, 8)
+                .background(Brand.background)
+                .clipShape(Capsule())
+                .overlay(
+                    Capsule()
+                        .stroke(Brand.primaryText, lineWidth: 1)
+                )
             }
-            .padding(.horizontal, 12)
-            .padding(.vertical, 8)
-            .background(Brand.background)
-            .clipShape(Capsule())
-            .overlay(
-                Capsule()
-                    .stroke(Brand.primaryText, lineWidth: 1)
-            )
             .padding(.leading, 16)
             .padding(.bottom, 16)
-            .onTapGesture {
-                showLocationPicker = true
+        }
+    }
+
+    // MARK: - Map Content (extracted to avoid type-checker timeout)
+    @MapContentBuilder
+    private var mapContent: some MapContent {
+        if isRouteTrigger {
+            if routeWaypoints.count >= 2 {
+                MapPolyline(coordinates: routeWaypoints.map { $0.coordinate })
+                    .stroke(Brand.blue.opacity(0.7), style: StrokeStyle(lineWidth: 2.5, dash: [6, 4]))
             }
+            ForEach(Array(routeWaypoints.enumerated()), id: \.element.id) { index, wp in
+                Annotation("", coordinate: wp.coordinate) {
+                    routePin(number: index + 1, size: 22)
+                }
+            }
+        } else {
+            Annotation("", coordinate: currentCoordinate) {
+                ZStack {
+                    Circle().fill(Brand.primaryText).frame(width: 12, height: 12)
+                    Circle().stroke(Brand.background, lineWidth: 2).frame(width: 12, height: 12)
+                }
+            }
+            MapCircle(center: currentCoordinate, radius: selectedRadius)
+                .foregroundStyle(Brand.blue.opacity(0.15))
+                .stroke(Brand.blue, lineWidth: 2)
+        }
+    }
+
+    private func routePin(number: Int, size: CGFloat) -> some View {
+        ZStack {
+            Circle().fill(Brand.blue).frame(width: size, height: size)
+            Text("\(number)").font(.system(size: size * 0.45, weight: .bold)).foregroundColor(.white)
         }
     }
 
@@ -308,7 +400,7 @@ struct MemoEditorView: View {
             if note.isEmpty {
                 Text("Memo")
                     .font(.system(size: 16, weight: .regular))
-                    .foregroundColor(Brand.primaryText.opacity(0.3))
+                    .foregroundColor(Brand.tertiaryText)
                     .padding(.horizontal, 24)
                     .padding(.vertical, 20)
             }
@@ -394,7 +486,7 @@ struct MemoEditorView: View {
         }) {
             Text(label)
                 .font(.system(size: 15, weight: selectedRadius == value ? .bold : .semibold))
-                .foregroundColor(selectedRadius == value ? Brand.blue : Brand.primaryText.opacity(0.5))
+                .foregroundColor(selectedRadius == value ? Brand.blue : Brand.secondaryText)
                 .frame(maxWidth: .infinity)
                 .frame(height: 44)
                 .background(selectedRadius == value ? Brand.background : Color.clear)
@@ -442,6 +534,148 @@ struct MemoEditorView: View {
         }
     }
 
+    // MARK: - Tag Section
+    private var tagSection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack {
+                Text("TAGS")
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundColor(Brand.primaryText.opacity(0.5))
+                Spacer()
+                Button(action: {
+                    HapticManager.selection()
+                    refreshSuggestions()
+                }) {
+                    HStack(spacing: 4) {
+                        Image(systemName: "sparkles")
+                            .font(.system(size: 13))
+                        Text(String(localized: "AI提案"))
+                            .font(.system(size: 12, weight: .medium))
+                    }
+                    .foregroundStyle(Brand.blue)
+                }
+            }
+            .padding(.horizontal, 20)
+            .padding(.top, 16)
+
+            // プリセットタグ グリッド
+            let columns = [GridItem(.adaptive(minimum: 80), spacing: 8)]
+            LazyVGrid(columns: columns, alignment: .leading, spacing: 8) {
+                ForEach(PresetTag.allCases) { tag in
+                    let isSelected = selectedTags.contains(tag.rawValue)
+                    let isSuggested = !isSelected && suggestedTags.contains(where: { $0.rawValue == tag.rawValue })
+                    PresetTagChip(
+                        tag: tag,
+                        isSelected: isSelected,
+                        isSuggested: isSuggested,
+                        onTap: {
+                            HapticManager.selection()
+                            if isSelected {
+                                selectedTags.remove(tag.rawValue)
+                            } else {
+                                selectedTags.insert(tag.rawValue)
+                            }
+                        }
+                    )
+                }
+            }
+            .padding(.horizontal, 20)
+
+            // カスタムタグ
+            if !customTags.isEmpty {
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 6) {
+                        ForEach(customTags, id: \.self) { tag in
+                            TagChip(
+                                label: tag,
+                                iconName: nil,
+                                isSelected: true,
+                                isSuggested: false,
+                                onTap: {
+                                    HapticManager.selection()
+                                    customTags.removeAll { $0 == tag }
+                                }
+                            )
+                        }
+                    }
+                    .padding(.horizontal, 20)
+                }
+            }
+
+            // カスタムタグ入力
+            if showCustomTagInput {
+                HStack(spacing: 8) {
+                    TextField(String(localized: "タグを入力…"), text: $newCustomTag)
+                        .font(.system(size: 14))
+                        .foregroundStyle(Brand.primaryText)
+                        .submitLabel(.done)
+                        .onSubmit { addCustomTag() }
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 8)
+                        .background(Brand.secondaryBackground)
+                        .clipShape(RoundedRectangle(cornerRadius: 8))
+
+                    Button(action: addCustomTag) {
+                        Text(String(localized: "追加"))
+                            .font(.system(size: 14, weight: .semibold))
+                            .foregroundStyle(Brand.blue)
+                    }
+                }
+                .padding(.horizontal, 20)
+                .transition(.opacity.combined(with: .move(edge: .top)))
+            }
+
+            if customTags.count < GeoMemoLimits.maxCustomTags {
+                Button(action: {
+                    HapticManager.selection()
+                    withAnimation(.easeInOut(duration: 0.2)) {
+                        showCustomTagInput.toggle()
+                    }
+                }) {
+                    HStack(spacing: 4) {
+                        Image(systemName: showCustomTagInput ? "minus.circle" : "plus.circle")
+                            .font(.system(size: 14))
+                        Text(showCustomTagInput
+                             ? String(localized: "キャンセル")
+                             : String(localized: "カスタムタグを追加"))
+                            .font(.system(size: 13, weight: .medium))
+                    }
+                    .foregroundStyle(Brand.primaryText.opacity(0.6))
+                }
+                .padding(.horizontal, 20)
+            }
+        }
+        .padding(.bottom, 16)
+        .animation(.easeInOut(duration: 0.2), value: showCustomTagInput)
+        .animation(.easeInOut(duration: 0.2), value: customTags.count)
+    }
+
+    private func addCustomTag() {
+        let trimmed = newCustomTag.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty,
+              trimmed.count <= GeoMemoLimits.maxCustomTagLength,
+              !customTags.contains(trimmed),
+              customTags.count < GeoMemoLimits.maxCustomTags else { return }
+        HapticManager.selection()
+        customTags.append(trimmed)
+        newCustomTag = ""
+        showCustomTagInput = false
+    }
+
+    private func refreshSuggestions() {
+        let suggestions = AutoTagEngine.suggest(title: title, note: note, locationName: locationName)
+        suggestedTags = suggestions.filter { !selectedTags.contains($0.rawValue) }
+    }
+
+    private func refreshSuggestionsDebounced() {
+        tagSuggestTask?.cancel()
+        tagSuggestTask = Task {
+            try? await Task.sleep(nanoseconds: 600_000_000)
+            guard !Task.isCancelled else { return }
+            await MainActor.run { refreshSuggestions() }
+        }
+    }
+
     // MARK: - Notify Section
     private var notifySection: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -452,40 +686,117 @@ struct MemoEditorView: View {
                 .padding(.top, 16)
                 .padding(.bottom, 12)
 
-            // ON ENTRY
+            // ROUTE TRIGGER
             HStack {
-                Text("ON ENTRY")
-                    .font(.system(size: 17, weight: .semibold))
-                    .foregroundColor(Brand.primaryText)
-
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("ROUTE TRIGGER")
+                        .font(.system(size: 17, weight: .semibold))
+                        .foregroundColor(Brand.primaryText)
+                    Text(String(localized: "Notify when passing waypoints"))
+                        .font(.system(size: 12, weight: .regular))
+                        .foregroundColor(Brand.secondaryText)
+                }
                 Spacer()
-
-                Toggle("", isOn: $notifyOnEntry)
+                Toggle("", isOn: $isRouteTrigger)
                     .labelsHidden()
                     .tint(Brand.blue)
             }
             .padding(.horizontal, 20)
             .padding(.vertical, 12)
 
-            Divider()
-                .background(Brand.primaryText.opacity(0.1))
+            if isRouteTrigger {
+                Divider()
+                    .background(Brand.primaryText.opacity(0.1))
+                    .padding(.horizontal, 20)
+
+                Button(action: { showRouteEditor = true }) {
+                    HStack {
+                        Image("ph-map-trifold")
+                            .resizable()
+                            .frame(width: 18, height: 18)
+                            .foregroundColor(Brand.blue)
+                        Text(routeWaypoints.isEmpty
+                            ? String(localized: "ADD WAYPOINTS")
+                            : String(format: String(localized: "%d WAYPOINTS — EDIT"), routeWaypoints.count))
+                            .font(.system(size: 15, weight: .semibold))
+                            .foregroundColor(Brand.blue)
+                        Spacer()
+                        Image(systemName: "chevron.right")
+                            .font(.system(size: 13, weight: .semibold))
+                            .foregroundColor(Brand.secondaryText)
+                    }
+                    .padding(.horizontal, 20)
+                    .padding(.vertical, 14)
+                }
+                .transition(.opacity.combined(with: .move(edge: .top)))
+            } else {
+                Divider()
+                    .background(Brand.primaryText.opacity(0.1))
+                    .padding(.horizontal, 20)
+
+                // ON ENTRY
+                HStack {
+                    Text("ON ENTRY")
+                        .font(.system(size: 17, weight: .semibold))
+                        .foregroundColor(Brand.primaryText)
+                    Spacer()
+                    Toggle("", isOn: $notifyOnEntry)
+                        .labelsHidden()
+                        .tint(Brand.blue)
+                }
                 .padding(.horizontal, 20)
+                .padding(.vertical, 12)
 
-            // ON EXIT
-            HStack {
-                Text("ON EXIT")
-                    .font(.system(size: 17, weight: .semibold))
-                    .foregroundColor(Brand.primaryText)
+                Divider()
+                    .background(Brand.primaryText.opacity(0.1))
+                    .padding(.horizontal, 20)
 
-                Spacer()
+                // ON EXIT
+                HStack {
+                    Text("ON EXIT")
+                        .font(.system(size: 17, weight: .semibold))
+                        .foregroundColor(Brand.primaryText)
+                    Spacer()
+                    Toggle("", isOn: $notifyOnExit)
+                        .labelsHidden()
+                        .tint(Brand.blue)
+                }
+                .padding(.horizontal, 20)
+                .padding(.vertical, 12)
 
-                Toggle("", isOn: $notifyOnExit)
-                    .labelsHidden()
-                    .tint(Brand.blue)
+                if notifyOnExit {
+                    Divider()
+                        .background(Brand.primaryText.opacity(0.1))
+                        .padding(.horizontal, 20)
+
+                    HStack {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("EXIT DELAY")
+                                .font(.system(size: 17, weight: .semibold))
+                                .foregroundColor(Brand.primaryText)
+                            Text(String(localized: "Notify after leaving the area"))
+                                .font(.system(size: 12, weight: .regular))
+                                .foregroundColor(Brand.secondaryText)
+                        }
+                        Spacer()
+                        Picker("", selection: $exitDelayMinutes) {
+                            Text("Immediately").tag(nil as Int?)
+                            Text("5 min").tag(5 as Int?)
+                            Text("15 min").tag(15 as Int?)
+                            Text("30 min").tag(30 as Int?)
+                            Text("1 hour").tag(60 as Int?)
+                        }
+                        .pickerStyle(.menu)
+                        .tint(Brand.blue)
+                    }
+                    .padding(.horizontal, 20)
+                    .padding(.vertical, 12)
+                    .transition(.opacity.combined(with: .move(edge: .top)))
+                }
             }
-            .padding(.horizontal, 20)
-            .padding(.vertical, 12)
         }
+        .animation(.easeInOut(duration: 0.2), value: isRouteTrigger)
+        .animation(.easeInOut(duration: 0.2), value: notifyOnExit)
     }
 
     // MARK: - Trigger Conditions Section
@@ -641,16 +952,18 @@ struct MemoEditorView: View {
         switch mode {
         case .create:
             let cal = Calendar.current
+            let routeCoord = isRouteTrigger ? (routeWaypoints.first?.coordinate ?? currentCoordinate) : currentCoordinate
             let newMemo = GeoMemo(
-                title: title.isEmpty ? String(localized: "Untitled") : title,
+                title: title,
                 note: note,
-                latitude: currentCoordinate.latitude,
-                longitude: currentCoordinate.longitude,
+                latitude: routeCoord.latitude,
+                longitude: routeCoord.longitude,
                 radius: selectedRadius,
                 locationName: locationName,
                 imageData: photoData,
-                notifyOnEntry: notifyOnEntry,
-                notifyOnExit: notifyOnExit,
+                notifyOnEntry: isRouteTrigger ? true : notifyOnEntry,
+                notifyOnExit: isRouteTrigger ? false : notifyOnExit,
+                exitDelayMinutes: (isRouteTrigger || !notifyOnExit) ? nil : exitDelayMinutes,
                 deadline: hasDeadline ? deadline : nil,
                 timeWindowStart: hasTimeWindow
                     ? cal.component(.hour, from: timeStart) * 60 + cal.component(.minute, from: timeStart)
@@ -659,27 +972,38 @@ struct MemoEditorView: View {
                     ? cal.component(.hour, from: timeEnd) * 60 + cal.component(.minute, from: timeEnd)
                     : nil,
                 activeDays: hasDayFilter ? Array(activeDays) : nil,
-                colorIndex: selectedColorIndex
+                colorIndex: selectedColorIndex,
+                isRouteTrigger: isRouteTrigger,
+                waypointData: isRouteTrigger ? (try? JSONEncoder().encode(routeWaypoints)) : nil,
+                tags: Array(selectedTags),
+                customTags: customTags
             )
             modelContext.insert(newMemo)
-            registerGeofencing(for: newMemo)
+            if isRouteTrigger {
+                locationManager.startMonitoringRoute(for: newMemo)
+            } else {
+                registerGeofencing(for: newMemo)
+            }
 
         case .edit(let memo):
             let cal = Calendar.current
 
-            // Stop existing geofencing
+            // Stop existing geofencing (both normal and route)
             locationManager.stopMonitoring(memoID: memo.id.uuidString)
+            locationManager.stopMonitoringRoute(memoID: memo.id.uuidString)
 
             // Update SwiftData object
-            memo.title = title.isEmpty ? String(localized: "Untitled") : title
+            let routeCoord = isRouteTrigger ? (routeWaypoints.first?.coordinate ?? currentCoordinate) : currentCoordinate
+            memo.title = title
             memo.note = note
-            memo.latitude = currentCoordinate.latitude
-            memo.longitude = currentCoordinate.longitude
+            memo.latitude = routeCoord.latitude
+            memo.longitude = routeCoord.longitude
             memo.radius = selectedRadius
             memo.locationName = locationName
             memo.imageData = photoData
-            memo.notifyOnEntry = notifyOnEntry
-            memo.notifyOnExit = notifyOnExit
+            memo.notifyOnEntry = isRouteTrigger ? true : notifyOnEntry
+            memo.notifyOnExit = isRouteTrigger ? false : notifyOnExit
+            memo.exitDelayMinutes = (isRouteTrigger || !notifyOnExit) ? nil : exitDelayMinutes
             memo.deadline = hasDeadline ? deadline : nil
             memo.timeWindowStart = hasTimeWindow
                 ? cal.component(.hour, from: timeStart) * 60 + cal.component(.minute, from: timeStart)
@@ -689,9 +1013,17 @@ struct MemoEditorView: View {
                 : nil
             memo.activeDays = hasDayFilter ? Array(activeDays) : nil
             memo.colorIndex = selectedColorIndex
+            memo.isRouteTrigger = isRouteTrigger
+            memo.waypointData = isRouteTrigger ? (try? JSONEncoder().encode(routeWaypoints)) : nil
+            memo.tags = Array(selectedTags)
+            memo.customTags = customTags
 
             // Re-register geofencing
-            registerGeofencing(for: memo)
+            if isRouteTrigger {
+                locationManager.startMonitoringRoute(for: memo)
+            } else {
+                registerGeofencing(for: memo)
+            }
         }
 
         geomemoApp.indexAllMemosInSpotlight()
@@ -732,32 +1064,27 @@ struct MemoEditorView: View {
     // MARK: - Reverse Geocoding
     private func reverseGeocode() {
         Task {
-            let geocoder = CLGeocoder()
             let location = CLLocation(latitude: currentCoordinate.latitude, longitude: currentCoordinate.longitude)
-
+            guard let request = MKReverseGeocodingRequest(location: location) else {
+                locationName = String(localized: "Unknown Location")
+                return
+            }
             do {
-                let placemarks = try await geocoder.reverseGeocodeLocation(location)
-                if let placemark = placemarks.first {
-                    if let locality = placemark.locality {
-                        if let subLocality = placemark.subLocality {
-                            locationName = "\(subLocality), \(locality)"
-                        } else {
-                            locationName = locality
-                        }
-                    } else if let administrativeArea = placemark.administrativeArea {
-                        locationName = administrativeArea
-                    } else if let name = placemark.name {
-                        locationName = name
-                    } else {
-                        locationName = String(localized: "Unknown Location")
-                    }
-                } else {
-                    locationName = String(localized: "Unknown Location")
-                }
+                let items = try await request.mapItems
+                locationName = Self.locationName(from: items.first)
             } catch {
                 locationName = String(localized: "Unknown Location")
             }
         }
+    }
+
+    private static func locationName(from item: MKMapItem?) -> String {
+        guard let item else { return String(localized: "Unknown Location") }
+        let repr = item.addressRepresentations
+        if let city = repr?.cityWithContext, !city.isEmpty { return city }
+        if let city = repr?.cityName, !city.isEmpty { return city }
+        if let region = repr?.regionName, !region.isEmpty { return region }
+        return item.name ?? String(localized: "Unknown Location")
     }
 }
 

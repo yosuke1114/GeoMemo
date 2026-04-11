@@ -1,5 +1,7 @@
 import AppIntents
 import CoreLocation
+import MapKit
+import SwiftData
 
 // MARK: - Notification Names for Deep Linking
 
@@ -83,6 +85,110 @@ struct ListNearbyMemosIntent: AppIntent {
         }.joined(separator: "、")
 
         return .result(dialog: "\(nearbyMemos.count) memos nearby: \(list)")
+    }
+}
+
+// MARK: - Mark Memo Done Intent
+
+struct MarkMemoDoneIntent: AppIntent {
+    static var title: LocalizedStringResource = "Complete Memo"
+    static var description: IntentDescription = "Marks a GeoMemo memo as complete"
+
+    @Parameter(title: "Memo")
+    var target: GeoMemoEntity
+
+    func perform() async throws -> some IntentResult & ProvidesDialog {
+        try GeoMemoStore.markDone(id: target.id)
+        // アプリがフォアグラウンドにいる場合は NotificationCenter でも同期
+        await MainActor.run {
+            NotificationCenter.default.post(name: .geoMemoMarkDone, object: target.id.uuidString)
+        }
+        return .result(dialog: "\"\(target.title)\" \(String(localized: "marked as complete"))")
+    }
+}
+
+// MARK: - Add Memo Intent
+
+struct AddGeoMemoIntent: AppIntent {
+    static var title: LocalizedStringResource = "Add Memo"
+    static var description: IntentDescription = "Creates a new memo at your current location in GeoMemo"
+
+    static var openAppWhenRun: Bool { false }
+
+    @Parameter(title: "Title")
+    var title: String
+
+    @Parameter(title: "Note", default: "")
+    var note: String
+
+    func perform() async throws -> some IntentResult & ProvidesDialog {
+        // 現在地を取得
+        let locationManager = CLLocationManager()
+        let location = locationManager.location
+        let latitude  = location?.coordinate.latitude  ?? 35.6812
+        let longitude = location?.coordinate.longitude ?? 139.7671
+
+        // 逆ジオコーディング
+        var locationName = ""
+        if let loc = location {
+            if let request = MKReverseGeocodingRequest(location: loc),
+               let item = try? await request.mapItems.first {
+                let repr = item.addressRepresentations
+                locationName = repr?.cityWithContext ?? repr?.cityName ?? item.name ?? ""
+            }
+        }
+
+        try GeoMemoStore.insert(
+            title: title,
+            note: note,
+            latitude: latitude,
+            longitude: longitude,
+            locationName: locationName
+        )
+
+        return .result(dialog: "Memo \"\(title)\" added\(locationName.isEmpty ? "" : " at \(locationName)")")
+    }
+}
+
+// MARK: - Get Nearby Memos Intent
+
+struct GetNearbyMemosIntent: AppIntent {
+    static var title: LocalizedStringResource = "Get Nearby Memos"
+    static var description: IntentDescription = "Returns GeoMemo memos near your current location — use the result in subsequent Shortcuts actions"
+
+    @Parameter(title: "Radius (meters)", default: 1000)
+    var radiusMeters: Int
+
+    func perform() async throws -> some IntentResult & ReturnsValue<[GeoMemoEntity]> & ProvidesDialog {
+        let allMemos: [GeoMemo]
+        do {
+            allMemos = try GeoMemoStore.fetchAll()
+        } catch {
+            return .result(value: [], dialog: "Failed to fetch memos.")
+        }
+
+        let locationManager = CLLocationManager()
+        guard let currentLocation = locationManager.location else {
+            return .result(value: [], dialog: "Could not get your current location.")
+        }
+
+        let radius = Double(max(1, radiusMeters))
+        let nearby = allMemos
+            .filter { !$0.isDone }
+            .map { memo -> (GeoMemo, Double) in
+                let memoLocation = CLLocation(latitude: memo.latitude, longitude: memo.longitude)
+                return (memo, currentLocation.distance(from: memoLocation))
+            }
+            .filter { $0.1 <= radius }
+            .sorted { $0.1 < $1.1 }
+
+        let entities = nearby.map { GeoMemoEntity(from: $0.0) }
+
+        let dialogText = nearby.isEmpty
+            ? "No memos within \(radiusMeters)m."
+            : "\(nearby.count) memos found nearby."
+
+        return .result(value: entities, dialog: IntentDialog(stringLiteral: dialogText))
     }
 }
 

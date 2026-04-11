@@ -13,6 +13,7 @@ struct MemoDetailView: View {
     @AppStorage("mapStyle") private var mapStyleRaw: String = GeoMapStyle.mono.rawValue
     @State private var showingEditSheet = false
     @State private var cameraPosition: MapCameraPosition
+    @State private var suggestedTags: [PresetTag] = []
 
     private var currentMapStyle: GeoMapStyle {
         GeoMapStyle(rawValue: mapStyleRaw) ?? .mono
@@ -35,23 +36,43 @@ struct MemoDetailView: View {
                 // Map Section (160px height)
                 ZStack(alignment: .bottomLeading) {
                     Map(position: $cameraPosition, interactionModes: []) {
-                        // Radius circle
-                        MapCircle(center: CLLocationCoordinate2D(
-                            latitude: memo.latitude,
-                            longitude: memo.longitude),
-                            radius: memo.radius)
-                            .foregroundStyle(memoColor.opacity(0.08))
-                            .stroke(memoColor, lineWidth: 1.5)
-                        
-                        // Center marker
-                        Annotation("", coordinate: memo.coordinate) {
-                            ZStack {
-                                Circle()
-                                    .fill(memoColor)
-                                    .frame(width: 12, height: 12)
-                                Circle()
-                                    .stroke(Brand.background, lineWidth: 2)
-                                    .frame(width: 12, height: 12)
+                        if memo.isRouteTrigger {
+                            // Route mode: ウェイポイントピン + ライン
+                            let waypoints = memo.routeWaypoints
+                            if waypoints.count >= 2 {
+                                MapPolyline(coordinates: waypoints.map { $0.coordinate })
+                                    .stroke(memoColor.opacity(0.7), style: StrokeStyle(lineWidth: 2.5, dash: [6, 4]))
+                            }
+                            ForEach(Array(waypoints.enumerated()), id: \.element.id) { index, wp in
+                                Annotation("", coordinate: wp.coordinate) {
+                                    ZStack {
+                                        Circle()
+                                            .fill(memoColor)
+                                            .frame(width: 22, height: 22)
+                                        Text("\(index + 1)")
+                                            .font(.system(size: 10, weight: .bold))
+                                            .foregroundColor(.white)
+                                    }
+                                }
+                            }
+                        } else {
+                            // Normal mode: 半径円 + 中心マーカー
+                            MapCircle(center: CLLocationCoordinate2D(
+                                latitude: memo.latitude,
+                                longitude: memo.longitude),
+                                radius: memo.radius)
+                                .foregroundStyle(memoColor.opacity(0.08))
+                                .stroke(memoColor, lineWidth: 1.5)
+
+                            Annotation("", coordinate: memo.coordinate) {
+                                ZStack {
+                                    Circle()
+                                        .fill(memoColor)
+                                        .frame(width: 12, height: 12)
+                                    Circle()
+                                        .stroke(Brand.background, lineWidth: 2)
+                                        .frame(width: 12, height: 12)
+                                }
                             }
                         }
                     }
@@ -97,9 +118,10 @@ struct MemoDetailView: View {
                                 .font(.system(size: 14))
                                 .foregroundColor(Color(hex: "E5484D"))
                         }
-                        Text(memo.title)
-                            .font(.system(size: 24, weight: .bold))
-                            .foregroundColor(Brand.primaryText)
+                        Text(memo.displayTitle)
+                            .font(.system(size: 24, weight: memo.isUntitled ? .regular : .bold))
+                            .foregroundColor(memo.isUntitled ? Brand.tertiaryText : Brand.primaryText)
+                            .italic(memo.isUntitled)
                         Spacer()
                     }
                     
@@ -120,10 +142,63 @@ struct MemoDetailView: View {
                             .clipShape(RoundedRectangle(cornerRadius: 8))
                             .accessibilityLabel("Attached image")
                     }
+
+                    // Tags
+                    let presetTags = memo.tags.compactMap { PresetTag(rawValue: $0) }
+                    if !presetTags.isEmpty || !memo.customTags.isEmpty {
+                        ScrollView(.horizontal, showsIndicators: false) {
+                            HStack(spacing: 6) {
+                                ForEach(presetTags) { tag in
+                                    TagChip(
+                                        label: tag.localizedName,
+                                        iconName: tag.iconName,
+                                        isSelected: true,
+                                        isSuggested: false,
+                                        onTap: {}
+                                    )
+                                }
+                                ForEach(memo.customTags, id: \.self) { tag in
+                                    TagChip(
+                                        label: tag,
+                                        iconName: nil,
+                                        isSelected: true,
+                                        isSuggested: false,
+                                        onTap: {}
+                                    )
+                                }
+                            }
+                        }
+                    }
+
+                    // Suggested Tags (AI)
+                    if !suggestedTags.isEmpty {
+                        HStack(alignment: .center, spacing: 8) {
+                            Image(systemName: "sparkles")
+                                .font(.system(size: 11))
+                                .foregroundColor(Brand.blue)
+                            ScrollView(.horizontal, showsIndicators: false) {
+                                HStack(spacing: 6) {
+                                    ForEach(suggestedTags) { tag in
+                                        TagChip(
+                                            label: tag.localizedName,
+                                            iconName: tag.iconName,
+                                            isSelected: false,
+                                            isSuggested: true,
+                                            onTap: {
+                                                HapticManager.selection()
+                                                memo.tags.append(tag.rawValue)
+                                                suggestedTags.removeAll { $0 == tag }
+                                            }
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
                 }
                 .padding(.horizontal, 16)
                 .padding(.top, 20)
-                
+
                 // Divider
                 Rectangle()
                     .fill(Brand.primaryText.opacity(0.1))
@@ -133,59 +208,112 @@ struct MemoDetailView: View {
                 
                 // Settings Section
                 VStack(spacing: 0) {
-                    // RADIUS Row
-                    HStack {
-                        Text("RADIUS")
-                            .font(.system(size: 13, weight: .semibold))
-                            .foregroundColor(Brand.tertiaryText)
-                            .tracking(0.5)
-                        
-                        Spacer()
-                        
-                        Text(formatRadius(memo.radius))
-                            .font(.system(size: 16, weight: .regular))
-                            .foregroundColor(Brand.tertiaryText)
-                    }
-                    .padding(.horizontal, 16)
-                    .padding(.vertical, 16)
-                    
-                    // ON ENTRY Row
-                    HStack {
-                        Text("ON ENTRY")
-                            .font(.system(size: 13, weight: .semibold))
-                            .foregroundColor(Brand.primaryText)
-                            .tracking(0.5)
-                        
-                        Spacer()
-                        
-                        if memo.notifyOnEntry {
+                    if memo.isRouteTrigger {
+                        // ROUTE TRIGGER Rows
+                        HStack {
+                            Text("ROUTE TRIGGER")
+                                .font(.system(size: 13, weight: .semibold))
+                                .foregroundColor(Brand.tertiaryText)
+                                .tracking(0.5)
+                            Spacer()
                             Image("ph-check-bold")
                                 .resizable()
                                 .frame(width: 18, height: 18)
                                 .foregroundColor(Brand.blue)
                         }
-                    }
-                    .padding(.horizontal, 16)
-                    .padding(.vertical, 16)
-                    
-                    // ON EXIT Row
-                    HStack {
-                        Text("ON EXIT")
-                            .font(.system(size: 13, weight: .semibold))
-                            .foregroundColor(Brand.primaryText)
-                            .tracking(0.5)
-                        
-                        Spacer()
-                        
-                        if memo.notifyOnExit {
-                            Image("ph-check-bold")
-                                .resizable()
-                                .frame(width: 18, height: 18)
-                                .foregroundColor(Brand.blue)
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 16)
+
+                        ForEach(Array(memo.routeWaypoints.enumerated()), id: \.element.id) { index, wp in
+                            HStack(spacing: 10) {
+                                ZStack {
+                                    Circle()
+                                        .fill(memoColor)
+                                        .frame(width: 22, height: 22)
+                                    Text("\(index + 1)")
+                                        .font(.system(size: 10, weight: .bold))
+                                        .foregroundColor(.white)
+                                }
+                                Text(wp.name.isEmpty
+                                    ? String(format: String(localized: "Waypoint %d"), index + 1)
+                                    : wp.name)
+                                    .font(.system(size: 15, weight: .regular))
+                                    .foregroundColor(Brand.primaryText)
+                                    .lineLimit(1)
+                                Spacer()
+                            }
+                            .padding(.horizontal, 16)
+                            .padding(.vertical, 10)
                         }
+
+                        HStack {
+                            Text("DETECTION RADIUS")
+                                .font(.system(size: 13, weight: .semibold))
+                                .foregroundColor(Brand.tertiaryText)
+                                .tracking(0.5)
+                            Spacer()
+                            Text(formatRadius(memo.radius))
+                                .font(.system(size: 16, weight: .regular))
+                                .foregroundColor(Brand.tertiaryText)
+                        }
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 16)
+
+                    } else {
+                        // RADIUS Row
+                        HStack {
+                            Text("RADIUS")
+                                .font(.system(size: 13, weight: .semibold))
+                                .foregroundColor(Brand.tertiaryText)
+                                .tracking(0.5)
+
+                            Spacer()
+
+                            Text(formatRadius(memo.radius))
+                                .font(.system(size: 16, weight: .regular))
+                                .foregroundColor(Brand.tertiaryText)
+                        }
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 16)
+
+                        // ON ENTRY Row
+                        HStack {
+                            Text("ON ENTRY")
+                                .font(.system(size: 13, weight: .semibold))
+                                .foregroundColor(Brand.primaryText)
+                                .tracking(0.5)
+
+                            Spacer()
+
+                            if memo.notifyOnEntry {
+                                Image("ph-check-bold")
+                                    .resizable()
+                                    .frame(width: 18, height: 18)
+                                    .foregroundColor(Brand.blue)
+                            }
+                        }
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 16)
+
+                        // ON EXIT Row
+                        HStack {
+                            Text("ON EXIT")
+                                .font(.system(size: 13, weight: .semibold))
+                                .foregroundColor(Brand.primaryText)
+                                .tracking(0.5)
+
+                            Spacer()
+
+                            if memo.notifyOnExit {
+                                Image("ph-check-bold")
+                                    .resizable()
+                                    .frame(width: 18, height: 18)
+                                    .foregroundColor(Brand.blue)
+                            }
+                        }
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 16)
                     }
-                    .padding(.horizontal, 16)
-                    .padding(.vertical, 16)
                 }
                 .padding(.top, 8)
 
@@ -264,7 +392,7 @@ struct MemoDetailView: View {
                                             .foregroundColor(
                                                 days.contains(day)
                                                     ? .white
-                                                    : Brand.primaryText.opacity(0.4)
+                                                    : Brand.secondaryText
                                             )
                                             .cornerRadius(6)
                                     }
@@ -306,6 +434,14 @@ struct MemoDetailView: View {
                             .scaleEffect(memo.isFavorite ? 1.15 : 1.0)
                     }
                     .accessibilityLabel(memo.isFavorite ? "Remove from favorites" : "Add to favorites")
+
+                    ShareLink(item: shareText, subject: Text(memo.displayTitle)) {
+                        Image(systemName: "square.and.arrow.up")
+                            .font(.system(size: 18))
+                            .foregroundColor(Brand.primaryText)
+                    }
+                    .accessibilityLabel("Share memo")
+
                     Button(action: { showingEditSheet = true }) {
                         Text("EDIT")
                             .font(.system(size: 16, weight: .semibold))
@@ -319,8 +455,71 @@ struct MemoDetailView: View {
                 dismiss()
             })
         }
+        .onAppear {
+            refreshSuggestions()
+        }
+        .onChange(of: memo.tags) {
+            refreshSuggestions()
+        }
+    }
+
+    private func refreshSuggestions() {
+        let all = AutoTagEngine.suggest(title: memo.title, note: memo.note, locationName: memo.locationName)
+        suggestedTags = all.filter { !memo.tags.contains($0.rawValue) }
     }
     
+    // MARK: - Share
+
+    private var shareText: String {
+        var parts: [String] = []
+
+        // タイトル
+        parts.append("📍 \(memo.displayTitle)")
+
+        // 場所名
+        if !memo.locationName.isEmpty {
+            parts.append(memo.locationName)
+        }
+
+        // メモ本文
+        if !memo.note.isEmpty {
+            parts.append("")
+            parts.append(memo.note)
+        }
+
+        // タグ
+        let presetTags = memo.tags.compactMap { PresetTag(rawValue: $0) }.map { "#\($0.localizedName)" }
+        let customTags = memo.customTags.map { "#\($0)" }
+        let allTags = presetTags + customTags
+        if !allTags.isEmpty {
+            parts.append("")
+            parts.append(allTags.joined(separator: " "))
+        }
+
+        // ルートウェイポイント
+        if memo.isRouteTrigger {
+            let waypoints = memo.routeWaypoints
+            if !waypoints.isEmpty {
+                parts.append("")
+                parts.append(String(localized: "Route:"))
+                for (i, wp) in waypoints.enumerated() {
+                    let name = wp.name.isEmpty ? String(format: String(localized: "Waypoint %d"), i + 1) : wp.name
+                    parts.append("  \(i + 1). \(name)")
+                }
+            }
+        }
+
+        // 地図リンク
+        let lat = memo.latitude
+        let lon = memo.longitude
+        let encodedTitle = memo.displayTitle.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? ""
+        parts.append("")
+        parts.append("🗺 Apple Maps: https://maps.apple.com/?q=\(encodedTitle)&ll=\(lat),\(lon)")
+        parts.append("🌍 Google Maps: https://www.google.com/maps/search/?api=1&query=\(lat),\(lon)")
+
+        return parts.joined(separator: "\n")
+    }
+
     private func formatRadius(_ radius: Double) -> String {
         if radius >= 1000 {
             let km = radius / 1000
@@ -337,6 +536,7 @@ private struct AsyncImageView: View {
     let imageData: Data?
     let maxWidth: CGFloat
     @State private var image: UIImage?
+    @Environment(\.displayScale) private var displayScale
 
     var body: some View {
         Group {
@@ -352,16 +552,16 @@ private struct AsyncImageView: View {
         }
         .task {
             guard let data = imageData else { return }
-            image = await downsample(data: data, maxWidth: maxWidth)
+            image = await downsample(data: data, maxWidth: maxWidth, scale: displayScale)
         }
     }
 
-    private func downsample(data: Data, maxWidth: CGFloat) async -> UIImage? {
+    private func downsample(data: Data, maxWidth: CGFloat, scale: CGFloat) async -> UIImage? {
         let options = [kCGImageSourceShouldCache: false] as CFDictionary
         guard let source = CGImageSourceCreateWithData(data as CFData, options) else {
             return UIImage(data: data)
         }
-        let scale = UIScreen.main.scale
+        let scale = scale
         let maxPixelSize = maxWidth * scale
         let downsampleOptions = [
             kCGImageSourceCreateThumbnailFromImageAlways: true,

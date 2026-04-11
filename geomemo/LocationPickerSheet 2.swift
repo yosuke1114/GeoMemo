@@ -100,7 +100,7 @@ struct LocationPickerSheetV2: View {
                         .frame(height: 1)
                     
                     VStack(spacing: 12) {
-                        Text("Drag the map to select a location")
+                        Text("Drag the map to select a location", comment: "location picker hint")
                             .font(.system(size: 13, weight: .regular))
                             .foregroundColor(Brand.primaryText.opacity(0.5))
                             .frame(maxWidth: .infinity, alignment: .center)
@@ -123,9 +123,9 @@ struct LocationPickerSheetV2: View {
                                 onLocationSelected(selectedCoordinate, locationName)
                                 dismiss()
                             }) {
-                                Text("SELECT")
+                                Text("SELECT", comment: "location picker confirm")
                                     .font(.system(size: 15, weight: .semibold))
-                                    .foregroundColor(Brand.background)
+                                    .foregroundColor(.white)
                                     .frame(width: 100, height: 44)
                                     .background(Brand.blue)
                                     .cornerRadius(8)
@@ -142,15 +142,16 @@ struct LocationPickerSheetV2: View {
             
             // Search Bar Overlay
             VStack {
-                HStack(spacing: 12) {
+                // サーチバー + キャンセル（1行）
+                HStack(spacing: 10) {
                     HStack(spacing: 8) {
                         Image("ph-magnifying-glass")
                             .resizable()
                             .frame(width: 16, height: 16)
                             .foregroundColor(Brand.primaryText.opacity(0.5))
-                        
-                        TextField("Search places...", text: $searchText)
-                            .font(.system(size: 16, weight: .regular))
+
+                        TextField(String(localized: "Search places..."), text: $searchText)
+                            .font(.system(size: 15, weight: .regular))
                             .foregroundColor(Brand.primaryText)
                             .focused($isSearchFieldFocused)
                             .onChange(of: searchText) { _, newValue in
@@ -169,14 +170,14 @@ struct LocationPickerSheetV2: View {
                                 }
                             }
                     }
-                    .padding(.horizontal, 16)
-                    .padding(.vertical, 12)
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 10)
                     .background(Brand.surface)
                     .cornerRadius(8)
-                    
+
                     Button(action: { dismiss() }) {
-                        Text("CANCEL")
-                            .font(.system(size: 16, weight: .regular))
+                        Text("Cancel")
+                            .font(.system(size: 15, weight: .semibold))
                             .foregroundColor(Brand.primaryText)
                     }
                 }
@@ -234,26 +235,26 @@ struct LocationPickerSheetV2: View {
     private func reverseGeocode(coordinate: CLLocationCoordinate2D) {
         guard !isGeocodingInProgress else { return }
         isGeocodingInProgress = true
-        
+
         Task {
-            let geocoder = CLGeocoder()
             let location = CLLocation(latitude: coordinate.latitude, longitude: coordinate.longitude)
-            
+            guard let request = MKReverseGeocodingRequest(location: location) else {
+                locationName = String(localized: "Unknown Location")
+                isGeocodingInProgress = false
+                return
+            }
             do {
-                let placemarks = try await geocoder.reverseGeocodeLocation(location)
-                if let placemark = placemarks.first {
-                    if let locality = placemark.locality {
-                        if let subLocality = placemark.subLocality {
-                            locationName = "\(subLocality), \(locality)"
-                        } else {
-                            locationName = locality
-                        }
-                    } else if let administrativeArea = placemark.administrativeArea {
-                        locationName = administrativeArea
-                    } else if let name = placemark.name {
-                        locationName = name
+                let items = try await request.mapItems
+                if let item = items.first {
+                    let repr = item.addressRepresentations
+                    if let city = repr?.cityWithContext, !city.isEmpty {
+                        locationName = city
+                    } else if let city = repr?.cityName, !city.isEmpty {
+                        locationName = city
+                    } else if let region = repr?.regionName, !region.isEmpty {
+                        locationName = region
                     } else {
-                        locationName = String(localized: "Unknown Location")
+                        locationName = item.name ?? String(localized: "Unknown Location")
                     }
                 } else {
                     locationName = String(localized: "Unknown Location")
@@ -261,7 +262,6 @@ struct LocationPickerSheetV2: View {
             } catch {
                 locationName = String(localized: "Unknown Location")
             }
-            
             isGeocodingInProgress = false
         }
     }
@@ -275,7 +275,7 @@ struct LocationPickerSheetV2: View {
             do {
                 let response = try await search.start()
                 if let item = response.mapItems.first {
-                    let coordinate = item.placemark.coordinate
+                    let coordinate = item.location.coordinate
                     cameraPosition = .camera(
                         MapCamera(centerCoordinate: coordinate, distance: 1000)
                     )

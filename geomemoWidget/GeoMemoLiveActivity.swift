@@ -42,6 +42,16 @@ struct GeoMemoLiveActivity: Widget {
                                 .foregroundStyle(.secondary)
                                 .lineLimit(1)
                         }
+                    } else if let cur = context.state.routeCurrentWaypoint,
+                              let tot = context.state.routeTotalWaypoints {
+                        VStack(spacing: 2) {
+                            Text(context.state.memoTitle)
+                                .font(.system(size: 14, weight: .bold))
+                                .lineLimit(1)
+                            Text("WP \(cur)/\(tot)")
+                                .font(.system(size: 11, weight: .semibold, design: .monospaced))
+                                .foregroundStyle(Color(hex: "3D3BF3"))
+                        }
                     } else {
                         Text(verbatim: "GEOMEMO")
                             .font(.system(size: 14, weight: .heavy))
@@ -56,6 +66,12 @@ struct GeoMemoLiveActivity: Widget {
                                 .foregroundStyle(Color(hex: "3D3BF3"))
                         }
                         .padding(.top, 4)
+                    } else if let cur = context.state.routeCurrentWaypoint,
+                              let tot = context.state.routeTotalWaypoints {
+                        Text("Waiting for waypoint \(cur) of \(tot)")
+                            .font(.system(size: 11, weight: .medium))
+                            .foregroundStyle(.secondary)
+                            .padding(.top, 4)
                     } else {
                         Text("Monitoring \(context.attributes.monitoredCount) memos")
                             .font(.system(size: 12, weight: .medium))
@@ -68,11 +84,16 @@ struct GeoMemoLiveActivity: Widget {
                     .font(.system(size: 16))
                     .foregroundStyle(Color(hex: "3D3BF3"))
             } compactTrailing: {
-                // Compact trailing: memo title or monitoring status
+                // Compact trailing: memo title or route progress or monitoring status
                 if context.state.isTriggered {
                     Text(context.state.memoTitle)
                         .font(.system(size: 12, weight: .semibold))
                         .lineLimit(1)
+                } else if let cur = context.state.routeCurrentWaypoint,
+                          let tot = context.state.routeTotalWaypoints {
+                    Text("WP\(cur)/\(tot)")
+                        .font(.system(size: 11, weight: .semibold, design: .monospaced))
+                        .foregroundStyle(Color(hex: "3D3BF3"))
                 } else {
                     Text("Monitoring")
                         .font(.system(size: 12, weight: .medium))
@@ -140,6 +161,14 @@ private struct LockScreenView: View {
                         .font(.system(size: 11, weight: .medium))
                         .foregroundStyle(.secondary)
                         .lineLimit(1)
+                } else if let cur = context.state.routeCurrentWaypoint,
+                          let tot = context.state.routeTotalWaypoints {
+                    Text(context.state.memoTitle)
+                        .font(.system(size: 15, weight: .bold))
+                        .lineLimit(1)
+                    Text("Waiting for waypoint \(cur) of \(tot)")
+                        .font(.system(size: 12, weight: .medium))
+                        .foregroundStyle(.secondary)
                 } else {
                     Text(verbatim: "GEOMEMO")
                         .font(.system(size: 15, weight: .heavy))
@@ -151,11 +180,21 @@ private struct LockScreenView: View {
 
             Spacer()
 
-            // Right: Time or count
+            // Right: Time, route progress badge, or memo count
             if context.state.isTriggered, let time = context.state.triggeredAt {
                 Text(time, style: .time)
                     .font(.system(size: 12, weight: .medium, design: .monospaced))
                     .foregroundStyle(.secondary)
+            } else if let cur = context.state.routeCurrentWaypoint,
+                      let tot = context.state.routeTotalWaypoints {
+                VStack(spacing: 1) {
+                    Text("WP")
+                        .font(.system(size: 9, weight: .bold))
+                        .foregroundStyle(.secondary)
+                    Text("\(cur)/\(tot)")
+                        .font(.system(size: 16, weight: .bold, design: .monospaced))
+                        .foregroundStyle(Color(hex: "3D3BF3"))
+                }
             } else {
                 Text(String(format: "%02d", context.attributes.monitoredCount))
                     .font(.system(size: 20, weight: .bold, design: .monospaced))

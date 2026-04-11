@@ -41,5 +41,35 @@ struct GeoMemoShortcuts: AppShortcutsProvider {
             shortTitle: "Search",
             systemImageName: "magnifyingglass"
         )
+
+        AppShortcut(
+            intent: MarkMemoDoneIntent(),
+            phrases: [
+                "Complete memo in \(.applicationName)",
+                "\(.applicationName)でメモを完了"
+            ],
+            shortTitle: "Complete Memo",
+            systemImageName: "checkmark.circle"
+        )
+
+        AppShortcut(
+            intent: AddGeoMemoIntent(),
+            phrases: [
+                "Add memo to \(.applicationName)",
+                "\(.applicationName)にメモを追加"
+            ],
+            shortTitle: "Add Memo",
+            systemImageName: "plus.circle"
+        )
+
+        AppShortcut(
+            intent: GetNearbyMemosIntent(),
+            phrases: [
+                "Get nearby memos from \(.applicationName)",
+                "\(.applicationName)で近くのメモを取得"
+            ],
+            shortTitle: "Get Nearby Memos",
+            systemImageName: "location.circle"
+        )
     }
 }

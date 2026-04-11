@@ -30,7 +30,7 @@ actor MapSnapshotCache {
             longitudinalMeters: 300
         )
         options.size = size
-        options.scale = await UITraitCollection.current.displayScale
+        options.scale = UITraitCollection.current.displayScale
 
         do {
             let snapshotter = MKMapSnapshotter(options: options)

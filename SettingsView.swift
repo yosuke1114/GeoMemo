@@ -6,12 +6,39 @@
 //
 
 import SwiftUI
+import SwiftData
 import CoreLocation
 import UserNotifications
+import UniformTypeIdentifiers
 // Phosphor icons loaded from local Assets.xcassets
+
+// MARK: - Exporter helper
+
+enum GeoMemoExporter {
+    static func makeTempFile(memos: [GeoMemo]) throws -> URL {
+        let backupMemos = memos.map { BackupMemo(from: $0) }
+        let file = GeoMemoBackupFile(memos: backupMemos)
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+        encoder.dateEncodingStrategy = .iso8601
+        let data = try encoder.encode(file)
+        let url = FileManager.default.temporaryDirectory
+            .appendingPathComponent(filename())
+        try data.write(to: url)
+        return url
+    }
+
+    static func filename(for date: Date = Date()) -> String {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "yyyy-MM-dd"
+        return "geomemo_backup_\(formatter.string(from: date)).json"
+    }
+}
 
 struct SettingsView: View {
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.modelContext) private var modelContext
+    @Query private var memos: [GeoMemo]
 
     @AppStorage("appearanceMode") private var appearanceMode: String = AppearanceMode.system.rawValue
     @AppStorage("notificationsEnabled") private var notificationsEnabled = true
@@ -23,6 +50,18 @@ struct SettingsView: View {
     @State private var locationStatus: String = String(localized: "Checking...")
     @State private var notificationStatus: String = String(localized: "Checking...")
     @State private var showRadiusPicker = false
+
+    // Export / Import
+    @State private var exportURL: URL?
+    @State private var showImporter = false
+    @State private var importAlertMessage: String?
+    @State private var showImportAlert = false
+    @State private var exportError: String?
+    @State private var showExportError = false
+
+    private var iCloudEnabled: Bool {
+        FileManager.default.ubiquityIdentityToken != nil
+    }
 
     var body: some View {
         List {
@@ -144,6 +183,71 @@ struct SettingsView: View {
                 Text("PERMISSIONS")
             }
 
+            // MARK: - DATA
+            Section {
+                // Export
+                if let url = exportURL {
+                    ShareLink(item: url) {
+                        HStack {
+                            Text("Export backup")
+                                .foregroundColor(Brand.primaryText)
+                            Spacer()
+                            Text("\(memos.count) memos")
+                                .foregroundColor(Brand.secondaryText)
+                            Image("ph-caret-right-bold")
+                                .resizable()
+                                .frame(width: 12, height: 12)
+                                .foregroundColor(Brand.secondaryText)
+                        }
+                    }
+                } else {
+                    Button {
+                        do {
+                            exportURL = try GeoMemoExporter.makeTempFile(memos: memos)
+                        } catch {
+                            exportError = error.localizedDescription
+                            showExportError = true
+                        }
+                    } label: {
+                        HStack {
+                            Text("Export backup")
+                                .foregroundColor(Brand.primaryText)
+                            Spacer()
+                            Text("\(memos.count) memos")
+                                .foregroundColor(Brand.secondaryText)
+                            Image("ph-caret-right-bold")
+                                .resizable()
+                                .frame(width: 12, height: 12)
+                                .foregroundColor(Brand.secondaryText)
+                        }
+                    }
+                }
+
+                // Import
+                Button {
+                    showImporter = true
+                } label: {
+                    HStack {
+                        Text("Import backup")
+                            .foregroundColor(Brand.primaryText)
+                        Spacer()
+                        Image("ph-caret-right-bold")
+                            .resizable()
+                            .frame(width: 12, height: 12)
+                            .foregroundColor(Brand.secondaryText)
+                    }
+                }
+            } header: {
+                Text("DATA")
+            } footer: {
+                if iCloudEnabled {
+                    Text("iCloud sync is ON. Your memos are automatically restored when signing in on a new device. If iCloud storage is full, sync may pause — check in iOS Settings > Apple ID > iCloud.")
+                } else {
+                    Text("iCloud sync is OFF. Export a backup and save it to Files before switching devices, then import it on your new device.")
+                        .foregroundColor(.orange)
+                }
+            }
+
             // MARK: - ABOUT
             Section {
                 HStack {
@@ -197,6 +301,44 @@ struct SettingsView: View {
         .sheet(isPresented: $showRadiusPicker) {
             RadiusPickerSheet(selectedRadius: $defaultRadius)
                 .presentationDetents([.height(320)])
+        }
+        .fileImporter(
+            isPresented: $showImporter,
+            allowedContentTypes: [.json],
+            allowsMultipleSelection: false
+        ) { result in
+            switch result {
+            case .failure(let error):
+                importAlertMessage = error.localizedDescription
+                showImportAlert = true
+            case .success(let urls):
+                guard let url = urls.first else { return }
+                do {
+                    guard url.startAccessingSecurityScopedResource() else { return }
+                    defer { url.stopAccessingSecurityScopedResource() }
+                    let data = try Data(contentsOf: url)
+                    let importResult = try GeoMemoImporter.importData(from: data, into: modelContext)
+                    importAlertMessage = String(
+                        format: String(localized: "Import complete: %d added, %d skipped (already existed)."),
+                        importResult.added,
+                        importResult.skipped
+                    )
+                    showImportAlert = true
+                } catch {
+                    importAlertMessage = error.localizedDescription
+                    showImportAlert = true
+                }
+            }
+        }
+        .alert("Import", isPresented: $showImportAlert) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text(importAlertMessage ?? "")
+        }
+        .alert("Export failed", isPresented: $showExportError) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text(exportError ?? "")
         }
         .task {
             await updatePermissionStatuses()

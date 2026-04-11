@@ -9,6 +9,7 @@ struct WatchNearbyView: View {
     var nearbyMemos: [(memo: GeoMemo, distance: Double)] {
         guard let userLocation = locationHelper.currentLocation else { return [] }
         return memos
+            .filter { !$0.isDone }
             .map { memo in
                 let memoLocation = CLLocation(latitude: memo.latitude, longitude: memo.longitude)
                 let distance = userLocation.distance(from: memoLocation)

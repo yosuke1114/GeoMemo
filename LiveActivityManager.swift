@@ -8,7 +8,7 @@ class LiveActivityManager {
 
     private var currentActivity: Activity<GeoMemoActivityAttributes>?
 
-    private static let appGroupID = "group.com.yokuro.geomemo"
+    nonisolated private static let appGroupID = "group.com.yokuro.geomemo"
 
     // MARK: - Start Monitoring
 
@@ -29,7 +29,9 @@ class LiveActivityManager {
                 memoTitle: "",
                 memoLocation: String(localized: "Monitoring \(count) memos"),
                 memoColorIndex: 0,
-                triggeredAt: nil
+                triggeredAt: nil,
+                routeCurrentWaypoint: nil,
+                routeTotalWaypoints: nil
             )
             Task {
                 await activity.update(ActivityContent(state: state, staleDate: nil))
@@ -43,7 +45,9 @@ class LiveActivityManager {
             memoTitle: "",
             memoLocation: String(localized: "Monitoring \(count) memos"),
             memoColorIndex: 0,
-            triggeredAt: nil
+            triggeredAt: nil,
+            routeCurrentWaypoint: nil,
+            routeTotalWaypoints: nil
         )
 
         do {
@@ -72,7 +76,9 @@ class LiveActivityManager {
                 memoTitle: memo.title,
                 memoLocation: memo.locationName,
                 memoColorIndex: memo.colorIndex,
-                triggeredAt: Date()
+                triggeredAt: Date(),
+                routeCurrentWaypoint: nil,
+                routeTotalWaypoints: nil
             )
 
             await activity.update(
@@ -86,6 +92,34 @@ class LiveActivityManager {
         }
     }
 
+    // MARK: - Route Progress
+
+    /// Update the Live Activity to show route waypoint progress.
+    /// Call this when a waypoint is passed but the route is not yet complete.
+    /// - Parameters:
+    ///   - memoID: The memo's UUID string
+    ///   - current: The next waypoint index (1-based, e.g. 2 means "waiting for WP2")
+    ///   - total: Total number of waypoints in the route
+    nonisolated func updateRouteProgress(memoID: String, current: Int, total: Int) {
+        guard let memo = lookupMemo(id: memoID) else { return }
+
+        Task { @MainActor in
+            guard let activity = currentActivity else { return }
+
+            let state = GeoMemoActivityAttributes.ContentState(
+                isTriggered: false,
+                memoTitle: memo.title,
+                memoLocation: memo.locationName,
+                memoColorIndex: memo.colorIndex,
+                triggeredAt: nil,
+                routeCurrentWaypoint: current,
+                routeTotalWaypoints: total
+            )
+
+            await activity.update(ActivityContent(state: state, staleDate: nil))
+        }
+    }
+
     // MARK: - End Activity
 
     func endActivity() {
@@ -95,7 +129,9 @@ class LiveActivityManager {
             memoTitle: "",
             memoLocation: "",
             memoColorIndex: 0,
-            triggeredAt: nil
+            triggeredAt: nil,
+            routeCurrentWaypoint: nil,
+            routeTotalWaypoints: nil
         )
         Task {
             await activity.end(ActivityContent(state: state, staleDate: nil), dismissalPolicy: .immediate)

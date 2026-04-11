@@ -51,7 +51,11 @@ enum AppearanceMode: String, CaseIterable {
 
 enum Brand {
     // Brand accent — same in both modes
-    static let blue = Color(hex: "3D3BF3")
+    static let blue = Color(uiColor: UIColor { traits in
+        traits.userInterfaceStyle == .dark
+            ? UIColor(red: 0x7B/255.0, green: 0x79/255.0, blue: 0xFF/255.0, alpha: 1)
+            : UIColor(red: 0x3D/255.0, green: 0x3B/255.0, blue: 0xF3/255.0, alpha: 1)
+    })
 
     // Backgrounds
     static let background = Color(uiColor: UIColor { traits in

@@ -15,54 +15,57 @@ struct geomemoApp: App {
     static let appGroupID = "group.com.yokuro.geomemo"
 
     var sharedModelContainer: ModelContainer = {
-        let schema = Schema([
-            GeoMemo.self,
-        ])
+        let schema = Schema([GeoMemo.self])
+
+        // テスト時はインメモリストアを使用（CloudKit タイムアウト・データ汚染を防ぐ）
+        // Bundle.allBundles で xctest バンドルを検出（Swift Testing / XCTest 両対応）
+        let isTestEnvironment = Bundle.allBundles.contains { $0.bundlePath.hasSuffix(".xctest") }
+        if isTestEnvironment {
+            let config = ModelConfiguration(schema: schema, isStoredInMemoryOnly: true)
+            return try! ModelContainer(for: schema, configurations: [config])
+        }
 
         let groupContainer = FileManager.default
             .containerURL(forSecurityApplicationGroupIdentifier: appGroupID)
 
-        // Ensure the App Group directory exists
-        if let groupContainer {
-            try? FileManager.default.createDirectory(at: groupContainer, withIntermediateDirectories: true)
+        // App Group が利用できない場合（テスト・シミュレータ等）はインメモリで安全に動作
+        guard let groupContainer else {
+            let config = ModelConfiguration(schema: schema, isStoredInMemoryOnly: true)
+            return try! ModelContainer(for: schema, configurations: [config])
         }
 
-        let groupURL = groupContainer?.appendingPathComponent("geomemo.store")
+        try? FileManager.default.createDirectory(at: groupContainer, withIntermediateDirectories: true)
+        let groupURL = groupContainer.appendingPathComponent("geomemo.store")
 
+        #if targetEnvironment(simulator)
+        // シミュレーターでは CloudKit を使用しない（テスト実行時のハングを防ぐ）
+        let modelConfiguration = ModelConfiguration(
+            schema: schema,
+            url: groupURL,
+            cloudKitDatabase: .none
+        )
+        #else
         let useCloudKit = FileManager.default.ubiquityIdentityToken != nil
-
-        let modelConfiguration: ModelConfiguration
-        if let groupURL {
-            modelConfiguration = ModelConfiguration(
-                schema: schema,
-                url: groupURL,
-                cloudKitDatabase: useCloudKit ? .automatic : .none
-            )
-        } else {
-            modelConfiguration = ModelConfiguration(
-                schema: schema,
-                isStoredInMemoryOnly: false,
-                cloudKitDatabase: useCloudKit ? .automatic : .none
-            )
-        }
+        let modelConfiguration = ModelConfiguration(
+            schema: schema,
+            url: groupURL,
+            cloudKitDatabase: useCloudKit ? .automatic : .none
+        )
+        #endif
 
         do {
-            return try ModelContainer(for: schema, configurations: [modelConfiguration])
+            // Migration plan で V1→V2 の軽量マイグレーションを明示指定
+            return try ModelContainer(
+                for: schema,
+                migrationPlan: GeoMemoMigrationPlan.self,
+                configurations: [modelConfiguration]
+            )
         } catch {
-            // If migration fails, delete the old store and create a new one
-            print("Migration failed, recreating model container: \(error)")
-            
-            // Get the store URL
-            let storeURL = modelConfiguration.url
-            try? FileManager.default.removeItem(at: storeURL)
-            print("Deleted old store at: \(storeURL)")
-            
-            // Try again with fresh database
-            do {
-                return try ModelContainer(for: schema, configurations: [modelConfiguration])
-            } catch {
-                fatalError("Could not create ModelContainer even after cleanup: \(error)")
-            }
+            // スキーマ不一致でストアが開けない場合はインメモリにフォールバック
+            // （テスト実行後のシミュレータ残留データなど）
+            print("[GeoMemo] ModelContainer failed (\(error)), falling back to in-memory store.")
+            let fallback = ModelConfiguration(schema: schema, isStoredInMemoryOnly: true)
+            return try! ModelContainer(for: schema, configurations: [fallback])
         }
     }()
 
@@ -78,6 +81,7 @@ struct geomemoApp: App {
                 .task {
                     GeoMemoShortcuts.updateAppShortcutParameters()
                     Self.indexAllMemosInSpotlight()
+                    NotificationManager.registerCategories()
                 }
         }
         .modelContainer(sharedModelContainer)

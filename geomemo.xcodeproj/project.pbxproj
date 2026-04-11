@@ -124,6 +124,7 @@
 			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
 			membershipExceptions = (
 				GeoMemo.swift,
+				Tag.swift,
 				Theme.swift,
 			);
 			target = 40DF00B02F7F7D4800F92924 /* geomemoWidgetExtension */;

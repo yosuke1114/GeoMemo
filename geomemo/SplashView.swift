@@ -7,9 +7,19 @@ struct SplashView: View {
     @AppStorage("hasCompletedOnboarding") private var hasCompletedOnboarding = false
     @State private var showSplash = true
 
+    private var isUITesting: Bool {
+        CommandLine.arguments.contains("-UITesting")
+    }
+
+    /// UIテスト・ユニットテスト問わず「テスト実行中」かを検出
+    private var isAnyTesting: Bool {
+        isUITesting
+            || ProcessInfo.processInfo.arguments.first?.contains("XCTestDevices") == true
+    }
+
     var body: some View {
         ZStack {
-            if showSplash {
+            if showSplash && !isUITesting {
                 SplashContent(showSplash: $showSplash)
                     .transition(.opacity)
             } else {
@@ -22,6 +32,7 @@ struct SplashView: View {
         }
         .animation(.easeOut(duration: 0.3), value: showSplash)
         .task {
+            guard !isAnyTesting else { return }
             let granted = await checkPermissionsGranted()
 
             if granted && hasCompletedOnboarding {
@@ -36,8 +47,20 @@ struct SplashView: View {
         let locStatus = CLLocationManager().authorizationStatus
         let locGranted = locStatus == .authorizedWhenInUse || locStatus == .authorizedAlways
 
-        let settings = await UNUserNotificationCenter.current().notificationSettings()
-        let notifGranted = settings.authorizationStatus == .authorized
+        // タイムアウト付きで通知設定を取得（テスト環境でのハング防止）
+        let notifGranted: Bool = await withTaskGroup(of: Bool.self) { group in
+            group.addTask {
+                let s = await UNUserNotificationCenter.current().notificationSettings()
+                return s.authorizationStatus == .authorized
+            }
+            group.addTask {
+                try? await Task.sleep(nanoseconds: 3_000_000_000) // 3秒タイムアウト
+                return false
+            }
+            let result = await group.next() ?? false
+            group.cancelAll()
+            return result
+        }
 
         return locGranted && notifGranted
     }
@@ -54,8 +77,12 @@ private struct SplashContent: View {
 
     var body: some View {
         ZStack {
-            Brand.blue
-                .ignoresSafeArea()
+            LinearGradient(
+                colors: [Color(red: 18/255, green: 8/255, blue: 68/255),
+                         Color(red: 48/255, green: 20/255, blue: 120/255)],
+                startPoint: .top, endPoint: .bottom
+            )
+            .ignoresSafeArea()
 
             VStack(spacing: 24) {
                 // Pin Icon
@@ -69,10 +96,10 @@ private struct SplashContent: View {
                         .font(.system(size: 28, weight: .bold))
                         .foregroundColor(.white)
 
-                    Text(verbatim: "ARCHITECTURAL MEMORY ENGINE")
-                        .font(.system(size: 12, weight: .regular))
-                        .tracking(3)
-                        .foregroundColor(.white.opacity(0.6))
+                    Text(verbatim: "場所にメモを残そう")
+                        .font(.system(size: 13, weight: .regular))
+                        .tracking(1)
+                        .foregroundColor(.white.opacity(0.5))
                 }
                 .opacity(textOpacity)
             }
