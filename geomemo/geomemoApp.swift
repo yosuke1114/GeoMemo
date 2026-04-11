@@ -12,7 +12,8 @@ import CoreSpotlight
 
 @main
 struct geomemoApp: App {
-    static let appGroupID = "group.com.yokuro.geomemo"
+    static let appGroupID      = "group.com.yokuro.geomemo"
+    static let cloudKitContainerID = "iCloud.com.yokuro.geomemo"
 
     var sharedModelContainer: ModelContainer = {
         let schema = Schema([GeoMemo.self])
@@ -49,7 +50,9 @@ struct geomemoApp: App {
         let modelConfiguration = ModelConfiguration(
             schema: schema,
             url: groupURL,
-            cloudKitDatabase: useCloudKit ? .automatic : .none
+            cloudKitDatabase: useCloudKit
+                ? .private(containerIdentifier: cloudKitContainerID)
+                : .none
         )
         #endif
 
@@ -71,6 +74,9 @@ struct geomemoApp: App {
 
     @AppStorage("appearanceMode") private var appearanceMode: String = AppearanceMode.system.rawValue
 
+    // CloudKit 同期監視（シミュレーターでは通知が来ないだけで副作用なし）
+    @State private var syncMonitor = CloudSyncMonitor()
+
     var body: some Scene {
         WindowGroup {
             SplashView()
@@ -83,6 +89,7 @@ struct geomemoApp: App {
                     Self.indexAllMemosInSpotlight()
                     NotificationManager.registerCategories()
                 }
+                .environment(syncMonitor)
         }
         .modelContainer(sharedModelContainer)
     }

@@ -6,7 +6,7 @@
 	<string>development</string>
 	<key>com.apple.developer.icloud-container-identifiers</key>
 	<array>
-		<string>iCloud.i​Cloud​.com​.yokuro​.geomemo </string>
+		<string>iCloud.com.yokuro.geomemo</string>
 	</array>
 	<key>com.apple.developer.icloud-services</key>
 	<array>

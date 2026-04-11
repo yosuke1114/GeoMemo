@@ -47,6 +47,8 @@ struct SettingsView: View {
     @AppStorage("defaultRadius") private var defaultRadius: Double = 100
     @AppStorage("mapStyle") private var mapStyleRaw: String = GeoMapStyle.mono.rawValue
 
+    @Environment(CloudSyncMonitor.self) private var syncMonitor
+
     @State private var locationStatus: String = String(localized: "Checking...")
     @State private var notificationStatus: String = String(localized: "Checking...")
     @State private var showRadiusPicker = false
@@ -241,9 +243,53 @@ struct SettingsView: View {
                 Text("DATA")
             } footer: {
                 if iCloudEnabled {
-                    Text("iCloud sync is ON. Your memos are automatically restored when signing in on a new device. If iCloud storage is full, sync may pause — check in iOS Settings > Apple ID > iCloud.")
+                    Text("Use Export to share a snapshot or migrate to a non-iCloud device.")
                 } else {
-                    Text("iCloud sync is OFF. Export a backup and save it to Files before switching devices, then import it on your new device.")
+                    Text("iCloud sync is OFF. Export a backup to transfer data when switching devices.")
+                        .foregroundColor(.orange)
+                }
+            }
+
+            // MARK: - iCLOUD
+            Section {
+                HStack {
+                    Text("iCloud Sync")
+                        .foregroundColor(Brand.primaryText)
+                    Spacer()
+                    if iCloudEnabled {
+                        iCloudStatusBadge
+                    } else {
+                        Text("Disabled")
+                            .foregroundColor(.orange)
+                    }
+                }
+
+                if iCloudEnabled, let last = syncMonitor.lastSyncDate {
+                    HStack {
+                        Text("Last synced")
+                            .foregroundColor(Brand.primaryText)
+                        Spacer()
+                        Text(last, style: .relative)
+                            .foregroundColor(Brand.secondaryText)
+                    }
+                }
+
+                if case .failed(let msg) = syncMonitor.state {
+                    HStack(alignment: .top, spacing: 8) {
+                        Image(systemName: "exclamationmark.triangle.fill")
+                            .foregroundColor(.orange)
+                        Text(msg)
+                            .font(.caption)
+                            .foregroundColor(.orange)
+                    }
+                }
+            } header: {
+                Text("iCLOUD")
+            } footer: {
+                if iCloudEnabled {
+                    Text("Memos sync automatically across all devices signed in to the same Apple ID.")
+                } else {
+                    Text("Sign in to iCloud in iOS Settings to enable automatic sync.")
                         .foregroundColor(.orange)
                 }
             }
@@ -255,14 +301,6 @@ struct SettingsView: View {
                         .foregroundColor(Brand.primaryText)
                     Spacer()
                     Text(appVersion)
-                        .foregroundColor(Brand.secondaryText)
-                }
-
-                HStack {
-                    Text("iCloud Sync")
-                        .foregroundColor(Brand.primaryText)
-                    Spacer()
-                    Text(FileManager.default.ubiquityIdentityToken != nil ? String(localized: "Enabled") : String(localized: "Disabled"))
                         .foregroundColor(Brand.secondaryText)
                 }
 
@@ -346,6 +384,27 @@ struct SettingsView: View {
     }
 
     // MARK: - Computed Properties
+
+    @ViewBuilder
+    private var iCloudStatusBadge: some View {
+        switch syncMonitor.state {
+        case .syncing:
+            HStack(spacing: 4) {
+                ProgressView()
+                    .scaleEffect(0.7)
+                Text("Syncing…")
+                    .foregroundColor(Brand.secondaryText)
+            }
+        case .failed:
+            Label("Sync error", systemImage: "exclamationmark.icloud")
+                .foregroundColor(.orange)
+                .font(.caption)
+        case .idle:
+            Label("Enabled", systemImage: "checkmark.icloud.fill")
+                .foregroundColor(.green)
+                .font(.caption)
+        }
+    }
 
     private var radiusLabel: String {
         switch defaultRadius {
