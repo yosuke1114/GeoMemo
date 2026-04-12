@@ -52,8 +52,10 @@ struct AutoTagEngine {
 
     // MARK: - Private
 
+    /// NLTagger は初期化コストが高いため static で使い回す
+    private static let tagger = NLTagger(tagSchemes: [.lexicalClass])
+
     private static func extractNouns(from text: String) -> [String] {
-        let tagger = NLTagger(tagSchemes: [.lexicalClass])
         tagger.string = text
 
         var nouns: [String] = []

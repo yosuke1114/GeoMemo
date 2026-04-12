@@ -42,7 +42,6 @@ struct MemoEditorView: View {
     @State private var notifyOnEntry: Bool
     @State private var notifyOnExit: Bool
     @State private var locationName: String
-    @State private var selectedPhoto: PhotosPickerItem?
     @State private var photoData: Data?
     @State private var showLocationPicker = false
     @State private var showDeleteAlert = false
@@ -276,7 +275,9 @@ struct MemoEditorView: View {
                 let style = GeoMapStyle(rawValue: mapStyleRaw) ?? .mono
                 switch style {
                 case .satellite: return .imagery
-                default: return .standard(elevation: .flat, emphasis: .muted, pointsOfInterest: .excludingAll, showsTraffic: false)
+                case .detail:    return .standard(elevation: .flat, emphasis: .automatic, pointsOfInterest: .all, showsTraffic: false)
+                case .transit:   return .standard(elevation: .flat, emphasis: .muted, pointsOfInterest: .including([.publicTransport]), showsTraffic: false)
+                default:         return .standard(elevation: .flat, emphasis: .muted, pointsOfInterest: .excludingAll, showsTraffic: false)
                 }
             }())
             .grayscale({
@@ -417,44 +418,9 @@ struct MemoEditorView: View {
     }
 
     // MARK: - Photo Section
+    // PhotoSectionView は独立した struct のため、photoData 変更時のみ再レンダリングされる
     private var photoSection: some View {
-        VStack(spacing: 0) {
-            PhotosPicker(selection: $selectedPhoto, matching: .images) {
-                HStack(spacing: 10) {
-                    Image("ph-camera-fill")
-                        .resizable()
-                        .frame(width: 20, height: 20)
-                        .foregroundColor(Brand.blue)
-
-                    Text("ADD PHOTO")
-                        .font(.system(size: 16, weight: .bold))
-                        .foregroundColor(Brand.blue)
-
-
-                    Spacer()
-                }
-                .padding(.horizontal, 20)
-                .padding(.vertical, 16)
-            }
-            .onChange(of: selectedPhoto) { oldValue, newValue in
-                Task {
-                    if let data = try? await newValue?.loadTransferable(type: Data.self) {
-                        photoData = data
-                    }
-                }
-            }
-
-            // Photo Preview
-            if let photoData, let uiImage = UIImage(data: photoData) {
-                Image(uiImage: uiImage)
-                    .resizable()
-                    .scaledToFit()
-                    .frame(maxHeight: 200)
-                    .clipShape(RoundedRectangle(cornerRadius: 8))
-                    .padding(.horizontal, 20)
-                    .padding(.bottom, 16)
-            }
-        }
+        PhotoSectionView(photoData: $photoData)
     }
 
     // MARK: - Radius Section
@@ -1085,6 +1051,51 @@ struct MemoEditorView: View {
         if let city = repr?.cityName, !city.isEmpty { return city }
         if let region = repr?.regionName, !region.isEmpty { return region }
         return item.name ?? String(localized: "Unknown Location")
+    }
+}
+
+// MARK: - PhotoSectionView
+/// MemoEditorView の body から切り出すことで、UIImage デコードが他の @State 変化時に走らなくなる。
+private struct PhotoSectionView: View {
+    @Binding var photoData: Data?
+    @State private var selectedPhoto: PhotosPickerItem?
+
+    var body: some View {
+        VStack(spacing: 0) {
+            PhotosPicker(selection: $selectedPhoto, matching: .images) {
+                HStack(spacing: 10) {
+                    Image("ph-camera-fill")
+                        .resizable()
+                        .frame(width: 20, height: 20)
+                        .foregroundColor(Brand.blue)
+
+                    Text("ADD PHOTO")
+                        .font(.system(size: 16, weight: .bold))
+                        .foregroundColor(Brand.blue)
+
+                    Spacer()
+                }
+                .padding(.horizontal, 20)
+                .padding(.vertical, 16)
+            }
+            .onChange(of: selectedPhoto) { _, newValue in
+                Task {
+                    if let data = try? await newValue?.loadTransferable(type: Data.self) {
+                        photoData = data
+                    }
+                }
+            }
+
+            if let data = photoData, let uiImage = UIImage(data: data) {
+                Image(uiImage: uiImage)
+                    .resizable()
+                    .scaledToFit()
+                    .frame(maxHeight: 200)
+                    .clipShape(RoundedRectangle(cornerRadius: 8))
+                    .padding(.horizontal, 20)
+                    .padding(.bottom, 16)
+            }
+        }
     }
 }
 

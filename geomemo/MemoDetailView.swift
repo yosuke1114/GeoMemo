@@ -550,18 +550,34 @@ private struct AsyncImageView: View {
                     .overlay(ProgressView())
             }
         }
-        .task {
+        .task(id: imageData?.hashValue) {
             guard let data = imageData else { return }
-            image = await downsample(data: data, maxWidth: maxWidth, scale: displayScale)
+            let cacheKey = "\(data.hashValue)_\(Int(maxWidth))" as NSString
+
+            // キャッシュヒット → 即返却
+            if let cached = ImageCache.shared.image(forKey: cacheKey) {
+                image = cached
+                return
+            }
+
+            // バックグラウンドでデコード
+            let scale = displayScale
+            let decoded = await Task.detached(priority: .userInitiated) {
+                downsample(data: data, maxWidth: maxWidth, scale: scale)
+            }.value
+
+            if let decoded {
+                ImageCache.shared.store(decoded, forKey: cacheKey)
+                image = decoded
+            }
         }
     }
 
-    private func downsample(data: Data, maxWidth: CGFloat, scale: CGFloat) async -> UIImage? {
+    private nonisolated func downsample(data: Data, maxWidth: CGFloat, scale: CGFloat) -> UIImage? {
         let options = [kCGImageSourceShouldCache: false] as CFDictionary
         guard let source = CGImageSourceCreateWithData(data as CFData, options) else {
             return UIImage(data: data)
         }
-        let scale = scale
         let maxPixelSize = maxWidth * scale
         let downsampleOptions = [
             kCGImageSourceCreateThumbnailFromImageAlways: true,

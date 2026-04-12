@@ -14,23 +14,52 @@ class LocationManager: NSObject, ObservableObject {
 
     @Published var authorizationStatus: CLAuthorizationStatus = .notDetermined
     @Published var location: CLLocation?
+    @Published var heading: CLHeading?
 
-    // MARK: - Route Progress (UserDefaults で永続化、バックグラウンド起動時も維持)
-    /// memoID → 次に通過すべき waypoint index
+    /// EMA（指数移動平均）で平滑化した方位角（度）。-1 = 未取得
+    @Published var smoothedHeadingDegrees: Double = -1
+
+    // EMA 平滑化係数: 0に近いほど滑らか・遅延大、1に近いほど即応・ノイジー
+    private let headingSmoothingAlpha: Double = 0.25
+    private var _smoothed: Double = 0
+
+    // MARK: - Route Progress (メモリキャッシュ + UserDefaults 永続化)
+    // バックグラウンド起動後も didEnterRegion で参照できるよう UserDefaults に書く。
+    // ただし都度 UserDefaults を読むのではなく、起動時に一度だけロードしてメモリで管理する。
+
+    private var _routeProgress: [String: Int]? = nil
     private var routeProgress: [String: Int] {
-        get { UserDefaults.standard.object(forKey: "routeProgress") as? [String: Int] ?? [:] }
-        set { UserDefaults.standard.set(newValue, forKey: "routeProgress") }
+        get {
+            if let cached = _routeProgress { return cached }
+            let loaded = UserDefaults.standard.object(forKey: "routeProgress") as? [String: Int] ?? [:]
+            _routeProgress = loaded
+            return loaded
+        }
+        set {
+            _routeProgress = newValue
+            UserDefaults.standard.set(newValue, forKey: "routeProgress")
+        }
     }
-    /// memoID → waypoint 総数
+
+    private var _routeWaypointCounts: [String: Int]? = nil
     private var routeWaypointCounts: [String: Int] {
-        get { UserDefaults.standard.object(forKey: "routeWaypointCounts") as? [String: Int] ?? [:] }
-        set { UserDefaults.standard.set(newValue, forKey: "routeWaypointCounts") }
+        get {
+            if let cached = _routeWaypointCounts { return cached }
+            let loaded = UserDefaults.standard.object(forKey: "routeWaypointCounts") as? [String: Int] ?? [:]
+            _routeWaypointCounts = loaded
+            return loaded
+        }
+        set {
+            _routeWaypointCounts = newValue
+            UserDefaults.standard.set(newValue, forKey: "routeWaypointCounts")
+        }
     }
 
     override init() {
         super.init()
         manager.delegate = self
         manager.desiredAccuracy = kCLLocationAccuracyHundredMeters
+        manager.headingFilter = kCLHeadingFilterNone // すべての変化を即通知
         authorizationStatus = manager.authorizationStatus
     }
 
@@ -43,11 +72,26 @@ class LocationManager: NSObject, ObservableObject {
         case .authorizedWhenInUse:
             manager.requestAlwaysAuthorization()
             manager.requestLocation()
+            manager.startUpdatingHeading() // スプラッシュ中にウォームアップ開始
         case .authorizedAlways:
             manager.requestLocation()
+            manager.startUpdatingHeading() // スプラッシュ中にウォームアップ開始
         default:
             break
         }
+    }
+
+    /// マップ表示中のみ呼び出す。非表示時は stopHeading() で停止すること。
+    func startHeading() {
+        guard manager.authorizationStatus == .authorizedWhenInUse ||
+              manager.authorizationStatus == .authorizedAlways else { return }
+        manager.startUpdatingHeading()
+    }
+
+    func stopHeading() {
+        manager.stopUpdatingHeading()
+        heading = nil
+        smoothedHeadingDegrees = -1
     }
 
     /// Request a fresh one-shot location update (e.g. for the "center on me" button).
@@ -170,9 +214,34 @@ extension LocationManager: CLLocationManagerDelegate {
         switch manager.authorizationStatus {
         case .authorizedWhenInUse, .authorizedAlways:
             manager.requestLocation()
+            manager.startUpdatingHeading() // 許可取得直後にウォームアップ開始
         default:
             break
         }
+    }
+
+    func locationManager(_ manager: CLLocationManager, didUpdateHeading newHeading: CLHeading) {
+        guard newHeading.headingAccuracy >= 0 else { return }
+        heading = newHeading
+
+        let raw = newHeading.trueHeading >= 0 ? newHeading.trueHeading : newHeading.magneticHeading
+
+        // 初回は即セット
+        if smoothedHeadingDegrees < 0 {
+            _smoothed = raw
+            smoothedHeadingDegrees = raw
+            return
+        }
+
+        // 0/360 の折り返しを考慮した最短経路で EMA を適用
+        var delta = raw - _smoothed
+        if delta > 180  { delta -= 360 }
+        if delta < -180 { delta += 360 }
+        _smoothed += headingSmoothingAlpha * delta
+        if _smoothed < 0   { _smoothed += 360 }
+        if _smoothed >= 360 { _smoothed -= 360 }
+
+        smoothedHeadingDegrees = _smoothed
     }
 
     func locationManager(_ manager: CLLocationManager, didEnterRegion region: CLRegion) {

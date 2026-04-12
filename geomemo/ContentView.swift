@@ -6,6 +6,24 @@ import CoreLocation
 
 // Brand colors and Color(hex:) are defined in Theme.swift
 
+// MARK: - Heading Cone Shape
+
+private struct HeadingCone: Shape {
+    func path(in rect: CGRect) -> Path {
+        var path = Path()
+        // 先端（下）= ドット位置、広がりは上（進行方向）
+        path.move(to: CGPoint(x: rect.midX, y: rect.maxY))
+        path.addLine(to: CGPoint(x: rect.minX, y: rect.minY))
+        // 上辺を弧にして扇形らしく
+        path.addQuadCurve(
+            to: CGPoint(x: rect.maxX, y: rect.minY),
+            control: CGPoint(x: rect.midX, y: rect.minY - rect.height * 0.25)
+        )
+        path.closeSubpath()
+        return path
+    }
+}
+
 // MARK: - Map Item (single pin or cluster)
 private enum MapItem: Identifiable {
     case single(GeoMemo)
@@ -62,15 +80,16 @@ private func clusterMemos(_ memos: [GeoMemo], in region: MKCoordinateRegion) -> 
         grid[key, default: []].append(memo)
     }
 
-    return grid.values.map { cellMemos in
+    return grid.map { key, cellMemos in
         if cellMemos.count == 1 {
             return .single(cellMemos[0])
         } else {
-            let avgLat = cellMemos.map(\.latitude).reduce(0, +) / Double(cellMemos.count)
-            let avgLon = cellMemos.map(\.longitude).reduce(0, +) / Double(cellMemos.count)
-            let stableID = "cluster-" + cellMemos.map(\.id.uuidString).sorted().joined(separator: "-")
+            let count = Double(cellMemos.count)
+            let avgLat = cellMemos.reduce(0.0) { $0 + $1.latitude } / count
+            let avgLon = cellMemos.reduce(0.0) { $0 + $1.longitude } / count
+            // グリッドキーをそのまま ID に流用 → sorted().joined() 不要で O(1)
             return .cluster(
-                id: stableID,
+                id: "cluster-\(key)",
                 coordinate: CLLocationCoordinate2D(latitude: avgLat, longitude: avgLon),
                 memos: cellMemos
             )
@@ -80,39 +99,37 @@ private func clusterMemos(_ memos: [GeoMemo], in region: MKCoordinateRegion) -> 
 
 // MARK: - Main Content View
 struct ContentView: View {
-    @State private var selectedTab: Tab = .map
+    @Query(sort: \GeoMemo.createdAt, order: .reverse) private var memos: [GeoMemo]
+
+    @State private var showList = false
     @State private var showSettings = false
     @State private var isSearching = false
     @State private var deepLinkMemoID: UUID?
     @State private var intentShowFavorites = false
-    
-    enum Tab {
-        case map
-        case list
-    }
-    
+
     var body: some View {
-        ZStack(alignment: .top) {
+        ZStack {
+            // マップは常に背景に描画しておく
             VStack(spacing: 0) {
-                // Custom Navigation Bar
-                CustomNavigationBar(showSettings: $showSettings, isSearching: $isSearching)
-                
-                // Content
-                Group {
-                    switch selectedTab {
-                    case .map:
-                        MapTabView(isSearching: $isSearching, deepLinkMemoID: $deepLinkMemoID)
-                    case .list:
-                        ListTabView(intentShowFavorites: $intentShowFavorites)
-                    }
-                }
-                
-                // Custom Tab Bar
-                CustomTabBar(selectedTab: $selectedTab)
+                CustomNavigationBar(memoCount: memos.count, showSettings: $showSettings, isSearching: $isSearching)
+                MapTabView(memos: memos, isSearching: $isSearching, deepLinkMemoID: $deepLinkMemoID, showList: $showList)
+            }
+            .background(Brand.background)
+            .ignoresSafeArea(edges: .bottom)
+
+            // リスト画面（右からスライドイン）
+            if showList {
+                ListTabView(
+                    memos: memos,
+                    intentShowFavorites: $intentShowFavorites,
+                    showList: $showList,
+                    showSettings: $showSettings
+                )
+                .transition(.move(edge: .trailing))
+                .zIndex(1)
             }
         }
-        .background(Brand.background)
-        .ignoresSafeArea(edges: .bottom)
+        .animation(.easeInOut(duration: 0.3), value: showList)
         .fullScreenCover(isPresented: $showSettings) {
             NavigationStack {
                 SettingsView()
@@ -120,16 +137,16 @@ struct ContentView: View {
         }
         .onReceive(NotificationCenter.default.publisher(for: .openGeoMemo)) { notification in
             if let id = notification.object as? UUID {
-                selectedTab = .map
+                showList = false
                 deepLinkMemoID = id
             }
         }
         .onReceive(NotificationCenter.default.publisher(for: .showGeoMemoFavorites)) { _ in
-            selectedTab = .list
+            showList = true
             intentShowFavorites = true
         }
         .onReceive(NotificationCenter.default.publisher(for: .searchGeoMemos)) { _ in
-            selectedTab = .map
+            showList = false
             isSearching = true
         }
     }
@@ -137,7 +154,7 @@ struct ContentView: View {
 
 // MARK: - Custom Navigation Bar
 struct CustomNavigationBar: View {
-    @Query(sort: \GeoMemo.createdAt, order: .reverse) private var memos: [GeoMemo]
+    let memoCount: Int
     @Binding var showSettings: Bool
     @Binding var isSearching: Bool
     
@@ -157,18 +174,18 @@ struct CustomNavigationBar: View {
             Spacer()
             
             // Memo Count Badge (only show if count > 0)
-            if memos.count > 0 {
-                Text(String(format: "%02d", memos.count))
+            if memoCount > 0 {
+                Text(String(format: "%02d", memoCount))
                     .font(.system(size: 11, weight: .semibold, design: .monospaced))
                     .foregroundColor(Brand.primaryText)
                     .contentTransition(.numericText())
-                    .animation(.spring(response: 0.3, dampingFraction: 0.7), value: memos.count)
+                    .animation(.spring(response: 0.3, dampingFraction: 0.7), value: memoCount)
                     .frame(width: 40, height: 28)
                     .overlay(
                         RoundedRectangle(cornerRadius: 4)
                             .stroke(Brand.border, lineWidth: 1.5)
                     )
-                    .accessibilityLabel("\(memos.count) memos")
+                    .accessibilityLabel("\(memoCount) memos")
             }
             
             // Search Button
@@ -291,6 +308,7 @@ private struct CalloutView: View {
 // MARK: - Map Snapshot View
 private struct MapSnapshotView: View {
     let coordinate: CLLocationCoordinate2D
+    let colorIndex: Int
     @State private var snapshot: UIImage?
 
     var body: some View {
@@ -305,23 +323,14 @@ private struct MapSnapshotView: View {
                     .overlay(ProgressView().tint(Brand.primaryText.opacity(0.3)))
             }
         }
-        .onAppear { generateSnapshot() }
-    }
-
-    private func generateSnapshot() {
-        let options = MKMapSnapshotter.Options()
-        options.region = MKCoordinateRegion(
-            center: coordinate,
-            latitudinalMeters: 500,
-            longitudinalMeters: 500
-        )
-        options.size = CGSize(width: 112, height: 112)
-        options.mapType = .mutedStandard
-
-        Task {
-            if let result = try? await MKMapSnapshotter(options: options).start() {
-                await MainActor.run { snapshot = result.image }
-            }
+        .task {
+            guard snapshot == nil else { return }
+            snapshot = await MapSnapshotCache.shared.snapshot(
+                latitude: coordinate.latitude,
+                longitude: coordinate.longitude,
+                colorIndex: colorIndex,
+                mapStyleRaw: 0
+            )
         }
     }
 }
@@ -360,7 +369,7 @@ private struct ClusterListSheet: View {
                             onSelectMemo(memo)
                         } label: {
                             HStack(spacing: 12) {
-                                MapSnapshotView(coordinate: memo.coordinate)
+                                MapSnapshotView(coordinate: memo.coordinate, colorIndex: memo.colorIndex)
                                     .frame(width: 48, height: 48)
                                     .clipShape(RoundedRectangle(cornerRadius: 6))
 
@@ -435,14 +444,15 @@ class SearchCompleterHelper: NSObject, MKLocalSearchCompleterDelegate {
 
 // MARK: - Map Tab View
 struct MapTabView: View {
+    let memos: [GeoMemo]
     @Environment(\.modelContext) private var modelContext
     @Environment(\.colorScheme) private var colorScheme
-    @Query(sort: \GeoMemo.createdAt, order: .reverse) private var memos: [GeoMemo]
     @AppStorage("mapStyle") private var mapStyleRaw: String = GeoMapStyle.mono.rawValue
-    
+
     @ObservedObject private var locationManager = LocationManager.shared
     @Binding var isSearching: Bool
     @Binding var deepLinkMemoID: UUID?
+    @Binding var showList: Bool
 
     private var currentMapStyle: GeoMapStyle {
         GeoMapStyle(rawValue: mapStyleRaw) ?? .mono
@@ -455,6 +465,7 @@ struct MapTabView: View {
     @State private var newMemoCoordinate: CLLocationCoordinate2D?
     @State private var visibleRegion: MKCoordinateRegion?
     @State private var mapItems: [MapItem] = []
+    @State private var clusterTask: Task<Void, Never>?
     @State private var calloutMemo: GeoMemo?
     @State private var activeSheet: ActiveSheet?
     @State private var activeDetailMemo: GeoMemo?
@@ -487,6 +498,7 @@ struct MapTabView: View {
         }
         .onAppear {
             locationManager.refreshLocation()
+            locationManager.startHeading()
             if let userLocation = locationManager.location?.coordinate {
                 cameraPosition = .region(
                     MKCoordinateRegion(
@@ -501,6 +513,9 @@ struct MapTabView: View {
             // Start Live Activity for Dynamic Island
             LiveActivityManager.shared.startMonitoring(count: memos.count)
         }
+        .onDisappear {
+            locationManager.stopHeading()
+        }
         .onChange(of: locationManager.location) { oldValue, newValue in
             if oldValue == nil, let userLocation = newValue?.coordinate {
                 cameraPosition = .region(
@@ -513,9 +528,7 @@ struct MapTabView: View {
             }
         }
         .onChange(of: memos.count) { _, _ in
-            if let region = visibleRegion {
-                mapItems = clusterMemos(memos, in: region)
-            }
+            scheduleCluster()
         }
         .onChange(of: deepLinkMemoID) { _, newID in
             guard let id = newID else { return }
@@ -582,7 +595,35 @@ struct MapTabView: View {
     private var mapView: some View {
         MapReader { proxy in
             Map(position: $cameraPosition, interactionModes: .all) {
-                UserAnnotation()
+                UserAnnotation {
+                    ZStack {
+                        // TimelineView で描画レート（60/120fps）に同期し、
+                        // EMA の滑らかな値をフレームごとに読み取って補間効果を得る
+                        TimelineView(.animation) { _ in
+                            if locationManager.smoothedHeadingDegrees >= 0 {
+                                HeadingCone()
+                                    .fill(
+                                        LinearGradient(
+                                            colors: [Brand.blue.opacity(0.5), Brand.blue.opacity(0.0)],
+                                            startPoint: UnitPoint(x: 0.5, y: 0.5),
+                                            endPoint: .top
+                                        )
+                                    )
+                                    .frame(width: 36, height: 56)
+                                    .padding(.bottom, 56)
+                                    .rotationEffect(.degrees(locationManager.smoothedHeadingDegrees))
+                            }
+                        }
+                        Circle()
+                            .stroke(Brand.blue.opacity(0.5), lineWidth: 2.5)
+                            .frame(width: 36, height: 36)
+                        Image("ph-person-simple-bold")
+                            .resizable()
+                            .frame(width: 22, height: 22)
+                            .foregroundColor(Brand.blue)
+                            .shadow(color: .black.opacity(0.4), radius: 2, x: 0, y: 1)
+                    }
+                }
                 
                 ForEach(mapItems) { item in
                     switch item {
@@ -620,15 +661,20 @@ struct MapTabView: View {
                     }
                 }
             }
-            .mapStyle(currentMapStyle == .satellite
-                ? .imagery
-                : .standard(elevation: .flat, emphasis: .muted, pointsOfInterest: .excludingAll, showsTraffic: false))
+            .mapStyle({
+                switch currentMapStyle {
+                case .satellite: return .imagery
+                case .detail:    return .standard(elevation: .flat, emphasis: .automatic, pointsOfInterest: .all, showsTraffic: false)
+                case .transit:   return .standard(elevation: .flat, emphasis: .muted, pointsOfInterest: .including([.publicTransport]), showsTraffic: false)
+                default:         return .standard(elevation: .flat, emphasis: .muted, pointsOfInterest: .excludingAll, showsTraffic: false)
+                }
+            }())
             .grayscale(currentMapStyle == .mono && colorScheme != .dark ? 1.0 : 0)
             .id(mapStyleRaw)
             .mapControlVisibility(.hidden)
             .onMapCameraChange(frequency: .onEnd) { context in
                 visibleRegion = context.region
-                mapItems = clusterMemos(memos, in: context.region)
+                scheduleCluster()
             }
             .onTapGesture { screenCoordinate in
                 if calloutMemo != nil {
@@ -648,29 +694,44 @@ struct MapTabView: View {
             Spacer()
             HStack {
                 Spacer()
-                Button(action: {
-                    HapticManager.impact(.light)
-                    if let userLocation = locationManager.location?.coordinate {
-                        cameraPosition = .region(
-                            MKCoordinateRegion(
-                                center: userLocation,
-                                latitudinalMeters: 1000,
-                                longitudinalMeters: 1000
-                            )
-                        )
+                VStack(spacing: 12) {
+                    // リスト画面へ遷移するボタン
+                    Button(action: {
+                        HapticManager.impact(.light)
+                        withAnimation(.easeInOut(duration: 0.3)) { showList = true }
+                    }) {
+                        Image("ph-list-bullets")
+                            .resizable()
+                            .frame(width: 22, height: 22)
+                            .foregroundColor(Brand.primaryText)
+                            .frame(width: 48, height: 48)
+                            .background(Brand.background)
+                            .clipShape(Circle())
+                            .overlay(Circle().stroke(Brand.border, lineWidth: 1))
                     }
-                }) {
-                    Image("ph-navigation-arrow-fill")
-                        .resizable()
-                        .frame(width: 20, height: 20)
-                        .foregroundColor(Brand.blue)
-                        .frame(width: 48, height: 48)
-                        .background(Brand.background)
-                        .clipShape(Circle())
-                        .overlay(
-                            Circle()
-                                .stroke(Brand.border, lineWidth: 1)
-                        )
+
+                    // 現在地へ移動するボタン
+                    Button(action: {
+                        HapticManager.impact(.light)
+                        if let userLocation = locationManager.location?.coordinate {
+                            cameraPosition = .region(
+                                MKCoordinateRegion(
+                                    center: userLocation,
+                                    latitudinalMeters: 1000,
+                                    longitudinalMeters: 1000
+                                )
+                            )
+                        }
+                    }) {
+                        Image("ph-navigation-arrow-fill")
+                            .resizable()
+                            .frame(width: 20, height: 20)
+                            .foregroundColor(Brand.blue)
+                            .frame(width: 48, height: 48)
+                            .background(Brand.background)
+                            .clipShape(Circle())
+                            .overlay(Circle().stroke(Brand.border, lineWidth: 1))
+                    }
                 }
                 .padding(.trailing, 16)
                 .padding(.bottom, 80)
@@ -873,6 +934,16 @@ struct MapTabView: View {
         }
     }
 
+    /// クラスター計算をバックグラウンドで実行。前回の計算が残っていればキャンセル
+    private func scheduleCluster() {
+        guard let region = visibleRegion else { return }
+        clusterTask?.cancel()
+        clusterTask = Task {
+            guard !Task.isCancelled else { return }
+            mapItems = clusterMemos(memos, in: region)
+        }
+    }
+
     /// Re-register geofences for all memos on app launch
     private func reRegisterAllGeofences() {
         locationManager.stopAllMonitoring()
@@ -894,16 +965,20 @@ struct MapTabView: View {
 
 // MARK: - List Tab View
 struct ListTabView: View {
+    let memos: [GeoMemo]
     @Environment(\.modelContext) private var modelContext
-    @Query(sort: \GeoMemo.createdAt, order: .reverse) private var memos: [GeoMemo]
 
     @ObservedObject private var locationManager = LocationManager.shared
     @State private var selectedTab: FilterTab = .all
     @Namespace private var tabNamespace
     @Binding var intentShowFavorites: Bool
+    @Binding var showList: Bool
+    @Binding var showSettings: Bool
     @State private var showDoneSection: Bool = false
     @State private var showColorFilter: Bool = false
     @State private var selectedColorIndex: Int? = nil
+    @State private var isListSearching = false
+    @State private var listSearchText = ""
 
     // MARK: - Filter Tab
 
@@ -942,6 +1017,14 @@ struct ListTabView: View {
         if let colorIndex = selectedColorIndex {
             results = results.filter { $0.colorIndex == colorIndex }
         }
+        if !listSearchText.isEmpty {
+            let q = listSearchText.lowercased()
+            results = results.filter {
+                $0.title.lowercased().contains(q) ||
+                $0.note.lowercased().contains(q) ||
+                $0.locationName.lowercased().contains(q)
+            }
+        }
         return results
     }
 
@@ -954,6 +1037,35 @@ struct ListTabView: View {
     var body: some View {
         NavigationStack {
             VStack(spacing: 0) {
+                // カスタムナビゲーションバー（プロダクト名なし）
+                listNavigationBar
+
+                // メモ検索バー
+                if isListSearching {
+                    HStack(spacing: 8) {
+                        Image("ph-magnifying-glass-bold")
+                            .resizable()
+                            .frame(width: 16, height: 16)
+                            .foregroundColor(Brand.tertiaryText)
+                        TextField(String(localized: "Search memos..."), text: $listSearchText)
+                            .font(.system(size: 16))
+                            .foregroundColor(Brand.primaryText)
+                        if !listSearchText.isEmpty {
+                            Button(action: { listSearchText = "" }) {
+                                Image(systemName: "xmark.circle.fill")
+                                    .foregroundColor(Brand.secondaryText)
+                            }
+                        }
+                    }
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 10)
+                    .background(Brand.secondaryBackground)
+                    .clipShape(RoundedRectangle(cornerRadius: 10))
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 8)
+                    .transition(.opacity.combined(with: .move(edge: .top)))
+                }
+
                 if memos.isEmpty {
                     Spacer()
                     VStack(spacing: 16) {
@@ -978,6 +1090,7 @@ struct ListTabView: View {
             }
             .background(Brand.background)
             .navigationBarHidden(true)
+            .animation(.easeInOut(duration: 0.2), value: isListSearching)
         }
         .onChange(of: intentShowFavorites) { _, newValue in
             if newValue {
@@ -987,6 +1100,53 @@ struct ListTabView: View {
                 intentShowFavorites = false
             }
         }
+    }
+
+    // MARK: - List Navigation Bar
+    private var listNavigationBar: some View {
+        HStack(spacing: 12) {
+            // マップへ戻るボタン
+            Button(action: {
+                HapticManager.impact(.light)
+                withAnimation(.easeInOut(duration: 0.3)) { showList = false }
+            }) {
+                HStack(spacing: 4) {
+                    Image("ph-arrow-left-bold")
+                        .resizable()
+                        .frame(width: 18, height: 18)
+                    Text("MAP")
+                        .font(.system(size: 16, weight: .bold))
+                }
+                .foregroundColor(Brand.primaryText)
+            }
+
+            Spacer()
+
+            // メモ検索ボタン
+            Button(action: {
+                withAnimation(.easeInOut(duration: 0.25)) { isListSearching.toggle() }
+                if !isListSearching { listSearchText = "" }
+            }) {
+                Image("ph-magnifying-glass-bold")
+                    .resizable()
+                    .frame(width: 20, height: 20)
+                    .foregroundColor(isListSearching ? Brand.blue : Brand.primaryText)
+                    .frame(width: 32, height: 32)
+            }
+
+            // 設定ボタン
+            Button(action: { showSettings = true }) {
+                Image("ph-gear-six-bold")
+                    .resizable()
+                    .frame(width: 20, height: 20)
+                    .foregroundColor(Brand.primaryText)
+                    .frame(width: 32, height: 32)
+            }
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 12)
+        .background(Brand.background)
+        .overlay(Rectangle().fill(Brand.border).frame(height: 1), alignment: .bottom)
     }
 
     // MARK: - Tab Bar
@@ -1421,63 +1581,6 @@ struct MemoListRow: View {
                 mapSnapshot = image
             }
         }
-    }
-}
-
-// MARK: - Custom Tab Bar
-struct CustomTabBar: View {
-    @Binding var selectedTab: ContentView.Tab
-    
-    var body: some View {
-        HStack(spacing: 0) {
-            // MAP Tab
-            Button(action: {
-                guard selectedTab != .map else { return }
-                HapticManager.selection()
-                withAnimation(.easeInOut(duration: 0.2)) { selectedTab = .map }
-            }) {
-                VStack(spacing: 6) {
-                    Image(selectedTab == .map ? "ph-map-trifold-fill" : "ph-map-trifold")
-                        .resizable()
-                        .frame(width: 24, height: 24)
-                    Text("MAP")
-                        .font(.system(size: 11, weight: .bold, design: .default))
-                }
-                .foregroundColor(selectedTab == .map ? .white : Brand.primaryText)
-                .frame(maxWidth: .infinity)
-                .frame(height: 64)
-                .background(selectedTab == .map ? Brand.blue : Brand.background)
-            }
-            .accessibilityLabel("Map")
-            .accessibilityAddTraits(selectedTab == .map ? .isSelected : [])
-            
-            // LIST Tab
-            Button(action: {
-                guard selectedTab != .list else { return }
-                HapticManager.selection()
-                withAnimation(.easeInOut(duration: 0.2)) { selectedTab = .list }
-            }) {
-                VStack(spacing: 6) {
-                    Image(selectedTab == .list ? "ph-list-bullets-fill" : "ph-list-bullets")
-                        .resizable()
-                        .frame(width: 24, height: 24)
-                    Text("LIST")
-                        .font(.system(size: 11, weight: .bold, design: .default))
-                }
-                .foregroundColor(selectedTab == .list ? .white : Brand.primaryText)
-                .frame(maxWidth: .infinity)
-                .frame(height: 64)
-                .background(selectedTab == .list ? Brand.blue : Brand.background)
-            }
-            .accessibilityLabel("List")
-            .accessibilityAddTraits(selectedTab == .list ? .isSelected : [])
-        }
-        .overlay(
-            Rectangle()
-                .fill(Brand.border)
-                .frame(height: 1),
-            alignment: .top
-        )
     }
 }
 

@@ -133,12 +133,16 @@ enum Brand {
 enum GeoMapStyle: String, CaseIterable {
     case mono
     case standard
+    case detail
+    case transit
     case satellite
 
     var displayName: String {
         switch self {
         case .mono:      return "MONO"
         case .standard:  return "COLOR"
+        case .detail:    return "DETAIL"
+        case .transit:   return "TRANSIT"
         case .satellite: return "SATELLITE"
         }
     }

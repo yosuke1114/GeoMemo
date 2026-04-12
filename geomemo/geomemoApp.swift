@@ -51,7 +51,7 @@ struct geomemoApp: App {
             schema: schema,
             url: groupURL,
             cloudKitDatabase: useCloudKit
-                ? .private(containerIdentifier: cloudKitContainerID)
+                ? .private(cloudKitContainerID)
                 : .none
         )
         #endif
@@ -89,6 +89,11 @@ struct geomemoApp: App {
                     Self.indexAllMemosInSpotlight()
                     NotificationManager.registerCategories()
                 }
+                #if DEBUG
+                .onAppear {
+                    DemoDataSeeder.seedIfNeeded(context: sharedModelContainer.mainContext)
+                }
+                #endif
                 .environment(syncMonitor)
         }
         .modelContainer(sharedModelContainer)

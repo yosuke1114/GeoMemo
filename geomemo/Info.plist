@@ -6,6 +6,10 @@
 	<dict/>
 	<key>NSSupportsLiveActivities</key>
 	<true/>
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>GeoMemo uses your location to notify you when you approach a saved memo area.</string>
+	<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
+	<string>GeoMemo uses your location in the background to notify you when you enter or exit a saved memo area, even when the app is closed.</string>
 	<key>CFBundleURLTypes</key>
 	<array>
 		<dict>
@@ -19,6 +23,7 @@
 	</array>
 	<key>UIBackgroundModes</key>
 	<array>
+		<string>location</string>
 		<string>remote-notification</string>
 	</array>
 </dict>

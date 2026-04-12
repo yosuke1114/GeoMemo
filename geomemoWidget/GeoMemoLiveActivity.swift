@@ -17,8 +17,9 @@ struct GeoMemoLiveActivity: Widget {
                                 .fill(memoColor(for: context.state.memoColorIndex))
                                 .frame(width: 10, height: 10)
                         }
-                        Image(systemName: "mappin.circle.fill")
-                            .font(.system(size: 20))
+                        Image("ph-map-pin-fill")
+                            .resizable()
+                            .frame(width: 20, height: 20)
                             .foregroundStyle(Color(hex: "3D3BF3"))
                     }
                 }
@@ -73,15 +74,16 @@ struct GeoMemoLiveActivity: Widget {
                             .foregroundStyle(.secondary)
                             .padding(.top, 4)
                     } else {
-                        Text("Monitoring \(context.attributes.monitoredCount) memos")
+                        Text("\(context.attributes.monitoredCount) memos active")
                             .font(.system(size: 12, weight: .medium))
                             .foregroundStyle(.secondary)
                     }
                 }
             } compactLeading: {
                 // Compact leading: map pin icon
-                Image(systemName: "mappin.circle.fill")
-                    .font(.system(size: 16))
+                Image("ph-map-pin-fill")
+                    .resizable()
+                    .frame(width: 16, height: 16)
                     .foregroundStyle(Color(hex: "3D3BF3"))
             } compactTrailing: {
                 // Compact trailing: memo title or route progress or monitoring status
@@ -95,8 +97,8 @@ struct GeoMemoLiveActivity: Widget {
                         .font(.system(size: 11, weight: .semibold, design: .monospaced))
                         .foregroundStyle(Color(hex: "3D3BF3"))
                 } else {
-                    Text("Monitoring")
-                        .font(.system(size: 12, weight: .medium))
+                    Text("\(context.attributes.monitoredCount)")
+                        .font(.system(size: 12, weight: .semibold, design: .monospaced))
                         .foregroundStyle(.secondary)
                 }
             } minimal: {
@@ -106,8 +108,9 @@ struct GeoMemoLiveActivity: Widget {
                         .fill(memoColor(for: context.state.memoColorIndex))
                         .frame(width: 10, height: 10)
                 } else {
-                    Image(systemName: "mappin.circle.fill")
-                        .font(.system(size: 14))
+                    Image("ph-map-pin-fill")
+                        .resizable()
+                        .frame(width: 14, height: 14)
                         .foregroundStyle(Color(hex: "3D3BF3"))
                 }
             }
@@ -139,8 +142,9 @@ private struct LockScreenView: View {
                 Circle()
                     .fill(memoColor.opacity(0.15))
                     .frame(width: 40, height: 40)
-                Image(systemName: "mappin.circle.fill")
-                    .font(.system(size: 18))
+                Image("ph-map-pin-fill")
+                    .resizable()
+                    .frame(width: 18, height: 18)
                     .foregroundStyle(memoColor)
             }
 
