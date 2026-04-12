@@ -14,6 +14,7 @@ struct MemoDetailView: View {
     @State private var showingEditSheet = false
     @State private var cameraPosition: MapCameraPosition
     @State private var suggestedTags: [PresetTag] = []
+    @State private var listItems: [ListItem] = []
 
     private var currentMapStyle: GeoMapStyle {
         GeoMapStyle(rawValue: mapStyleRaw) ?? .mono
@@ -28,6 +29,7 @@ struct MemoDetailView: View {
         _cameraPosition = State(initialValue: .camera(
             MapCamera(centerCoordinate: memo.coordinate, distance: 1000)
         ))
+        _listItems = State(initialValue: memo.listItems)
     }
     
     var body: some View {
@@ -125,8 +127,10 @@ struct MemoDetailView: View {
                         Spacer()
                     }
                     
-                    // Note
-                    if !memo.note.isEmpty {
+                    // Note or Checklist
+                    if memo.isListMode {
+                        checklistSection
+                    } else if !memo.note.isEmpty {
                         Text(memo.note)
                             .font(.system(size: 16, weight: .regular))
                             .foregroundColor(Brand.primaryText)
@@ -461,6 +465,59 @@ struct MemoDetailView: View {
         .onChange(of: memo.tags) {
             refreshSuggestions()
         }
+    }
+
+    // MARK: - Checklist Section
+
+    private var checklistSection: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            // Header row with RESET button
+            HStack {
+                Text("LIST")
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundColor(Brand.tertiaryText)
+                    .tracking(0.5)
+                Spacer()
+                let checkedCount = listItems.filter { $0.isChecked }.count
+                if checkedCount > 0 {
+                    Button(action: {
+                        HapticManager.selection()
+                        for i in listItems.indices {
+                            listItems[i].isChecked = false
+                        }
+                        memo.listItems = listItems
+                    }) {
+                        Text(String(localized: "RESET"))
+                            .font(.system(size: 12, weight: .semibold))
+                            .foregroundColor(Brand.blue)
+                    }
+                }
+            }
+            .padding(.bottom, 8)
+
+            ForEach($listItems) { $item in
+                Button(action: {
+                    HapticManager.selection()
+                    item.isChecked.toggle()
+                    memo.listItems = listItems
+                }) {
+                    HStack(spacing: 12) {
+                        Image(systemName: item.isChecked ? "checkmark.circle.fill" : "circle")
+                            .font(.system(size: 22))
+                            .foregroundColor(item.isChecked ? Brand.blue : Brand.primaryText.opacity(0.25))
+                        Text(item.text)
+                            .font(.system(size: 16, weight: .regular))
+                            .foregroundColor(item.isChecked ? Brand.tertiaryText : Brand.primaryText)
+                            .strikethrough(item.isChecked, color: Brand.tertiaryText)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .multilineTextAlignment(.leading)
+                    }
+                    .padding(.vertical, 8)
+                }
+                .buttonStyle(.plain)
+            }
+        }
+        .animation(.easeInOut(duration: 0.15), value: listItems.map { $0.isChecked })
     }
 
     private func refreshSuggestions() {

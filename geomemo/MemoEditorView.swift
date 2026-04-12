@@ -67,6 +67,11 @@ struct MemoEditorView: View {
     @State private var showRouteEditor = false
     @State private var exitDelayMinutes: Int? = nil
 
+    // List / Checklist mode (v1.2)
+    @State private var isListMode: Bool
+    @State private var listItems: [ListItem]
+    @State private var newItemText: String = ""
+
     // Tags (Phase 2)
     @State private var selectedTags: Set<Int> = []
     @State private var customTags: [String] = []
@@ -90,6 +95,8 @@ struct MemoEditorView: View {
             _notifyOnEntry = State(initialValue: defaults.object(forKey: "notifyOnEntry") as? Bool ?? true)
             _notifyOnExit = State(initialValue: defaults.object(forKey: "notifyOnExit") as? Bool ?? true)
             _notifyOnPass = State(initialValue: false)
+            _isListMode = State(initialValue: false)
+            _listItems = State(initialValue: [])
             _locationName = State(initialValue: String(localized: "Loading..."))
             _photoData = State(initialValue: nil)
             _selectedColorIndex = State(initialValue: 0)
@@ -129,6 +136,8 @@ struct MemoEditorView: View {
             _isRouteTrigger = State(initialValue: memo.isRouteTrigger)
             _routeWaypoints = State(initialValue: memo.routeWaypoints)
             _exitDelayMinutes = State(initialValue: memo.exitDelayMinutes)
+            _isListMode = State(initialValue: memo.isListMode)
+            _listItems = State(initialValue: memo.listItems)
             _selectedTags = State(initialValue: Set(memo.tags))
             _customTags = State(initialValue: memo.customTags)
         }
@@ -147,11 +156,19 @@ struct MemoEditorView: View {
                     Divider()
                         .background(Brand.primaryText.opacity(0.1))
 
-                    // Memo Field
-                    memoSection
+                    // List Mode Toggle + Content
+                    listModeToggleSection
 
                     Divider()
                         .background(Brand.primaryText.opacity(0.1))
+
+                    // Memo Field (hidden when list mode is on)
+                    if !isListMode {
+                        memoSection
+
+                        Divider()
+                            .background(Brand.primaryText.opacity(0.1))
+                    }
 
                     // Add Photo
                     photoSection
@@ -396,6 +413,93 @@ struct MemoEditorView: View {
             .padding(.horizontal, 20)
             .padding(.vertical, 16)
             .background(Brand.background)
+    }
+
+    // MARK: - List Mode Toggle + Item Editor
+    private var listModeToggleSection: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            // Toggle row
+            HStack {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("LIST MODE")
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundColor(Brand.primaryText.opacity(0.5))
+                    Text(String(localized: "Checklist instead of a note"))
+                        .font(.system(size: 12, weight: .regular))
+                        .foregroundColor(Brand.secondaryText)
+                }
+                Spacer()
+                Toggle("", isOn: $isListMode)
+                    .labelsHidden()
+                    .tint(Brand.blue)
+            }
+            .padding(.horizontal, 20)
+            .padding(.vertical, 12)
+
+            if isListMode {
+                Divider()
+                    .background(Brand.primaryText.opacity(0.1))
+                    .padding(.horizontal, 20)
+
+                // Existing items
+                ForEach($listItems) { $item in
+                    HStack(spacing: 12) {
+                        Image(systemName: item.isChecked ? "checkmark.circle.fill" : "circle")
+                            .font(.system(size: 20))
+                            .foregroundColor(item.isChecked ? Brand.blue : Brand.primaryText.opacity(0.3))
+                            .onTapGesture {
+                                HapticManager.selection()
+                                item.isChecked.toggle()
+                            }
+                        TextField(String(localized: "Item"), text: $item.text)
+                            .font(.system(size: 16))
+                            .foregroundColor(Brand.primaryText)
+                        Spacer()
+                        Button(action: {
+                            HapticManager.selection()
+                            listItems.removeAll { $0.id == item.id }
+                        }) {
+                            Image(systemName: "xmark")
+                                .font(.system(size: 13, weight: .medium))
+                                .foregroundColor(Brand.primaryText.opacity(0.3))
+                        }
+                    }
+                    .padding(.horizontal, 20)
+                    .padding(.vertical, 10)
+                }
+
+                // Add new item row
+                HStack(spacing: 12) {
+                    Image(systemName: "plus.circle")
+                        .font(.system(size: 20))
+                        .foregroundColor(Brand.blue.opacity(0.6))
+                    TextField(String(localized: "Add item…"), text: $newItemText)
+                        .font(.system(size: 16))
+                        .foregroundColor(Brand.primaryText)
+                        .submitLabel(.done)
+                        .onSubmit { addListItem() }
+                    if !newItemText.isEmpty {
+                        Button(action: addListItem) {
+                            Text(String(localized: "追加"))
+                                .font(.system(size: 14, weight: .semibold))
+                                .foregroundColor(Brand.blue)
+                        }
+                    }
+                }
+                .padding(.horizontal, 20)
+                .padding(.vertical, 10)
+            }
+        }
+        .animation(.easeInOut(duration: 0.2), value: isListMode)
+        .animation(.easeInOut(duration: 0.15), value: listItems.count)
+    }
+
+    private func addListItem() {
+        let trimmed = newItemText.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return }
+        HapticManager.selection()
+        listItems.append(ListItem(text: trimmed))
+        newItemText = ""
     }
 
     // MARK: - Memo Section
@@ -970,6 +1074,8 @@ struct MemoEditorView: View {
                 customTags: customTags
             )
             newMemo.notifyOnPass = isRouteTrigger ? false : notifyOnPass
+            newMemo.isListMode = isListMode
+            newMemo.listItems = listItems
             modelContext.insert(newMemo)
             if isRouteTrigger {
                 locationManager.startMonitoringRoute(for: newMemo)
@@ -1010,6 +1116,8 @@ struct MemoEditorView: View {
             memo.tags = Array(selectedTags)
             memo.customTags = customTags
             memo.notifyOnPass = isRouteTrigger ? false : notifyOnPass
+            memo.isListMode = isListMode
+            memo.listItems = listItems
 
             // Re-register geofencing
             if isRouteTrigger {

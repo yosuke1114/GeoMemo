@@ -36,6 +36,12 @@ import CoreLocation
     /// true のとき、ジオフェンス半径300m手前からDynamic Islandに接近情報を表示する
     var notifyOnPass: Bool = false
 
+    // List / Checklist mode (v1.2)
+    /// true のとき、note の代わりにチェックリスト形式でアイテムを管理する
+    var isListMode: Bool = false
+    /// JSON-encoded [ListItem]
+    var listItemsData: Data?
+
     /// タイトルが未設定かどうか（空文字 or 旧データの "Untitled"/"（タイトルなし）" 相当）
     var isUntitled: Bool {
         let trimmed = title.trimmingCharacters(in: .whitespaces)
