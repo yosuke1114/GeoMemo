@@ -41,6 +41,7 @@ struct MemoEditorView: View {
     @State private var selectedRadius: Double
     @State private var notifyOnEntry: Bool
     @State private var notifyOnExit: Bool
+    @State private var notifyOnPass: Bool
     @State private var locationName: String
     @State private var photoData: Data?
     @State private var showLocationPicker = false
@@ -88,6 +89,7 @@ struct MemoEditorView: View {
             _selectedRadius = State(initialValue: defaults.object(forKey: "defaultRadius") as? Double ?? 100)
             _notifyOnEntry = State(initialValue: defaults.object(forKey: "notifyOnEntry") as? Bool ?? true)
             _notifyOnExit = State(initialValue: defaults.object(forKey: "notifyOnExit") as? Bool ?? true)
+            _notifyOnPass = State(initialValue: false)
             _locationName = State(initialValue: String(localized: "Loading..."))
             _photoData = State(initialValue: nil)
             _selectedColorIndex = State(initialValue: 0)
@@ -102,6 +104,7 @@ struct MemoEditorView: View {
             _selectedRadius = State(initialValue: memo.radius)
             _notifyOnEntry = State(initialValue: memo.notifyOnEntry)
             _notifyOnExit = State(initialValue: memo.notifyOnExit)
+            _notifyOnPass = State(initialValue: memo.notifyOnPass)
             _locationName = State(initialValue: memo.locationName)
             _photoData = State(initialValue: memo.imageData)
             _selectedColorIndex = State(initialValue: memo.colorIndex)
@@ -759,6 +762,28 @@ struct MemoEditorView: View {
                     .padding(.vertical, 12)
                     .transition(.opacity.combined(with: .move(edge: .top)))
                 }
+
+                // PASS-THROUGH (v1.1)
+                Divider()
+                    .background(Brand.primaryText.opacity(0.1))
+                    .padding(.horizontal, 20)
+
+                HStack {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("PASS-THROUGH")
+                            .font(.system(size: 17, weight: .semibold))
+                            .foregroundColor(Brand.primaryText)
+                        Text(String(localized: "Show in Dynamic Island when nearby"))
+                            .font(.system(size: 12, weight: .regular))
+                            .foregroundColor(Brand.secondaryText)
+                    }
+                    Spacer()
+                    Toggle("", isOn: $notifyOnPass)
+                        .labelsHidden()
+                        .tint(Brand.blue)
+                }
+                .padding(.horizontal, 20)
+                .padding(.vertical, 12)
             }
         }
         .animation(.easeInOut(duration: 0.2), value: isRouteTrigger)
@@ -944,6 +969,7 @@ struct MemoEditorView: View {
                 tags: Array(selectedTags),
                 customTags: customTags
             )
+            newMemo.notifyOnPass = isRouteTrigger ? false : notifyOnPass
             modelContext.insert(newMemo)
             if isRouteTrigger {
                 locationManager.startMonitoringRoute(for: newMemo)
@@ -983,6 +1009,7 @@ struct MemoEditorView: View {
             memo.waypointData = isRouteTrigger ? (try? JSONEncoder().encode(routeWaypoints)) : nil
             memo.tags = Array(selectedTags)
             memo.customTags = customTags
+            memo.notifyOnPass = isRouteTrigger ? false : notifyOnPass
 
             // Re-register geofencing
             if isRouteTrigger {

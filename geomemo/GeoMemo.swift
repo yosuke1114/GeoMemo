@@ -32,6 +32,10 @@ import CoreLocation
     var tags: [Int] = []          // PresetTag rawValue の配列
     var customTags: [String] = [] // フリーテキストタグ（上限: GeoMemoLimits.maxCustomTags）
 
+    // Pass-through notification (v1.1)
+    /// true のとき、ジオフェンス半径300m手前からDynamic Islandに接近情報を表示する
+    var notifyOnPass: Bool = false
+
     /// タイトルが未設定かどうか（空文字 or 旧データの "Untitled"/"（タイトルなし）" 相当）
     var isUntitled: Bool {
         let trimmed = title.trimmingCharacters(in: .whitespaces)

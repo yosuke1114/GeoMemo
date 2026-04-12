@@ -43,6 +43,19 @@ struct GeoMemoLiveActivity: Widget {
                                 .foregroundStyle(.secondary)
                                 .lineLimit(1)
                         }
+                    } else if let title = context.state.approachingTitle,
+                              let dist = context.state.approachingDistance {
+                        // 接近中
+                        VStack(spacing: 2) {
+                            Text(title)
+                                .font(.system(size: 14, weight: .bold))
+                                .lineLimit(1)
+                            Text(dist >= 1000
+                                 ? String(format: "あと %.1fkm", Double(dist) / 1000)
+                                 : String(localized: "あと \(dist)m"))
+                                .font(.system(size: 11, weight: .semibold, design: .monospaced))
+                                .foregroundStyle(memoColor(for: context.state.approachingColorIndex))
+                        }
                     } else if let cur = context.state.routeCurrentWaypoint,
                               let tot = context.state.routeTotalWaypoints {
                         VStack(spacing: 2) {
@@ -80,17 +93,26 @@ struct GeoMemoLiveActivity: Widget {
                     }
                 }
             } compactLeading: {
-                // Compact leading: map pin icon
                 Image("ph-map-pin-fill")
                     .resizable()
                     .frame(width: 16, height: 16)
-                    .foregroundStyle(Color(hex: "3D3BF3"))
+                    .foregroundStyle(
+                        context.state.approachingTitle != nil
+                            ? memoColor(for: context.state.approachingColorIndex)
+                            : Color(hex: "3D3BF3")
+                    )
             } compactTrailing: {
-                // Compact trailing: memo title or route progress or monitoring status
                 if context.state.isTriggered {
                     Text(context.state.memoTitle)
                         .font(.system(size: 12, weight: .semibold))
                         .lineLimit(1)
+                } else if let dist = context.state.approachingDistance {
+                    // 接近中: 距離を表示
+                    Text(dist >= 1000
+                         ? String(format: "%.1fkm", Double(dist) / 1000)
+                         : "\(dist)m")
+                        .font(.system(size: 12, weight: .bold, design: .monospaced))
+                        .foregroundStyle(memoColor(for: context.state.approachingColorIndex))
                 } else if let cur = context.state.routeCurrentWaypoint,
                           let tot = context.state.routeTotalWaypoints {
                     Text("WP\(cur)/\(tot)")
@@ -102,10 +124,13 @@ struct GeoMemoLiveActivity: Widget {
                         .foregroundStyle(.secondary)
                 }
             } minimal: {
-                // Minimal: colored circle or brand icon
                 if context.state.isTriggered {
                     Circle()
                         .fill(memoColor(for: context.state.memoColorIndex))
+                        .frame(width: 10, height: 10)
+                } else if context.state.approachingTitle != nil {
+                    Circle()
+                        .fill(memoColor(for: context.state.approachingColorIndex))
                         .frame(width: 10, height: 10)
                 } else {
                     Image("ph-map-pin-fill")

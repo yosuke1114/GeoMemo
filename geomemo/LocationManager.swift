@@ -23,6 +23,84 @@ class LocationManager: NSObject, ObservableObject {
     private let headingSmoothingAlpha: Double = 0.25
     private var _smoothed: Double = 0
 
+    // MARK: - Pass-through Notification (v1.1)
+
+    /// notifyOnPass=true のメモを監視対象として保持する
+    private var passMemosCache: [(id: String, title: String, coordinate: CLLocationCoordinate2D, radius: Double, colorIndex: Int)] = []
+    /// 現在接近中と判定しているメモのID（重複更新を防ぐ）
+    private var currentApproachingMemoID: String? = nil
+    /// 接近検出の距離しきい値（メートル）
+    private let approachThreshold: Double = 300
+
+    /// notifyOnPass=true のメモ一覧をキャッシュに登録する。
+    /// ContentView などでメモ一覧が変わるたびに呼ぶ。
+    func updatePassMemos(_ memos: [GeoMemo]) {
+        passMemosCache = memos
+            .filter { $0.notifyOnPass && !$0.isRouteTrigger }
+            .map { (id: $0.id.uuidString, title: $0.displayTitle,
+                    coordinate: $0.coordinate, radius: $0.radius, colorIndex: $0.colorIndex) }
+
+        if passMemosCache.isEmpty {
+            // 監視対象がなければ連続更新を止める
+            manager.stopUpdatingLocation()
+            currentApproachingMemoID = nil
+            Task { @MainActor in
+                LiveActivityManager.shared.updateApproaching(memoID: nil)
+            }
+        } else {
+            // 監視対象があれば連続位置更新を開始（精度は低め・電池節約）
+            manager.desiredAccuracy = kCLLocationAccuracyHundredMeters
+            manager.distanceFilter = 20 // 20m 動くごとに更新
+            if manager.authorizationStatus == .authorizedAlways ||
+               manager.authorizationStatus == .authorizedWhenInUse {
+                manager.startUpdatingLocation()
+            }
+        }
+    }
+
+    /// 現在地から最近傍の passThrough メモを探してLiveActivityを更新する。
+    private func evaluateProximity(to userLocation: CLLocation) {
+        guard !passMemosCache.isEmpty else { return }
+
+        // ジオフェンス境界（edge）までの距離が最小のメモを探す
+        var nearest: (id: String, title: String, edgeDistance: Double, colorIndex: Int)? = nil
+        for memo in passMemosCache {
+            let memoLocation = CLLocation(latitude: memo.coordinate.latitude,
+                                         longitude: memo.coordinate.longitude)
+            let centerDistance = userLocation.distance(from: memoLocation)
+            let edgeDistance = max(0, centerDistance - memo.radius)
+            if edgeDistance <= approachThreshold {
+                if nearest == nil || edgeDistance < nearest!.edgeDistance {
+                    nearest = (id: memo.id, title: memo.title,
+                               edgeDistance: edgeDistance, colorIndex: memo.colorIndex)
+                }
+            }
+        }
+
+        if let nearest {
+            let distanceInt = Int(nearest.edgeDistance.rounded())
+            // 同じメモへの更新は20m以上変化がないとスキップ
+            if nearest.id == currentApproachingMemoID,
+               let prevDist = lastApproachingDistance,
+               abs(prevDist - distanceInt) < 20 { return }
+
+            currentApproachingMemoID = nearest.id
+            lastApproachingDistance = distanceInt
+            Task { @MainActor in
+                LiveActivityManager.shared.updateApproaching(memoID: nearest.id, distance: distanceInt)
+            }
+        } else if currentApproachingMemoID != nil {
+            // 接近メモがなくなった → クリア
+            currentApproachingMemoID = nil
+            lastApproachingDistance = nil
+            Task { @MainActor in
+                LiveActivityManager.shared.updateApproaching(memoID: nil)
+            }
+        }
+    }
+
+    private var lastApproachingDistance: Int? = nil
+
     // MARK: - Route Progress (メモリキャッシュ + UserDefaults 永続化)
     // バックグラウンド起動後も didEnterRegion で参照できるよう UserDefaults に書く。
     // ただし都度 UserDefaults を読むのではなく、起動時に一度だけロードしてメモリで管理する。
@@ -202,7 +280,9 @@ class LocationManager: NSObject, ObservableObject {
 
 extension LocationManager: CLLocationManagerDelegate {
     func locationManager(_ manager: CLLocationManager, didUpdateLocations locations: [CLLocation]) {
-        location = locations.last
+        guard let latest = locations.last else { return }
+        location = latest
+        evaluateProximity(to: latest)
     }
 
     func locationManager(_ manager: CLLocationManager, didFailWithError error: Error) {

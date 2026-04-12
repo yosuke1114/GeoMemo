@@ -15,5 +15,13 @@ struct GeoMemoActivityAttributes: ActivityAttributes {
         var routeCurrentWaypoint: Int?
         /// Total number of waypoints in the route
         var routeTotalWaypoints: Int?
+
+        // MARK: - Approaching (v1.1)
+        /// 接近中メモのタイトル（nil = 接近中メモなし）
+        var approachingTitle: String?
+        /// ジオフェンス境界までの距離（メートル）
+        var approachingDistance: Int?
+        /// 接近中メモのカラーインデックス
+        var approachingColorIndex: Int = 0
     }
 }

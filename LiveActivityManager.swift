@@ -31,7 +31,10 @@ class LiveActivityManager {
                 memoColorIndex: 0,
                 triggeredAt: nil,
                 routeCurrentWaypoint: nil,
-                routeTotalWaypoints: nil
+                routeTotalWaypoints: nil,
+                approachingTitle: nil,
+                approachingDistance: nil,
+                approachingColorIndex: 0
             )
             Task {
                 await activity.update(ActivityContent(state: state, staleDate: nil))
@@ -47,7 +50,10 @@ class LiveActivityManager {
             memoColorIndex: 0,
             triggeredAt: nil,
             routeCurrentWaypoint: nil,
-            routeTotalWaypoints: nil
+            routeTotalWaypoints: nil,
+            approachingTitle: nil,
+            approachingDistance: nil,
+            approachingColorIndex: 0
         )
 
         do {
@@ -78,7 +84,10 @@ class LiveActivityManager {
                 memoColorIndex: memo.colorIndex,
                 triggeredAt: Date(),
                 routeCurrentWaypoint: nil,
-                routeTotalWaypoints: nil
+                routeTotalWaypoints: nil,
+                approachingTitle: nil,
+                approachingDistance: nil,
+                approachingColorIndex: 0
             )
 
             await activity.update(
@@ -89,6 +98,51 @@ class LiveActivityManager {
                     sound: .default
                 )
             )
+        }
+    }
+
+    // MARK: - Approaching (v1.1)
+
+    /// 接近中メモのDynamic Island表示を更新する。
+    /// - Parameters:
+    ///   - memoID: 接近中メモのUUID文字列。nil を渡すと接近表示をクリアする。
+    ///   - distance: ジオフェンス境界までの距離（メートル）
+    func updateApproaching(memoID: String?, distance: Int = 0) {
+        guard let activity = currentActivity else { return }
+
+        if let memoID, let memo = lookupMemo(id: memoID) {
+            let state = GeoMemoActivityAttributes.ContentState(
+                isTriggered: false,
+                memoTitle: "",
+                memoLocation: String(localized: "Monitoring \(activity.attributes.monitoredCount) memos"),
+                memoColorIndex: 0,
+                triggeredAt: nil,
+                routeCurrentWaypoint: nil,
+                routeTotalWaypoints: nil,
+                approachingTitle: memo.title,
+                approachingDistance: distance,
+                approachingColorIndex: memo.colorIndex
+            )
+            Task {
+                await activity.update(ActivityContent(state: state, staleDate: nil))
+            }
+        } else {
+            // 接近解除 → 通常のモニタリング表示に戻す
+            let state = GeoMemoActivityAttributes.ContentState(
+                isTriggered: false,
+                memoTitle: "",
+                memoLocation: String(localized: "Monitoring \(activity.attributes.monitoredCount) memos"),
+                memoColorIndex: 0,
+                triggeredAt: nil,
+                routeCurrentWaypoint: nil,
+                routeTotalWaypoints: nil,
+                approachingTitle: nil,
+                approachingDistance: nil,
+                approachingColorIndex: 0
+            )
+            Task {
+                await activity.update(ActivityContent(state: state, staleDate: nil))
+            }
         }
     }
 
@@ -113,7 +167,10 @@ class LiveActivityManager {
                 memoColorIndex: memo.colorIndex,
                 triggeredAt: nil,
                 routeCurrentWaypoint: current,
-                routeTotalWaypoints: total
+                routeTotalWaypoints: total,
+                approachingTitle: nil,
+                approachingDistance: nil,
+                approachingColorIndex: 0
             )
 
             await activity.update(ActivityContent(state: state, staleDate: nil))
@@ -131,7 +188,10 @@ class LiveActivityManager {
             memoColorIndex: 0,
             triggeredAt: nil,
             routeCurrentWaypoint: nil,
-            routeTotalWaypoints: nil
+            routeTotalWaypoints: nil,
+            approachingTitle: nil,
+            approachingDistance: nil,
+            approachingColorIndex: 0
         )
         Task {
             await activity.end(ActivityContent(state: state, staleDate: nil), dismissalPolicy: .immediate)
