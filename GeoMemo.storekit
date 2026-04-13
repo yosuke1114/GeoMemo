@@ -1,0 +1,41 @@
+{
+  "identifier" : "F35F04D9-1095-4881-81BE-B607BF32EC63",
+  "nonConsumableIAP" : [
+    {
+      "displayPrice" : "480",
+      "familySharable" : false,
+      "internalID" : "9C3CD2DC-D985-42A2-9B62-790039D69104",
+      "localizations" : [
+        {
+          "description" : "Unlock unlimited memos. One-time purchase, yours forever.",
+          "displayName" : "GEOMEMO Pro",
+          "locale" : "en_US"
+        },
+        {
+          "description" : "メモ数を無制限に解放します。一度の購入で永続的にご利用いただけます。",
+          "displayName" : "GEOMEMO Pro",
+          "locale" : "ja_JP"
+        }
+      ],
+      "productID" : "com.yokuro.geomemo.pro",
+      "referenceName" : "GeoMemo Pro",
+      "type" : "NonConsumable"
+    }
+  ],
+  "settings" : {
+    "_askToBuyEnabled" : false,
+    "_billingGracePeriodEnabled" : false,
+    "_failTransactionsEnabled" : false,
+    "_interruptedPurchaseEnabled" : false,
+    "_purchasesEnabled" : true,
+    "_storeKitVersion" : "2"
+  },
+  "subscriptionGroups" : [
+
+  ],
+  "version" : {
+    "major" : 3,
+    "minor" : 0,
+    "patch" : 0
+  }
+}
