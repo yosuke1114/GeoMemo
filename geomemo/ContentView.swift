@@ -465,6 +465,8 @@ struct MapTabView: View {
     @State private var newMemoCoordinate: CLLocationCoordinate2D?
     @State private var visibleRegion: MKCoordinateRegion?
     @State private var mapItems: [MapItem] = []
+    @State private var showPaywall = false
+    @ObservedObject private var store = StoreKitManager.shared
     @State private var clusterTask: Task<Void, Never>?
     @State private var calloutMemo: GeoMemo?
     @State private var activeSheet: ActiveSheet?
@@ -490,6 +492,9 @@ struct MapTabView: View {
         .animation(.easeInOut(duration: 0.25), value: isSearching)
         .sheet(item: $activeSheet, onDismiss: handleSheetDismiss) { sheet in
             sheetContent(for: sheet)
+        }
+        .sheet(isPresented: $showPaywall) {
+            PaywallView()
         }
         .fullScreenCover(item: $activeDetailMemo, onDismiss: handleSheetDismiss) { memo in
             NavigationStack {
@@ -745,6 +750,11 @@ struct MapTabView: View {
             Spacer()
             Button(action: {
                 HapticManager.impact(.medium)
+                // Free プランかつ上限に達している場合はペイウォールを表示
+                if !store.isPro && memos.count >= GeoMemoLimits.freeMemoLimit {
+                    showPaywall = true
+                    return
+                }
                 let defaultTokyo = CLLocationCoordinate2D(latitude: 35.6812, longitude: 139.7671)
                 let coordinate = newMemoCoordinate
                     ?? locationManager.location?.coordinate

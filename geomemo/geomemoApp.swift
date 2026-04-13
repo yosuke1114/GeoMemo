@@ -9,6 +9,7 @@ import SwiftUI
 import SwiftData
 import AppIntents
 import CoreSpotlight
+import StoreKit
 
 @main
 struct geomemoApp: App {
@@ -76,6 +77,9 @@ struct geomemoApp: App {
 
     // CloudKit 同期監視（シミュレーターでは通知が来ないだけで副作用なし）
     @State private var syncMonitor = CloudSyncMonitor()
+
+    // StoreKit: 起動時に Pro ステータスを復元
+    private let storeKit = StoreKitManager.shared
 
     var body: some Scene {
         WindowGroup {
