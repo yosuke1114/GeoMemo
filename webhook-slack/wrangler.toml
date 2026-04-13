@@ -1,0 +1,8 @@
+name = "geomemo-asc-webhook"
+main = "worker.js"
+compatibility_date = "2024-09-23"
+compatibility_flags = ["nodejs_compat"]
+
+# デプロイ後に以下のコマンドでシークレットを設定:
+# wrangler secret put ASC_WEBHOOK_SECRET
+# wrangler secret put SLACK_WEBHOOK_URL
