@@ -33,11 +33,42 @@ struct MemoEntry: TimelineEntry {
         let isFavorite: Bool
         let tags: [Int]
         let customTags: [String]
-        /// ルートトリガーが進行中（次のウェイポイントを待っている状態）
+        let deadline: Date?
         let routeCurrentWaypoint: Int?
         let routeTotalWaypoints: Int?
 
         var isRouteInProgress: Bool { routeCurrentWaypoint != nil }
+
+        /// 24時間以内に期限が来る
+        var hasUrgentDeadline: Bool {
+            guard let deadline else { return false }
+            let secs = deadline.timeIntervalSinceNow
+            return secs > 0 && secs <= 86400
+        }
+
+        /// 72時間以内に期限が来る
+        var hasUpcomingDeadline: Bool {
+            guard let deadline else { return false }
+            let secs = deadline.timeIntervalSinceNow
+            return secs > 0 && secs <= 259200
+        }
+
+        /// 期限バッジ文字列。24h以内→"Xh"/"Xm"、72h以内→曜日+時刻
+        var deadlineBadgeText: String? {
+            guard let deadline else { return nil }
+            let secs = deadline.timeIntervalSinceNow
+            guard secs > 0 else { return nil }
+            if secs <= 3600 {
+                return "\(max(1, Int(secs / 60)))m"
+            } else if secs <= 86400 {
+                return "\(Int(secs / 3600))h"
+            } else if secs <= 259200 {
+                let f = DateFormatter()
+                f.dateFormat = "E h a"
+                return f.string(from: deadline)
+            }
+            return nil
+        }
 
         var firstTagLabel: String? {
             if let tagId = tags.first, let tag = PresetTag(rawValue: tagId) {
@@ -50,9 +81,9 @@ struct MemoEntry: TimelineEntry {
     static let placeholder = MemoEntry(
         date: .now,
         memos: [
-            MemoSnapshot(title: "Corner Coffee", locationName: "SHIBUYA, TOKYO", colorIndex: 0, isFavorite: false, tags: [2], customTags: [], routeCurrentWaypoint: nil, routeTotalWaypoints: nil),
-            MemoSnapshot(title: "Bookstore Find", locationName: "SHIMOKITAZAWA", colorIndex: 1, isFavorite: true, tags: [8], customTags: [], routeCurrentWaypoint: nil, routeTotalWaypoints: nil),
-            MemoSnapshot(title: "Park Bench Note", locationName: "YOYOGI PARK", colorIndex: 3, isFavorite: false, tags: [], customTags: [], routeCurrentWaypoint: nil, routeTotalWaypoints: nil),
+            MemoSnapshot(title: "Corner Coffee", locationName: "SHIBUYA, TOKYO", colorIndex: 0, isFavorite: false, tags: [2], customTags: [], deadline: Date().addingTimeInterval(7200), routeCurrentWaypoint: nil, routeTotalWaypoints: nil),
+            MemoSnapshot(title: "Bookstore Find", locationName: "SHIMOKITAZAWA", colorIndex: 1, isFavorite: true, tags: [8], customTags: [], deadline: nil, routeCurrentWaypoint: nil, routeTotalWaypoints: nil),
+            MemoSnapshot(title: "Park Bench Note", locationName: "YOYOGI PARK", colorIndex: 3, isFavorite: false, tags: [], customTags: [], deadline: nil, routeCurrentWaypoint: nil, routeTotalWaypoints: nil),
         ]
     )
 
@@ -72,7 +103,16 @@ struct GeoMemoProvider: TimelineProvider {
 
     func getTimeline(in context: Context, completion: @escaping (Timeline<MemoEntry>) -> Void) {
         let entry = fetchEntry()
-        let nextUpdate = Calendar.current.date(byAdding: .minute, value: 30, to: .now)!
+
+        // 期限の 24h/72h 閾値通過タイミングで更新。それ以外は30分ごと
+        let now = Date.now
+        let thresholds: [TimeInterval] = [86400, 259200]  // 24h, 72h
+        let checkpoints = entry.memos.compactMap { $0.deadline }.flatMap { deadline in
+            thresholds.map { deadline.addingTimeInterval(-$0) }.filter { $0 > now }
+        }
+        let default30min = Calendar.current.date(byAdding: .minute, value: 30, to: now)!
+        let nextUpdate = ([default30min] + checkpoints).min()!
+
         completion(Timeline(entries: [entry], policy: .after(nextUpdate)))
     }
 
@@ -80,25 +120,22 @@ struct GeoMemoProvider: TimelineProvider {
         guard let container = makeSharedContainer() else { return .empty }
         let context = ModelContext(container)
 
-        // ルート進行状況を UserDefaults から読み込む
         let routeProgressDict = UserDefaults.standard.object(forKey: "routeProgress") as? [String: Int] ?? [:]
         let routeCountsDict   = UserDefaults.standard.object(forKey: "routeWaypointCounts") as? [String: Int] ?? [:]
 
-        // 完了済みを除外して取得（上限を多めに取り、進行中優先ソート後に3件に絞る）
+        // 完了済みを除外して取得（スマートソート後に3件に絞るため多めに取る）
         var descriptor = FetchDescriptor<GeoMemo>(
             predicate: #Predicate { !$0.isDone },
             sortBy: [SortDescriptor(\.createdAt, order: .reverse)]
         )
-        descriptor.fetchLimit = 10
+        descriptor.fetchLimit = 20
 
         guard let memos = try? context.fetch(descriptor) else { return .empty }
 
-        let snapshots: [MemoEntry.MemoSnapshot] = memos.map { memo in
+        let snapshots = memos.map { memo -> MemoEntry.MemoSnapshot in
             let memoID = memo.id.uuidString
             let nextWP = routeProgressDict[memoID]
             let total  = routeCountsDict[memoID]
-            let currentDisplay = (nextWP != nil) ? (nextWP! + 1) : nil
-
             return MemoEntry.MemoSnapshot(
                 title: memo.title,
                 locationName: memo.locationName,
@@ -106,14 +143,42 @@ struct GeoMemoProvider: TimelineProvider {
                 isFavorite: memo.isFavorite,
                 tags: memo.tags,
                 customTags: memo.customTags,
-                routeCurrentWaypoint: currentDisplay,
+                deadline: memo.deadline,
+                routeCurrentWaypoint: nextWP.map { $0 + 1 },
                 routeTotalWaypoints: total
             )
         }
-        // ルート進行中のメモを先頭に並べ、最大3件
-        .sorted { $0.isRouteInProgress && !$1.isRouteInProgress }
+        // スマートソート: ルート進行中 > 期限24h以内 > 期限72h以内 > お気に入り > 新着順
+        .sorted { a, b in
+            if a.isRouteInProgress   != b.isRouteInProgress   { return a.isRouteInProgress }
+            if a.hasUrgentDeadline   != b.hasUrgentDeadline   { return a.hasUrgentDeadline }
+            if a.hasUpcomingDeadline != b.hasUpcomingDeadline { return a.hasUpcomingDeadline }
+            if a.isFavorite          != b.isFavorite          { return a.isFavorite }
+            return false
+        }
 
         return MemoEntry(date: .now, memos: Array(snapshots.prefix(3)))
+    }
+}
+
+// MARK: - Deadline Badge View
+
+private struct DeadlineBadge: View {
+    let text: String
+    let urgent: Bool
+
+    var body: some View {
+        HStack(spacing: 3) {
+            Image(systemName: "clock.fill")
+                .font(.system(size: 8))
+            Text(text)
+                .font(.system(size: 10, weight: .semibold, design: .monospaced))
+        }
+        .foregroundStyle(urgent ? Color(hex: "E5484D") : Color.orange)
+        .padding(.horizontal, 6)
+        .padding(.vertical, 2)
+        .background((urgent ? Color(hex: "E5484D") : Color.orange).opacity(0.12))
+        .clipShape(Capsule())
     }
 }
 
@@ -134,6 +199,10 @@ struct SmallWidgetView: View {
                         Image(systemName: "arrow.triangle.turn.up.right.circle.fill")
                             .font(.system(size: 11))
                             .foregroundStyle(Brand.blue)
+                    } else if memo.hasUrgentDeadline {
+                        Image(systemName: "clock.fill")
+                            .font(.system(size: 11))
+                            .foregroundStyle(Color(hex: "E5484D"))
                     } else if memo.isFavorite {
                         Image(systemName: "heart.fill")
                             .font(.system(size: 10))
@@ -162,7 +231,7 @@ struct SmallWidgetView: View {
                         .lineLimit(1)
                 }
 
-                // ルート進行中バッジ or タグ
+                // ルート進行中 > 期限バッジ > タグ の優先順
                 if let cur = memo.routeCurrentWaypoint, let tot = memo.routeTotalWaypoints {
                     HStack(spacing: 3) {
                         Image(systemName: "arrow.triangle.turn.up.right.circle")
@@ -175,6 +244,8 @@ struct SmallWidgetView: View {
                     .padding(.vertical, 2)
                     .background(Brand.blue.opacity(0.12))
                     .clipShape(Capsule())
+                } else if let badge = memo.deadlineBadgeText {
+                    DeadlineBadge(text: badge, urgent: memo.hasUrgentDeadline)
                 } else if let tagLabel = memo.firstTagLabel {
                     Text(tagLabel)
                         .font(.system(size: 10, weight: .medium))
@@ -222,7 +293,7 @@ struct MediumWidgetView: View {
                     .foregroundStyle(Brand.blue)
                     .padding(.bottom, 6)
 
-                ForEach(Array(entry.memos.prefix(3).enumerated()), id: \.offset) { _, memo in
+                ForEach(Array(entry.memos.prefix(3).enumerated()), id: \.offset) { index, memo in
                     HStack(spacing: 6) {
                         Circle()
                             .fill(MemoColor(rawValue: memo.colorIndex)?.color ?? Brand.blue)
@@ -233,7 +304,7 @@ struct MediumWidgetView: View {
                                 .font(.system(size: 14, weight: .semibold))
                                 .foregroundStyle(Brand.primaryText)
                                 .lineLimit(1)
-                            // ルート進行中バッジ or タグ
+                            // ルート進行中 > 期限バッジ > タグ の優先順
                             if let cur = memo.routeCurrentWaypoint, let tot = memo.routeTotalWaypoints {
                                 HStack(spacing: 3) {
                                     Image(systemName: "arrow.triangle.turn.up.right.circle")
@@ -242,6 +313,14 @@ struct MediumWidgetView: View {
                                         .font(.system(size: 9, weight: .semibold, design: .monospaced))
                                 }
                                 .foregroundStyle(Brand.blue)
+                            } else if let badge = memo.deadlineBadgeText {
+                                HStack(spacing: 2) {
+                                    Image(systemName: "clock.fill")
+                                        .font(.system(size: 8))
+                                    Text(badge)
+                                        .font(.system(size: 9, weight: .semibold, design: .monospaced))
+                                }
+                                .foregroundStyle(memo.hasUrgentDeadline ? Color(hex: "E5484D") : Color.orange)
                             } else if let tagLabel = memo.firstTagLabel {
                                 Text(tagLabel)
                                     .font(.system(size: 10, weight: .medium))
@@ -253,6 +332,10 @@ struct MediumWidgetView: View {
                             Image(systemName: "arrow.triangle.turn.up.right.circle.fill")
                                 .font(.system(size: 10))
                                 .foregroundStyle(Brand.blue)
+                        } else if memo.hasUrgentDeadline {
+                            Image(systemName: "clock.fill")
+                                .font(.system(size: 10))
+                                .foregroundStyle(Color(hex: "E5484D"))
                         } else if memo.isFavorite {
                             Image(systemName: "heart.fill")
                                 .font(.system(size: 9))
@@ -269,9 +352,12 @@ struct MediumWidgetView: View {
                         }
                     }
                     .padding(.vertical, 5)
-                    .background(memo.isRouteInProgress ? Brand.blue.opacity(0.05) : Color.clear)
+                    .background(
+                        memo.hasUrgentDeadline ? Color(hex: "E5484D").opacity(0.05) :
+                        memo.isRouteInProgress ? Brand.blue.opacity(0.05) : Color.clear
+                    )
 
-                    if memo.title != entry.memos.prefix(3).last?.title {
+                    if index < entry.memos.prefix(3).count - 1 {
                         Divider()
                     }
                 }
@@ -290,22 +376,17 @@ struct geomemoWidget: Widget {
 
     var body: some WidgetConfiguration {
         StaticConfiguration(kind: kind, provider: GeoMemoProvider()) { entry in
-            Group {
-                switch entry.memos.count {
-                default:
-                    GeometryReader { geo in
-                        if geo.size.width > 200 {
-                            MediumWidgetView(entry: entry)
-                        } else {
-                            SmallWidgetView(entry: entry)
-                        }
-                    }
+            GeometryReader { geo in
+                if geo.size.width > 200 {
+                    MediumWidgetView(entry: entry)
+                } else {
+                    SmallWidgetView(entry: entry)
                 }
             }
             .containerBackground(Brand.background, for: .widget)
         }
         .configurationDisplayName("GeoMemo")
-        .description("Shows your latest memos")
+        .description("Shows your most important memos")
         .supportedFamilies([.systemSmall, .systemMedium])
     }
 }
