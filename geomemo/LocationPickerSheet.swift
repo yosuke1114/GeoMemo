@@ -1,6 +1,7 @@
 import SwiftUI
 import MapKit
 import Combine
+import SwiftData
 // Phosphor icons loaded from local Assets.xcassets
 
 // Brand colors and Color(hex:) are defined in Theme.swift
@@ -37,25 +38,31 @@ private class SearchCompleter: NSObject, ObservableObject, MKLocalSearchComplete
 
 struct LocationPickerSheetV2: View {
     @Environment(\.dismiss) private var dismiss
-    
+    @Query(sort: \FavoritePlace.createdAt) private var favoritePlaces: [FavoritePlace]
+
     let initialCoordinate: CLLocationCoordinate2D
     let radius: Double
+    let showFavorites: Bool
     let onLocationSelected: (CLLocationCoordinate2D, String) -> Void
-    
+
     @State private var cameraPosition: MapCameraPosition
     @State private var selectedCoordinate: CLLocationCoordinate2D
     @State private var locationName: String = String(localized: "Loading...")
     @State private var isGeocodingInProgress = false
-    
+
     // Search
     @State private var searchText: String = ""
     @State private var isSearching = false
     @StateObject private var searchCompleter = SearchCompleter()
     @FocusState private var isSearchFieldFocused: Bool
-    
-    init(initialCoordinate: CLLocationCoordinate2D, radius: Double, onLocationSelected: @escaping (CLLocationCoordinate2D, String) -> Void) {
+
+    // Favorites manager
+    @State private var showFavoritesManager = false
+
+    init(initialCoordinate: CLLocationCoordinate2D, radius: Double, showFavorites: Bool = true, onLocationSelected: @escaping (CLLocationCoordinate2D, String) -> Void) {
         self.initialCoordinate = initialCoordinate
         self.radius = radius
+        self.showFavorites = showFavorites
         self.onLocationSelected = onLocationSelected
         _selectedCoordinate = State(initialValue: initialCoordinate)
         _cameraPosition = State(initialValue: .camera(
@@ -184,6 +191,65 @@ struct LocationPickerSheetV2: View {
                 .padding(.horizontal, 16)
                 .padding(.top, 60)
                 
+                // Favorite Places (検索していない時だけ表示)
+                if showFavorites && !isSearching && !favoritePlaces.isEmpty {
+                    VStack(spacing: 0) {
+                        HStack {
+                            Text(String(localized: "FAVORITE PLACES"))
+                                .font(.system(size: 11, weight: .semibold))
+                                .foregroundStyle(Brand.secondaryText)
+                                .tracking(0.8)
+                            Spacer()
+                            Button(String(localized: "Manage")) {
+                                showFavoritesManager = true
+                            }
+                            .font(.system(size: 12, weight: .medium))
+                            .foregroundStyle(Brand.blue)
+                        }
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 8)
+
+                        ForEach(favoritePlaces) { place in
+                            Button {
+                                let coord = place.coordinate
+                                cameraPosition = .camera(MapCamera(centerCoordinate: coord, distance: 1000))
+                                selectedCoordinate = coord
+                                locationName = place.name
+                            } label: {
+                                HStack(spacing: 12) {
+                                    Image(systemName: place.iconName)
+                                        .font(.system(size: 16))
+                                        .foregroundStyle(Brand.blue)
+                                        .frame(width: 24)
+                                    VStack(alignment: .leading, spacing: 2) {
+                                        Text(place.name)
+                                            .font(.system(size: 15, weight: .semibold))
+                                            .foregroundStyle(Brand.primaryText)
+                                        if !place.subtitle.isEmpty {
+                                            Text(place.subtitle)
+                                                .font(.system(size: 12))
+                                                .foregroundStyle(Brand.secondaryText)
+                                        }
+                                    }
+                                    Spacer()
+                                }
+                                .padding(.horizontal, 16)
+                                .padding(.vertical, 10)
+                            }
+                            if place.id != favoritePlaces.last?.id {
+                                Rectangle()
+                                    .fill(Brand.primaryText.opacity(0.1))
+                                    .frame(height: 1)
+                                    .padding(.leading, 52)
+                            }
+                        }
+                    }
+                    .background(Brand.surface)
+                    .cornerRadius(8)
+                    .padding(.horizontal, 16)
+                    .padding(.top, 8)
+                }
+
                 // Search Results List
                 if isSearching && !searchCompleter.completions.isEmpty {
                     ScrollView {
@@ -228,6 +294,9 @@ struct LocationPickerSheetV2: View {
         }
         .onAppear {
             reverseGeocode(coordinate: selectedCoordinate)
+        }
+        .sheet(isPresented: $showFavoritesManager) {
+            FavoritePlacesView()
         }
     }
     

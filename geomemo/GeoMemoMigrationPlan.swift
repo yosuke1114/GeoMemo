@@ -143,38 +143,79 @@ enum GeoMemoSchemaV4: VersionedSchema {
 
 enum GeoMemoSchemaV5: VersionedSchema {
     static var versionIdentifier = Schema.Version(5, 0, 0)
-    static var models: [any PersistentModel.Type] { [GeoMemo.self] }
-    // GeoMemo 本体（dwellMinutes フィールド追加済み、デフォルト nil）
+    static var models: [any PersistentModel.Type] { [GeoMemoV5.self] }
+
+    @Model final class GeoMemoV5 {
+        var id: UUID = UUID()
+        var title: String = ""
+        var note: String = ""
+        var latitude: Double = 0.0
+        var longitude: Double = 0.0
+        var radius: Double = 100.0
+        var locationName: String = ""
+        var imageData: Data?
+        var notifyOnEntry: Bool = true
+        var notifyOnExit: Bool = true
+        var createdAt: Date = Date()
+        var deadline: Date?
+        var timeWindowStart: Int?
+        var timeWindowEnd: Int?
+        var activeDays: [Int]?
+        var colorIndex: Int = 0
+        var isFavorite: Bool = false
+        var isDone: Bool = false
+        var exitDelayMinutes: Int?
+        var isRouteTrigger: Bool = false
+        var waypointData: Data?
+        var tags: [Int] = []
+        var customTags: [String] = []
+        var notifyOnPass: Bool = false
+        var isListMode: Bool = false
+        var listItemsData: Data?
+        var dwellMinutes: Int?
+
+        init() {}
+    }
+}
+
+// MARK: - Schema V6（FavoritePlace 追加）
+
+enum GeoMemoSchemaV6: VersionedSchema {
+    static var versionIdentifier = Schema.Version(6, 0, 0)
+    static var models: [any PersistentModel.Type] { [GeoMemo.self, FavoritePlace.self] }
+    // V6: GeoMemo は V5 から変更なし。FavoritePlace テーブルを新規追加
 }
 
 // MARK: - Migration Plan
 
 enum GeoMemoMigrationPlan: SchemaMigrationPlan {
     static var schemas: [any VersionedSchema.Type] {
-        [GeoMemoSchemaV1.self, GeoMemoSchemaV2.self, GeoMemoSchemaV3.self, GeoMemoSchemaV4.self, GeoMemoSchemaV5.self]
+        [GeoMemoSchemaV1.self, GeoMemoSchemaV2.self, GeoMemoSchemaV3.self,
+         GeoMemoSchemaV4.self, GeoMemoSchemaV5.self, GeoMemoSchemaV6.self]
     }
 
     static var stages: [MigrationStage] {
         [
-            // V1→V2: tags / customTags はデフォルト値あり → lightweight
             MigrationStage.lightweight(
                 fromVersion: GeoMemoSchemaV1.self,
                 toVersion: GeoMemoSchemaV2.self
             ),
-            // V2→V3: notifyOnPass はデフォルト false → lightweight
             MigrationStage.lightweight(
                 fromVersion: GeoMemoSchemaV2.self,
                 toVersion: GeoMemoSchemaV3.self
             ),
-            // V3→V4: isListMode はデフォルト false、listItemsData は nil → lightweight
             MigrationStage.lightweight(
                 fromVersion: GeoMemoSchemaV3.self,
                 toVersion: GeoMemoSchemaV4.self
             ),
-            // V4→V5: dwellMinutes はデフォルト nil → lightweight
             MigrationStage.lightweight(
                 fromVersion: GeoMemoSchemaV4.self,
                 toVersion: GeoMemoSchemaV5.self
+            ),
+            // V5→V6: FavoritePlace テーブル追加、既存 GeoMemo は変更なし → lightweight
+            MigrationStage.lightweight(
+                fromVersion: GeoMemoSchemaV5.self,
+                toVersion: GeoMemoSchemaV6.self
             )
         ]
     }
