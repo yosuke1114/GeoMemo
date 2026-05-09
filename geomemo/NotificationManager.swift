@@ -76,78 +76,70 @@ class NotificationManager: NSObject, ObservableObject {
     func scheduleImmediateNotification(title: String, body: String, memoID: String) async {
         let enabled = UserDefaults.standard.object(forKey: "notificationsEnabled") as? Bool ?? true
         guard enabled else { return }
-
-        let content = UNMutableNotificationContent()
-        content.title = title
-        content.body = body.isEmpty ? String(localized: "You entered the area") : body
-        content.sound = .default
-        content.categoryIdentifier = Self.categoryID
-        content.userInfo = ["memoID": memoID, "title": title, "body": body]
-
+        let content = makeContent(title: title, body: body, memoID: memoID,
+                                  defaultBody: String(localized: "You entered the area"))
         let trigger = UNTimeIntervalNotificationTrigger(timeInterval: 1, repeats: false)
-        let request = UNNotificationRequest(
-            identifier: "geomemo-\(memoID)",
-            content: content,
-            trigger: trigger
-        )
-        do {
-            try await UNUserNotificationCenter.current().add(request)
-        } catch {
-            print("Error scheduling notification: \(error.localizedDescription)")
-        }
+        await addRequest(UNNotificationRequest(identifier: "geomemo-\(memoID)", content: content, trigger: trigger))
+    }
+
+    // MARK: - Dwell Time Notification
+
+    func scheduleDwellNotification(title: String, body: String, memoID: String, dwellMinutes: Int) async {
+        let enabled = UserDefaults.standard.object(forKey: "notificationsEnabled") as? Bool ?? true
+        guard enabled else { return }
+        let content = makeContent(title: title, body: body, memoID: memoID,
+                                  defaultBody: String(localized: "You've been here for a while"))
+        let trigger = UNTimeIntervalNotificationTrigger(
+            timeInterval: TimeInterval(max(1, dwellMinutes * 60)), repeats: false)
+        await addRequest(UNNotificationRequest(identifier: "geomemo-dwell-\(memoID)", content: content, trigger: trigger))
+    }
+
+    /// 滞在時間トリガー通知をキャンセルする（退場時に呼ぶ）
+    func cancelDwellNotification(memoID: String) {
+        UNUserNotificationCenter.current()
+            .removePendingNotificationRequests(withIdentifiers: ["geomemo-dwell-\(memoID)"])
     }
 
     // MARK: - Exit Delay Notification
 
-    /// 退出後タイマー通知をスケジュールする
     /// - Parameters:
     ///   - delayMinutes: nil または 0 = 即通知、正値 = 退出からN分後
     func scheduleExitNotification(title: String, body: String, memoID: String, delayMinutes: Int?) async {
         let enabled = UserDefaults.standard.object(forKey: "notificationsEnabled") as? Bool ?? true
         guard enabled else { return }
-
-        let content = UNMutableNotificationContent()
-        content.title = title
-        content.body = body.isEmpty ? String(localized: "You left the area") : body
-        content.sound = .default
-        content.categoryIdentifier = Self.categoryID
-        content.userInfo = ["memoID": memoID, "title": title, "body": body]
-
+        let content = makeContent(title: title, body: body, memoID: memoID,
+                                  defaultBody: String(localized: "You left the area"))
         let delay = delayMinutes.map { max(1, $0 * 60) } ?? 1
         let trigger = UNTimeIntervalNotificationTrigger(timeInterval: TimeInterval(delay), repeats: false)
-        let request = UNNotificationRequest(
-            identifier: "geomemo-exit-\(memoID)",
-            content: content,
-            trigger: trigger
-        )
-        do {
-            try await UNUserNotificationCenter.current().add(request)
-        } catch {
-            print("Error scheduling exit notification: \(error.localizedDescription)")
-        }
+        await addRequest(UNNotificationRequest(identifier: "geomemo-exit-\(memoID)", content: content, trigger: trigger))
     }
 
     private func scheduleSnooze(title: String, body: String, memoID: String, minutes: Int) async {
+        let content = makeContent(title: title, body: body, memoID: memoID,
+                                  defaultBody: String(localized: "You entered the area"))
+        let trigger = UNTimeIntervalNotificationTrigger(
+            timeInterval: TimeInterval(minutes * 60), repeats: false)
+        await addRequest(UNNotificationRequest(
+            identifier: "geomemo-snooze-\(memoID)-\(UUID().uuidString)", content: content, trigger: trigger))
+    }
+
+    // MARK: - Private Helpers
+
+    private func makeContent(title: String, body: String, memoID: String, defaultBody: String) -> UNMutableNotificationContent {
         let content = UNMutableNotificationContent()
         content.title = title
-        content.body = body.isEmpty ? String(localized: "You entered the area") : body
+        content.body = body.isEmpty ? defaultBody : body
         content.sound = .default
         content.categoryIdentifier = Self.categoryID
         content.userInfo = ["memoID": memoID, "title": title, "body": body]
+        return content
+    }
 
-        let trigger = UNTimeIntervalNotificationTrigger(
-            timeInterval: TimeInterval(minutes * 60),
-            repeats: false
-        )
-        let request = UNNotificationRequest(
-            identifier: "geomemo-snooze-\(memoID)-\(UUID().uuidString)",
-            content: content,
-            trigger: trigger
-        )
+    private func addRequest(_ request: UNNotificationRequest) async {
         do {
             try await UNUserNotificationCenter.current().add(request)
         } catch {
-            print("Error scheduling snooze: \(error.localizedDescription)")
+            print("Error scheduling notification: \(error.localizedDescription)")
         }
     }
 }

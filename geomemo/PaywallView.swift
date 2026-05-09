@@ -77,9 +77,20 @@ struct PaywallView: View {
                             Text(String(localized: "One-time purchase · No subscription"))
                                 .font(.system(size: 13, weight: .regular))
                                 .foregroundStyle(Brand.tertiaryText)
-                        } else {
+                        } else if store.isLoadingProducts {
                             ProgressView()
                                 .tint(Brand.blue)
+                        } else {
+                            Text(String(localized: "Product unavailable"))
+                                .font(.system(size: 16, weight: .medium))
+                                .foregroundStyle(Brand.secondaryText)
+                            Button(action: {
+                                Task { await store.loadProducts() }
+                            }) {
+                                Text(String(localized: "Retry"))
+                                    .font(.system(size: 14, weight: .semibold))
+                                    .foregroundStyle(Brand.blue)
+                            }
                         }
                     }
                     .padding(.top, 36)

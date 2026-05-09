@@ -42,6 +42,10 @@ import CoreLocation
     /// JSON-encoded [ListItem]
     var listItemsData: Data?
 
+    // Dwell time trigger (v1.3)
+    /// 滞在時間トリガー（分）。nil = 即通知、値あり = エリア内にN分滞在後に通知
+    var dwellMinutes: Int? = nil
+
     /// タイトルが未設定かどうか（空文字 or 旧データの "Untitled"/"（タイトルなし）" 相当）
     var isUntitled: Bool {
         let trimmed = title.trimmingCharacters(in: .whitespaces)

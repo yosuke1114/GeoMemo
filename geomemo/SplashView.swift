@@ -96,7 +96,7 @@ private struct SplashContent: View {
                         .font(.system(size: 28, weight: .bold))
                         .foregroundColor(.white)
 
-                    Text(verbatim: "場所にメモを残そう")
+                    Text("Leave memos at places")
                         .font(.system(size: 13, weight: .regular))
                         .tracking(1)
                         .foregroundColor(.white.opacity(0.5))

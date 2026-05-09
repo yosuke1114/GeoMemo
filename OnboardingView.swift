@@ -36,18 +36,9 @@ struct OnboardingView: View {
             // Action area
             VStack(spacing: 0) {
                 primaryButton(
-                    title: currentPage == 0 ? String(localized: "Get Started") : String(localized: "Allow"),
+                    title: currentPage == 0 ? String(localized: "Get Started") : String(localized: "Continue"),
                     action: handlePrimaryAction
                 )
-
-                if currentPage > 0 {
-                    Button(action: handleSkip) {
-                        Text("Set up later")
-                            .font(.system(size: 14))
-                            .foregroundColor(Brand.secondaryText)
-                    }
-                    .padding(.top, 12)
-                }
             }
             .animation(.easeInOut(duration: 0.25), value: currentPage)
             .padding(.horizontal, 24)
@@ -184,17 +175,7 @@ struct OnboardingView: View {
         }
     }
 
-    private func handleSkip() {
-        HapticManager.selection()
-        switch currentPage {
-        case 1:
-            withAnimation { currentPage = 2 }
-        case 2:
-            hasCompletedOnboarding = true
-        default:
-            break
-        }
-    }
+
 }
 
 // Brand colors and Color(hex:) are defined in Theme.swift

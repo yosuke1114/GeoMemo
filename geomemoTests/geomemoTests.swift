@@ -1355,3 +1355,79 @@ struct ColorFilterTests {
         #expect(!suggestions.contains(.food))
     }
 }
+
+// MARK: - StoreKitManager ユニットテスト（静的プロパティ・定数）
+
+@Suite("StoreKitManager 定数テスト")
+struct StoreKitConstantsTests {
+
+    @Test("フリーメモ上限が5件")
+    func freeMemoLimitIs5() {
+        #expect(GeoMemoLimits.freeMemoLimit == 5)
+    }
+
+    @Test("ProのProductIDが正しい")
+    func proProductIDIsCorrect() {
+        #expect(StoreKitManager.proProductID == "com.yokuro.geomemo.pro")
+    }
+}
+
+// MARK: - StoreKitManager 非同期テスト（MainActor）
+
+@Suite("StoreKitManager 状態テスト")
+struct StoreKitManagerStateTests {
+
+    @Test("初期状態: isPro = false")
+    @MainActor
+    func initialProStatusIsFalse() async {
+        let manager = await StoreKitManager()
+        #expect(manager.isPro == false)
+    }
+
+    @Test("初期状態: purchaseError = nil")
+    @MainActor
+    func initialPurchaseErrorIsNil() async {
+        let manager = await StoreKitManager()
+        #expect(manager.purchaseError == nil)
+    }
+
+    @Test("初期状態: purchaseInProgress = false")
+    @MainActor
+    func initialPurchaseInProgressIsFalse() async {
+        let manager = await StoreKitManager()
+        #expect(manager.purchaseInProgress == false)
+    }
+
+    @Test("loadProducts完了後: isLoadingProducts = false")
+    @MainActor
+    func loadProductsCompletesLoading() async {
+        let manager = await StoreKitManager()
+        await manager.loadProducts()
+        #expect(manager.isLoadingProducts == false)
+    }
+
+    @Test("製品未取得時: purchaseError が設定される")
+    @MainActor
+    func loadProductsEmptySetsError() async {
+        let manager = await StoreKitManager()
+        await manager.loadProducts()
+        // 製品が取得できなかった場合のみエラーが設定されることを確認
+        if manager.proProduct == nil {
+            #expect(manager.purchaseError != nil, "製品未取得時はエラーメッセージが設定されるべき")
+        }
+    }
+
+    @Test("製品なしで購入試行: purchaseError が設定される")
+    @MainActor
+    func purchaseWithNilProductSetsError() async {
+        let manager = await StoreKitManager()
+        // proProductがnilのままpurchaseを呼ぶ（loadProducts未完了状態）
+        guard manager.proProduct == nil else {
+            // 製品が取得済みの場合はスキップ
+            return
+        }
+        await manager.purchase()
+        #expect(manager.purchaseError != nil, "製品なしで購入するとエラーが設定されるべき")
+        #expect(manager.purchaseInProgress == false, "購入完了後はpurchaseInProgressがfalseになるべき")
+    }
+}

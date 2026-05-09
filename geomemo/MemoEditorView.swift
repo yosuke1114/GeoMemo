@@ -66,6 +66,7 @@ struct MemoEditorView: View {
     @State private var routeWaypoints: [RouteWaypoint] = []
     @State private var showRouteEditor = false
     @State private var exitDelayMinutes: Int? = nil
+    @State private var dwellMinutes: Int? = nil
 
     // List / Checklist mode (v1.2)
     @State private var isListMode: Bool
@@ -136,6 +137,7 @@ struct MemoEditorView: View {
             _isRouteTrigger = State(initialValue: memo.isRouteTrigger)
             _routeWaypoints = State(initialValue: memo.routeWaypoints)
             _exitDelayMinutes = State(initialValue: memo.exitDelayMinutes)
+            _dwellMinutes = State(initialValue: memo.dwellMinutes)
             _isListMode = State(initialValue: memo.isListMode)
             _listItems = State(initialValue: memo.listItems)
             _selectedTags = State(initialValue: Set(memo.tags))
@@ -250,6 +252,7 @@ struct MemoEditorView: View {
             }
         }
         .onChange(of: title) { refreshSuggestionsDebounced() }
+        .onChange(of: note) { refreshSuggestionsDebounced() }
         .onChange(of: locationName) { refreshSuggestionsDebounced() }
         .sheet(isPresented: $showLocationPicker) {
             LocationPickerSheetV2(
@@ -820,6 +823,36 @@ struct MemoEditorView: View {
                 .padding(.horizontal, 20)
                 .padding(.vertical, 12)
 
+                if notifyOnEntry {
+                    Divider()
+                        .background(Brand.primaryText.opacity(0.1))
+                        .padding(.horizontal, 20)
+
+                    HStack {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("DWELL TIME")
+                                .font(.system(size: 17, weight: .semibold))
+                                .foregroundColor(Brand.primaryText)
+                            Text(String(localized: "Notify after staying in the area"))
+                                .font(.system(size: 12, weight: .regular))
+                                .foregroundColor(Brand.secondaryText)
+                        }
+                        Spacer()
+                        Picker("", selection: $dwellMinutes) {
+                            Text("Immediately").tag(nil as Int?)
+                            Text("5 min").tag(5 as Int?)
+                            Text("15 min").tag(15 as Int?)
+                            Text("30 min").tag(30 as Int?)
+                            Text("1 hour").tag(60 as Int?)
+                        }
+                        .pickerStyle(.menu)
+                        .tint(Brand.blue)
+                    }
+                    .padding(.horizontal, 20)
+                    .padding(.vertical, 12)
+                    .transition(.opacity.combined(with: .move(edge: .top)))
+                }
+
                 Divider()
                     .background(Brand.primaryText.opacity(0.1))
                     .padding(.horizontal, 20)
@@ -1074,6 +1107,7 @@ struct MemoEditorView: View {
                 customTags: customTags
             )
             newMemo.notifyOnPass = isRouteTrigger ? false : notifyOnPass
+            newMemo.dwellMinutes = (isRouteTrigger || !notifyOnEntry) ? nil : dwellMinutes
             newMemo.isListMode = isListMode
             newMemo.listItems = listItems
             modelContext.insert(newMemo)
@@ -1116,6 +1150,7 @@ struct MemoEditorView: View {
             memo.tags = Array(selectedTags)
             memo.customTags = customTags
             memo.notifyOnPass = isRouteTrigger ? false : notifyOnPass
+            memo.dwellMinutes = (isRouteTrigger || !notifyOnEntry) ? nil : dwellMinutes
             memo.isListMode = isListMode
             memo.listItems = listItems
 

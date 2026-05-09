@@ -2,7 +2,7 @@
   "identifier" : "F35F04D9-1095-4881-81BE-B607BF32EC63",
   "nonConsumableIAP" : [
     {
-      "displayPrice" : "480",
+      "displayPrice" : "500",
       "familySharable" : false,
       "internalID" : "9C3CD2DC-D985-42A2-9B62-790039D69104",
       "localizations" : [

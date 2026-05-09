@@ -13,15 +13,18 @@ import StoreKit
 
 @main
 struct geomemoApp: App {
-    static let appGroupID      = "group.com.yokuro.geomemo"
+    static let appGroupID          = "group.com.yokuro.geomemo"
     static let cloudKitContainerID = "iCloud.com.yokuro.geomemo"
+    static let isUITesting         = CommandLine.arguments.contains("-UITesting")
 
     var sharedModelContainer: ModelContainer = {
         let schema = Schema([GeoMemo.self])
 
         // テスト時はインメモリストアを使用（CloudKit タイムアウト・データ汚染を防ぐ）
-        // Bundle.allBundles で xctest バンドルを検出（Swift Testing / XCTest 両対応）
+        // Bundle.allBundles で xctest バンドルを検出（Unit/Swift Testing 対応）
+        // UIテストは別プロセスのため -UITesting 引数で検出
         let isTestEnvironment = Bundle.allBundles.contains { $0.bundlePath.hasSuffix(".xctest") }
+            || Self.isUITesting
         if isTestEnvironment {
             let config = ModelConfiguration(schema: schema, isStoredInMemoryOnly: true)
             return try! ModelContainer(for: schema, configurations: [config])
@@ -95,7 +98,12 @@ struct geomemoApp: App {
                 }
                 #if DEBUG
                 .onAppear {
-                    DemoDataSeeder.seedIfNeeded(context: sharedModelContainer.mainContext)
+                    // UITest 中は -seedDemoData フラグがある場合のみシード
+                    // （それ以外の UITest では空状態を保証する）
+                    let seedRequested = CommandLine.arguments.contains("-seedDemoData")
+                    if !Self.isUITesting || seedRequested {
+                        DemoDataSeeder.seedIfNeeded(context: sharedModelContainer.mainContext)
+                    }
                 }
                 #endif
                 .environment(syncMonitor)

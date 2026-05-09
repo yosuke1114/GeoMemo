@@ -1,0 +1,22 @@
+{
+  "identifier" : "00000000-0000-0000-0000-000000000000",
+  "nonConsumableIAP" : [
+
+  ],
+  "settings" : {
+    "_askToBuyEnabled" : false,
+    "_billingGracePeriodEnabled" : false,
+    "_failTransactionsEnabled" : false,
+    "_interruptedPurchaseEnabled" : false,
+    "_purchasesEnabled" : true,
+    "_storeKitVersion" : "2"
+  },
+  "subscriptionGroups" : [
+
+  ],
+  "version" : {
+    "major" : 3,
+    "minor" : 0,
+    "patch" : 0
+  }
+}

@@ -14,6 +14,7 @@ class StoreKitManager: ObservableObject {
 
     @Published var isPro: Bool = false
     @Published var proProduct: Product?
+    @Published var isLoadingProducts: Bool = true
     @Published var purchaseInProgress: Bool = false
     @Published var purchaseError: String?
 
@@ -34,12 +35,25 @@ class StoreKitManager: ObservableObject {
     // MARK: - Product Loading
 
     func loadProducts() async {
+        isLoadingProducts = true
+        #if DEBUG
+        if CommandLine.arguments.contains("-UITestEmptyProducts") {
+            isLoadingProducts = false
+            purchaseError = String(localized: "Product not available. Please try again later.")
+            return
+        }
+        #endif
         do {
             let products = try await Product.products(for: [Self.proProductID])
             proProduct = products.first
+            if products.isEmpty {
+                purchaseError = String(localized: "Product not available. Please try again later.")
+            }
         } catch {
+            purchaseError = String(localized: "Failed to load product. Please check your connection and try again.")
             print("[StoreKit] Failed to load products: \(error)")
         }
+        isLoadingProducts = false
     }
 
     // MARK: - Purchase

@@ -299,6 +299,11 @@ struct MemoDetailView: View {
                         .padding(.horizontal, 16)
                         .padding(.vertical, 16)
 
+                        // DWELL TIME Row
+                        if memo.notifyOnEntry, let dwell = memo.dwellMinutes {
+                            timerRow(label: "DWELL TIME", minutes: dwell)
+                        }
+
                         // ON EXIT Row
                         HStack {
                             Text("ON EXIT")
@@ -317,6 +322,11 @@ struct MemoDetailView: View {
                         }
                         .padding(.horizontal, 16)
                         .padding(.vertical, 16)
+
+                        // EXIT DELAY Row
+                        if memo.notifyOnExit, let delay = memo.exitDelayMinutes {
+                            timerRow(label: "EXIT DELAY", minutes: delay)
+                        }
                     }
                 }
                 .padding(.top, 8)
@@ -584,6 +594,28 @@ struct MemoDetailView: View {
         } else {
             return "\(Int(radius))M"
         }
+    }
+
+    private func formatMinutes(_ minutes: Int) -> String {
+        minutes >= 60
+            ? String(localized: "1 hour")
+            : String(localized: "\(minutes) min")
+    }
+
+    @ViewBuilder
+    private func timerRow(label: String, minutes: Int) -> some View {
+        HStack {
+            Text(label)
+                .font(.system(size: 13, weight: .semibold))
+                .foregroundColor(Brand.primaryText)
+                .tracking(0.5)
+            Spacer()
+            Text(formatMinutes(minutes))
+                .font(.system(size: 13, weight: .regular))
+                .foregroundColor(Brand.secondaryText)
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 16)
     }
 }
 

@@ -80,6 +80,23 @@ struct TagChipScrollRow: View {
     let suggestedTags: [PresetTag]  // AI提案（未選択のみ）
     let onRemovePreset: ((Int) -> Void)?
     let onRemoveCustom: ((String) -> Void)?
+    let onSelectSuggested: ((PresetTag) -> Void)?
+
+    init(
+        presetTags: [Int],
+        customTags: [String],
+        suggestedTags: [PresetTag],
+        onRemovePreset: ((Int) -> Void)? = nil,
+        onRemoveCustom: ((String) -> Void)? = nil,
+        onSelectSuggested: ((PresetTag) -> Void)? = nil
+    ) {
+        self.presetTags = presetTags
+        self.customTags = customTags
+        self.suggestedTags = suggestedTags
+        self.onRemovePreset = onRemovePreset
+        self.onRemoveCustom = onRemoveCustom
+        self.onSelectSuggested = onSelectSuggested
+    }
 
     var body: some View {
         ScrollView(.horizontal, showsIndicators: false) {
@@ -110,7 +127,7 @@ struct TagChipScrollRow: View {
                         tag: tag,
                         isSelected: false,
                         isSuggested: true,
-                        onTap: {}
+                        onTap: { onSelectSuggested?(tag) }
                     )
                 }
             }

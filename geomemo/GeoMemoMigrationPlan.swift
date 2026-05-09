@@ -105,15 +105,53 @@ enum GeoMemoSchemaV3: VersionedSchema {
 
 enum GeoMemoSchemaV4: VersionedSchema {
     static var versionIdentifier = Schema.Version(4, 0, 0)
+    static var models: [any PersistentModel.Type] { [GeoMemoV4.self] }
+
+    @Model final class GeoMemoV4 {
+        var id: UUID = UUID()
+        var title: String = ""
+        var note: String = ""
+        var latitude: Double = 0.0
+        var longitude: Double = 0.0
+        var radius: Double = 100.0
+        var locationName: String = ""
+        var imageData: Data?
+        var notifyOnEntry: Bool = true
+        var notifyOnExit: Bool = true
+        var createdAt: Date = Date()
+        var deadline: Date?
+        var timeWindowStart: Int?
+        var timeWindowEnd: Int?
+        var activeDays: [Int]?
+        var colorIndex: Int = 0
+        var isFavorite: Bool = false
+        var isDone: Bool = false
+        var exitDelayMinutes: Int?
+        var isRouteTrigger: Bool = false
+        var waypointData: Data?
+        var tags: [Int] = []
+        var customTags: [String] = []
+        var notifyOnPass: Bool = false
+        var isListMode: Bool = false
+        var listItemsData: Data?
+
+        init() {}
+    }
+}
+
+// MARK: - Schema V5（dwellMinutes 追加）
+
+enum GeoMemoSchemaV5: VersionedSchema {
+    static var versionIdentifier = Schema.Version(5, 0, 0)
     static var models: [any PersistentModel.Type] { [GeoMemo.self] }
-    // GeoMemo 本体（isListMode / listItemsData フィールド追加済み、デフォルト false / nil）
+    // GeoMemo 本体（dwellMinutes フィールド追加済み、デフォルト nil）
 }
 
 // MARK: - Migration Plan
 
 enum GeoMemoMigrationPlan: SchemaMigrationPlan {
     static var schemas: [any VersionedSchema.Type] {
-        [GeoMemoSchemaV1.self, GeoMemoSchemaV2.self, GeoMemoSchemaV3.self, GeoMemoSchemaV4.self]
+        [GeoMemoSchemaV1.self, GeoMemoSchemaV2.self, GeoMemoSchemaV3.self, GeoMemoSchemaV4.self, GeoMemoSchemaV5.self]
     }
 
     static var stages: [MigrationStage] {
@@ -132,6 +170,11 @@ enum GeoMemoMigrationPlan: SchemaMigrationPlan {
             MigrationStage.lightweight(
                 fromVersion: GeoMemoSchemaV3.self,
                 toVersion: GeoMemoSchemaV4.self
+            ),
+            // V4→V5: dwellMinutes はデフォルト nil → lightweight
+            MigrationStage.lightweight(
+                fromVersion: GeoMemoSchemaV4.self,
+                toVersion: GeoMemoSchemaV5.self
             )
         ]
     }

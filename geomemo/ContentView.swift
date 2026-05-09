@@ -457,7 +457,12 @@ struct MapTabView: View {
     private var currentMapStyle: GeoMapStyle {
         GeoMapStyle(rawValue: mapStyleRaw) ?? .mono
     }
+
+    private func streetLevelRegion(_ coordinate: CLLocationCoordinate2D) -> MKCoordinateRegion {
+        MKCoordinateRegion(center: coordinate, latitudinalMeters: 1000, longitudinalMeters: 1000)
+    }
     
+    @State private var shouldJumpToLocation = false
     @State private var cameraPosition: MapCameraPosition = .region(
         MKCoordinateRegion(center: CLLocationCoordinate2D(latitude: 35.6812, longitude: 139.7671),
                            latitudinalMeters: 5000, longitudinalMeters: 5000)
@@ -505,13 +510,7 @@ struct MapTabView: View {
             locationManager.refreshLocation()
             locationManager.startHeading()
             if let userLocation = locationManager.location?.coordinate {
-                cameraPosition = .region(
-                    MKCoordinateRegion(
-                        center: userLocation,
-                        latitudinalMeters: 1000,
-                        longitudinalMeters: 1000
-                    )
-                )
+                cameraPosition = .region(streetLevelRegion(userLocation))
             }
             reRegisterAllGeofences()
 
@@ -522,14 +521,12 @@ struct MapTabView: View {
             locationManager.stopHeading()
         }
         .onChange(of: locationManager.location) { oldValue, newValue in
-            if oldValue == nil, let userLocation = newValue?.coordinate {
-                cameraPosition = .region(
-                    MKCoordinateRegion(
-                        center: userLocation,
-                        latitudinalMeters: 1000,
-                        longitudinalMeters: 1000
-                    )
-                )
+            guard let userLocation = newValue?.coordinate else { return }
+            if oldValue == nil {
+                cameraPosition = .region(streetLevelRegion(userLocation))
+            } else if shouldJumpToLocation {
+                shouldJumpToLocation = false
+                withAnimation { cameraPosition = .region(streetLevelRegion(userLocation)) }
             }
         }
         .onChange(of: memos.count) { _, _ in
@@ -559,17 +556,29 @@ struct MapTabView: View {
                let memo = memos.first(where: { $0.id.uuidString == id }) {
                 guard locationManager.shouldNotify(for: memo) else { return }
                 Task {
-                    await NotificationManager.shared.scheduleImmediateNotification(
-                        title: memo.title,
-                        body: memo.note,
-                        memoID: id
-                    )
+                    if let dwell = memo.dwellMinutes {
+                        await NotificationManager.shared.scheduleDwellNotification(
+                            title: memo.title,
+                            body: memo.note,
+                            memoID: id,
+                            dwellMinutes: dwell
+                        )
+                    } else {
+                        await NotificationManager.shared.scheduleImmediateNotification(
+                            title: memo.title,
+                            body: memo.note,
+                            memoID: id
+                        )
+                    }
                 }
             }
         }
         .onReceive(NotificationCenter.default.publisher(for: .didExitGeoMemoRegion)) { notification in
             if let id = notification.object as? String,
                let memo = memos.first(where: { $0.id.uuidString == id }) {
+                // キャンセル：滞在タイマー通知（退場前に発火していなければ取り消す）
+                NotificationManager.shared.cancelDwellNotification(memoID: id)
+
                 guard memo.notifyOnExit && !memo.isDone else { return }
                 guard locationManager.shouldNotify(for: memo) else { return }
                 Task {
@@ -693,6 +702,7 @@ struct MapTabView: View {
         }
     }
     
+    
     // MARK: - Location Button
     private var locationButton: some View {
         VStack {
@@ -700,6 +710,23 @@ struct MapTabView: View {
             HStack {
                 Spacer()
                 VStack(spacing: 12) {
+                    // 現在地へ移動するボタン
+                    Button(action: {
+                        HapticManager.impact(.light)
+                        // 最新位置を取得してからカメラを動かす
+                        shouldJumpToLocation = true
+                        locationManager.refreshLocation()
+                    }) {
+                        Image("ph-navigation-arrow-fill")
+                            .resizable()
+                            .frame(width: 20, height: 20)
+                            .foregroundColor(Brand.blue)
+                            .frame(width: 48, height: 48)
+                            .background(Brand.background)
+                            .clipShape(Circle())
+                            .overlay(Circle().stroke(Brand.border, lineWidth: 1))
+                    }
+
                     // リスト画面へ遷移するボタン
                     Button(action: {
                         HapticManager.impact(.light)
@@ -714,36 +741,14 @@ struct MapTabView: View {
                             .clipShape(Circle())
                             .overlay(Circle().stroke(Brand.border, lineWidth: 1))
                     }
-
-                    // 現在地へ移動するボタン
-                    Button(action: {
-                        HapticManager.impact(.light)
-                        if let userLocation = locationManager.location?.coordinate {
-                            cameraPosition = .region(
-                                MKCoordinateRegion(
-                                    center: userLocation,
-                                    latitudinalMeters: 1000,
-                                    longitudinalMeters: 1000
-                                )
-                            )
-                        }
-                    }) {
-                        Image("ph-navigation-arrow-fill")
-                            .resizable()
-                            .frame(width: 20, height: 20)
-                            .foregroundColor(Brand.blue)
-                            .frame(width: 48, height: 48)
-                            .background(Brand.background)
-                            .clipShape(Circle())
-                            .overlay(Circle().stroke(Brand.border, lineWidth: 1))
-                    }
+                    .accessibilityIdentifier("listViewButton")
                 }
                 .padding(.trailing, 16)
                 .padding(.bottom, 80)
             }
         }
     }
-    
+
     // MARK: - Add Memo Button
     private var addMemoButton: some View {
         VStack {
@@ -930,15 +935,7 @@ struct MapTabView: View {
             if let response = try? await search.start(),
                let item = response.mapItems.first {
                 await MainActor.run {
-                    withAnimation {
-                        cameraPosition = .region(
-                            MKCoordinateRegion(
-                                center: item.location.coordinate,
-                                latitudinalMeters: 1000,
-                                longitudinalMeters: 1000
-                            )
-                        )
-                    }
+                    withAnimation { cameraPosition = .region(streetLevelRegion(item.location.coordinate)) }
                 }
             }
         }

@@ -23,6 +23,7 @@ struct BackupMemo: Codable {
     var isFavorite: Bool
     var isDone: Bool
     var exitDelayMinutes: Int?
+    var dwellMinutes: Int?
     var isRouteTrigger: Bool
     var waypointData: Data?
     var tags: [Int]
@@ -48,6 +49,7 @@ struct BackupMemo: Codable {
         isFavorite       = memo.isFavorite
         isDone           = memo.isDone
         exitDelayMinutes = memo.exitDelayMinutes
+        dwellMinutes     = memo.dwellMinutes
         isRouteTrigger   = memo.isRouteTrigger
         waypointData     = memo.waypointData
         tags             = memo.tags
@@ -79,8 +81,9 @@ struct BackupMemo: Codable {
             tags:             tags,
             customTags:       customTags
         )
-        memo.id     = id
-        memo.isDone = isDone
+        memo.id           = id
+        memo.isDone       = isDone
+        memo.dwellMinutes = dwellMinutes
         return memo
     }
 }
