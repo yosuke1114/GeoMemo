@@ -28,6 +28,7 @@ struct MemoEntry: TimelineEntry {
 
     struct MemoSnapshot {
         let title: String
+        let note: String
         let locationName: String
         let colorIndex: Int
         let isFavorite: Bool
@@ -81,9 +82,11 @@ struct MemoEntry: TimelineEntry {
     static let placeholder = MemoEntry(
         date: .now,
         memos: [
-            MemoSnapshot(title: "Corner Coffee", locationName: "SHIBUYA, TOKYO", colorIndex: 0, isFavorite: false, tags: [2], customTags: [], deadline: Date().addingTimeInterval(7200), routeCurrentWaypoint: nil, routeTotalWaypoints: nil),
-            MemoSnapshot(title: "Bookstore Find", locationName: "SHIMOKITAZAWA", colorIndex: 1, isFavorite: true, tags: [8], customTags: [], deadline: nil, routeCurrentWaypoint: nil, routeTotalWaypoints: nil),
-            MemoSnapshot(title: "Park Bench Note", locationName: "YOYOGI PARK", colorIndex: 3, isFavorite: false, tags: [], customTags: [], deadline: nil, routeCurrentWaypoint: nil, routeTotalWaypoints: nil),
+            MemoSnapshot(title: "Corner Coffee", note: "The espresso here is perfect", locationName: "SHIBUYA, TOKYO", colorIndex: 0, isFavorite: false, tags: [2], customTags: [], deadline: Date().addingTimeInterval(7200), routeCurrentWaypoint: nil, routeTotalWaypoints: nil),
+            MemoSnapshot(title: "Bookstore Find", note: "Check the second floor shelves", locationName: "SHIMOKITAZAWA", colorIndex: 1, isFavorite: true, tags: [8], customTags: [], deadline: nil, routeCurrentWaypoint: nil, routeTotalWaypoints: nil),
+            MemoSnapshot(title: "Park Bench Note", note: "Great spot to read on weekends", locationName: "YOYOGI PARK", colorIndex: 3, isFavorite: false, tags: [], customTags: [], deadline: nil, routeCurrentWaypoint: nil, routeTotalWaypoints: nil),
+            MemoSnapshot(title: "Train Station", note: "Exit B2 for the shortcut", locationName: "SHINJUKU", colorIndex: 2, isFavorite: false, tags: [7], customTags: [], deadline: nil, routeCurrentWaypoint: nil, routeTotalWaypoints: nil),
+            MemoSnapshot(title: "Lunch Spot", note: "Set meal is best value here", locationName: "HARAJUKU", colorIndex: 4, isFavorite: true, tags: [3], customTags: [], deadline: nil, routeCurrentWaypoint: nil, routeTotalWaypoints: nil),
         ]
     )
 
@@ -138,6 +141,7 @@ struct GeoMemoProvider: TimelineProvider {
             let total  = routeCountsDict[memoID]
             return MemoEntry.MemoSnapshot(
                 title: memo.title,
+                note: memo.note,
                 locationName: memo.locationName,
                 colorIndex: memo.colorIndex,
                 isFavorite: memo.isFavorite,
@@ -157,7 +161,7 @@ struct GeoMemoProvider: TimelineProvider {
             return false
         }
 
-        return MemoEntry(date: .now, memos: Array(snapshots.prefix(3)))
+        return MemoEntry(date: .now, memos: Array(snapshots.prefix(5)))
     }
 }
 
@@ -369,6 +373,119 @@ struct MediumWidgetView: View {
     }
 }
 
+// MARK: - Large Widget View
+
+struct LargeWidgetView: View {
+    let entry: MemoEntry
+
+    var body: some View {
+        if entry.memos.isEmpty {
+            VStack(spacing: 8) {
+                Text("GeoMemo")
+                    .font(.system(size: 14, weight: .bold))
+                    .foregroundStyle(Brand.blue)
+                Text("No memos")
+                    .font(.system(size: 14))
+                    .foregroundStyle(Brand.secondaryText)
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+        } else {
+            VStack(alignment: .leading, spacing: 0) {
+                Text("GeoMemo")
+                    .font(.system(size: 12, weight: .bold))
+                    .foregroundStyle(Brand.blue)
+                    .padding(.bottom, 8)
+
+                ForEach(Array(entry.memos.prefix(5).enumerated()), id: \.offset) { index, memo in
+                    HStack(alignment: .top, spacing: 10) {
+                        // カラードット
+                        Circle()
+                            .fill(MemoColor(rawValue: memo.colorIndex)?.color ?? Brand.blue)
+                            .frame(width: 9, height: 9)
+                            .padding(.top, 4)
+
+                        VStack(alignment: .leading, spacing: 3) {
+                            // タイトル行
+                            HStack(spacing: 4) {
+                                Text(memo.title)
+                                    .font(.system(size: 14, weight: .semibold))
+                                    .foregroundStyle(Brand.primaryText)
+                                    .lineLimit(1)
+
+                                Spacer()
+
+                                if memo.isRouteInProgress {
+                                    Image(systemName: "arrow.triangle.turn.up.right.circle.fill")
+                                        .font(.system(size: 11))
+                                        .foregroundStyle(Brand.blue)
+                                } else if memo.hasUrgentDeadline {
+                                    Image(systemName: "clock.fill")
+                                        .font(.system(size: 11))
+                                        .foregroundStyle(Color(hex: "E5484D"))
+                                } else if memo.isFavorite {
+                                    Image(systemName: "heart.fill")
+                                        .font(.system(size: 10))
+                                        .foregroundStyle(Color(hex: "E5484D"))
+                                }
+
+                                if !memo.locationName.isEmpty {
+                                    Text(memo.locationName)
+                                        .font(.system(size: 10, weight: .medium))
+                                        .foregroundStyle(Brand.secondaryText)
+                                        .lineLimit(1)
+                                }
+                            }
+
+                            // ノートプレビュー
+                            if !memo.note.isEmpty {
+                                Text(memo.note)
+                                    .font(.system(size: 12, weight: .regular))
+                                    .foregroundStyle(Brand.secondaryText)
+                                    .lineLimit(1)
+                            }
+
+                            // ルート進行中 > 期限バッジ > タグ の優先順
+                            if let cur = memo.routeCurrentWaypoint, let tot = memo.routeTotalWaypoints {
+                                HStack(spacing: 3) {
+                                    Image(systemName: "arrow.triangle.turn.up.right.circle")
+                                        .font(.system(size: 8))
+                                    Text("WP \(cur)/\(tot)")
+                                        .font(.system(size: 9, weight: .semibold, design: .monospaced))
+                                }
+                                .foregroundStyle(Brand.blue)
+                            } else if let badge = memo.deadlineBadgeText {
+                                HStack(spacing: 2) {
+                                    Image(systemName: "clock.fill")
+                                        .font(.system(size: 8))
+                                    Text(badge)
+                                        .font(.system(size: 9, weight: .semibold, design: .monospaced))
+                                }
+                                .foregroundStyle(memo.hasUrgentDeadline ? Color(hex: "E5484D") : Color.orange)
+                            } else if let tagLabel = memo.firstTagLabel {
+                                Text(tagLabel)
+                                    .font(.system(size: 9, weight: .medium))
+                                    .foregroundStyle(Brand.blue)
+                            }
+                        }
+                    }
+                    .padding(.vertical, 6)
+                    .background(
+                        memo.hasUrgentDeadline ? Color(hex: "E5484D").opacity(0.05) :
+                        memo.isRouteInProgress  ? Brand.blue.opacity(0.05) : Color.clear
+                    )
+
+                    if index < entry.memos.prefix(5).count - 1 {
+                        Divider()
+                    }
+                }
+
+                Spacer(minLength: 0)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
+    }
+}
+
 // MARK: - Widget Definition
 
 struct geomemoWidget: Widget {
@@ -377,7 +494,9 @@ struct geomemoWidget: Widget {
     var body: some WidgetConfiguration {
         StaticConfiguration(kind: kind, provider: GeoMemoProvider()) { entry in
             GeometryReader { geo in
-                if geo.size.width > 200 {
+                if geo.size.width > 200 && geo.size.height > 200 {
+                    LargeWidgetView(entry: entry)
+                } else if geo.size.width > 200 {
                     MediumWidgetView(entry: entry)
                 } else {
                     SmallWidgetView(entry: entry)
@@ -387,7 +506,7 @@ struct geomemoWidget: Widget {
         }
         .configurationDisplayName("GeoMemo")
         .description("Shows your most important memos")
-        .supportedFamilies([.systemSmall, .systemMedium])
+        .supportedFamilies([.systemSmall, .systemMedium, .systemLarge])
     }
 }
 
@@ -400,6 +519,12 @@ struct geomemoWidget: Widget {
 }
 
 #Preview(as: .systemMedium) {
+    geomemoWidget()
+} timeline: {
+    MemoEntry.placeholder
+}
+
+#Preview(as: .systemLarge) {
     geomemoWidget()
 } timeline: {
     MemoEntry.placeholder
