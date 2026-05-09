@@ -266,7 +266,7 @@ struct SmallWidgetView: View {
                 Text("GeoMemo")
                     .font(.system(size: 13, weight: .bold))
                     .foregroundStyle(Brand.blue)
-                Text("No memos")
+                Text(String(localized: "No memos"))
                     .font(.system(size: 13))
                     .foregroundStyle(Brand.secondaryText)
             }
@@ -285,7 +285,7 @@ struct MediumWidgetView: View {
                 Text("GeoMemo")
                     .font(.system(size: 13, weight: .bold))
                     .foregroundStyle(Brand.blue)
-                Text("No memos")
+                Text(String(localized: "No memos"))
                     .font(.system(size: 13))
                     .foregroundStyle(Brand.secondaryText)
             }
@@ -384,7 +384,7 @@ struct LargeWidgetView: View {
                 Text("GeoMemo")
                     .font(.system(size: 14, weight: .bold))
                     .foregroundStyle(Brand.blue)
-                Text("No memos")
+                Text(String(localized: "No memos"))
                     .font(.system(size: 14))
                     .foregroundStyle(Brand.secondaryText)
             }
