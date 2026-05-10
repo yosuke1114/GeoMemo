@@ -82,6 +82,8 @@ struct MemoEditorView: View {
     @State private var tagSuggestTask: Task<Void, Never>? = nil
 
     @ObservedObject private var locationManager = LocationManager.shared
+    @ObservedObject private var store = StoreKitManager.shared
+    @State private var showProPaywall = false
 
     init(mode: MemoEditorMode, onDelete: (() -> Void)? = nil) {
         self.mode = mode
@@ -277,6 +279,9 @@ struct MemoEditorView: View {
             .presentationDetents([.large])
             .presentationDragIndicator(.hidden)
         }
+        .sheet(isPresented: $showProPaywall) {
+            PaywallView()
+        }
         .alert("Delete this memo?", isPresented: $showDeleteAlert) {
             Button("Delete", role: .destructive) {
                 HapticManager.notification(.warning)
@@ -426,18 +431,30 @@ struct MemoEditorView: View {
                 VStack(alignment: .leading, spacing: 2) {
                     Text("LIST MODE")
                         .font(.system(size: 13, weight: .semibold))
-                        .foregroundColor(Brand.primaryText.opacity(0.5))
+                        .foregroundColor(store.isPro ? Brand.primaryText.opacity(0.5) : Brand.secondaryText.opacity(0.5))
                     Text(String(localized: "Checklist instead of a note"))
                         .font(.system(size: 12, weight: .regular))
-                        .foregroundColor(Brand.secondaryText)
+                        .foregroundColor(store.isPro ? Brand.secondaryText : Brand.secondaryText.opacity(0.4))
                 }
                 Spacer()
-                Toggle("", isOn: $isListMode)
-                    .labelsHidden()
-                    .tint(Brand.blue)
+                if store.isPro {
+                    Toggle("", isOn: $isListMode)
+                        .labelsHidden()
+                        .tint(Brand.blue)
+                } else {
+                    Image(systemName: "lock.fill")
+                        .font(.system(size: 16))
+                        .foregroundStyle(Brand.secondaryText.opacity(0.5))
+                }
             }
             .padding(.horizontal, 20)
             .padding(.vertical, 12)
+            .contentShape(Rectangle())
+            .onTapGesture {
+                guard !store.isPro else { return }
+                HapticManager.impact(.light)
+                showProPaywall = true
+            }
 
             if isListMode {
                 Divider()
@@ -767,18 +784,30 @@ struct MemoEditorView: View {
                 VStack(alignment: .leading, spacing: 2) {
                     Text("ROUTE TRIGGER")
                         .font(.system(size: 17, weight: .semibold))
-                        .foregroundColor(Brand.primaryText)
+                        .foregroundColor(store.isPro ? Brand.primaryText : Brand.primaryText.opacity(0.4))
                     Text(String(localized: "Notify when passing waypoints"))
                         .font(.system(size: 12, weight: .regular))
-                        .foregroundColor(Brand.secondaryText)
+                        .foregroundColor(store.isPro ? Brand.secondaryText : Brand.secondaryText.opacity(0.4))
                 }
                 Spacer()
-                Toggle("", isOn: $isRouteTrigger)
-                    .labelsHidden()
-                    .tint(Brand.blue)
+                if store.isPro {
+                    Toggle("", isOn: $isRouteTrigger)
+                        .labelsHidden()
+                        .tint(Brand.blue)
+                } else {
+                    Image(systemName: "lock.fill")
+                        .font(.system(size: 16))
+                        .foregroundStyle(Brand.secondaryText.opacity(0.5))
+                }
             }
             .padding(.horizontal, 20)
             .padding(.vertical, 12)
+            .contentShape(Rectangle())
+            .onTapGesture {
+                guard !store.isPro else { return }
+                HapticManager.impact(.light)
+                showProPaywall = true
+            }
 
             if isRouteTrigger {
                 Divider()

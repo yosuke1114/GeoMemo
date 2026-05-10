@@ -186,7 +186,7 @@ struct FavoritePlaceEditorView: View {
     }
 }
 
-private extension FavoritePlaceEditorView.Mode {
+extension FavoritePlaceEditorView.Mode {
     var navigationTitle: String {
         switch self {
         case .add:  return String(localized: "Add Place")

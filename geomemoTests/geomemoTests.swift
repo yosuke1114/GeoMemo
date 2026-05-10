@@ -9,6 +9,7 @@ import Testing
 import Foundation
 import CoreLocation
 import CoreSpotlight
+import SwiftData
 import UserNotifications
 @testable import geomemo
 
@@ -1429,5 +1430,366 @@ struct StoreKitManagerStateTests {
         await manager.purchase()
         #expect(manager.purchaseError != nil, "製品なしで購入するとエラーが設定されるべき")
         #expect(manager.purchaseInProgress == false, "購入完了後はpurchaseInProgressがfalseになるべき")
+    }
+}
+
+// MARK: - FavoritePlace モデルテスト
+
+@Suite("FavoritePlace モデル")
+struct FavoritePlaceModelTests {
+
+    // MARK: デフォルト値
+
+    @Test("デフォルトiconName は mappin.fill")
+    func defaultIconName() {
+        let place = FavoritePlace(name: "テスト", subtitle: "", latitude: 0, longitude: 0)
+        #expect(place.iconName == "mappin.fill")
+    }
+
+    @Test("id は UUID 型かつ非ゼロ")
+    func idIsValidUUID() {
+        let place = FavoritePlace(name: "テスト", subtitle: "", latitude: 0, longitude: 0)
+        #expect(place.id != UUID(uuidString: "00000000-0000-0000-0000-000000000000")!)
+    }
+
+    @Test("createdAt は初期化直後の現在時刻に近い")
+    func createdAtIsNearNow() {
+        let before = Date()
+        let place = FavoritePlace(name: "テスト", subtitle: "", latitude: 0, longitude: 0)
+        let after = Date()
+        #expect(place.createdAt >= before)
+        #expect(place.createdAt <= after)
+    }
+
+    // MARK: カスタム init
+
+    @Test("init: name が正しく設定される")
+    func initSetsName() {
+        let place = FavoritePlace(name: "自宅", subtitle: "東京都渋谷区", latitude: 35.66, longitude: 139.70)
+        #expect(place.name == "自宅")
+    }
+
+    @Test("init: subtitle が正しく設定される")
+    func initSetsSubtitle() {
+        let place = FavoritePlace(name: "自宅", subtitle: "東京都渋谷区", latitude: 35.66, longitude: 139.70)
+        #expect(place.subtitle == "東京都渋谷区")
+    }
+
+    @Test("init: latitude が正しく設定される")
+    func initSetsLatitude() {
+        let place = FavoritePlace(name: "自宅", subtitle: "", latitude: 35.6895, longitude: 139.6917)
+        #expect(place.latitude == 35.6895)
+    }
+
+    @Test("init: longitude が正しく設定される")
+    func initSetsLongitude() {
+        let place = FavoritePlace(name: "自宅", subtitle: "", latitude: 35.6895, longitude: 139.6917)
+        #expect(place.longitude == 139.6917)
+    }
+
+    @Test("init: iconName を明示指定できる")
+    func initSetsIconName() {
+        let place = FavoritePlace(name: "自宅", subtitle: "", latitude: 0, longitude: 0, iconName: "house.fill")
+        #expect(place.iconName == "house.fill")
+    }
+
+    // MARK: coordinate プロパティ
+
+    @Test("coordinate.latitude が latitude と一致する")
+    func coordinateLatitude() {
+        let place = FavoritePlace(name: "テスト", subtitle: "", latitude: 35.6895, longitude: 139.6917)
+        #expect(place.coordinate.latitude == 35.6895)
+    }
+
+    @Test("coordinate.longitude が longitude と一致する")
+    func coordinateLongitude() {
+        let place = FavoritePlace(name: "テスト", subtitle: "", latitude: 35.6895, longitude: 139.6917)
+        #expect(place.coordinate.longitude == 139.6917)
+    }
+
+    @Test("latitude/longitude を変更すると coordinate に反映される")
+    func coordinateReflectsMutation() {
+        let place = FavoritePlace(name: "テスト", subtitle: "", latitude: 0.0, longitude: 0.0)
+        place.latitude = 34.6937
+        place.longitude = 135.5023
+        #expect(place.coordinate.latitude == 34.6937)
+        #expect(place.coordinate.longitude == 135.5023)
+    }
+
+    @Test("緯度経度ゼロでも coordinate が返る（デフォルト座標）")
+    func coordinateWithZeroValues() {
+        let place = FavoritePlace(name: "テスト", subtitle: "", latitude: 0.0, longitude: 0.0)
+        #expect(place.coordinate.latitude == 0.0)
+        #expect(place.coordinate.longitude == 0.0)
+    }
+}
+
+// MARK: - favoritePlaceIcons 配列テスト
+
+@Suite("favoritePlaceIcons")
+struct FavoritePlaceIconsTests {
+
+    @Test("アイコンは10個定義されている")
+    func iconsCountIsTen() {
+        #expect(favoritePlaceIcons.count == 10)
+    }
+
+    @Test("全アイコンの systemName が空でない")
+    func allSystemNamesNonEmpty() {
+        for icon in favoritePlaceIcons {
+            #expect(!icon.systemName.isEmpty, "systemName が空のアイコンがある: \(icon.label)")
+        }
+    }
+
+    @Test("全アイコンの label が空でない")
+    func allLabelsNonEmpty() {
+        for icon in favoritePlaceIcons {
+            #expect(!icon.label.isEmpty, "label が空のアイコンがある: \(icon.systemName)")
+        }
+    }
+
+    @Test("systemName に重複がない")
+    func systemNamesAreUnique() {
+        let names = favoritePlaceIcons.map { $0.systemName }
+        let unique = Set(names)
+        #expect(names.count == unique.count)
+    }
+
+    @Test("label に重複がない")
+    func labelsAreUnique() {
+        let labels = favoritePlaceIcons.map { $0.label }
+        let unique = Set(labels)
+        #expect(labels.count == unique.count)
+    }
+
+    @Test("mappin.fill が含まれている（デフォルトアイコン）")
+    func containsMappinFill() {
+        let hasMappin = favoritePlaceIcons.contains { $0.systemName == "mappin.fill" }
+        #expect(hasMappin)
+    }
+
+    @Test("house.fill が含まれている")
+    func containsHouseFill() {
+        let has = favoritePlaceIcons.contains { $0.systemName == "house.fill" }
+        #expect(has)
+    }
+}
+
+// MARK: - FavoritePlaceEditorView.Mode テスト
+
+@Suite("FavoritePlaceEditorView.Mode")
+struct FavoritePlaceEditorViewModeTests {
+
+    @Test(".add のナビゲーションタイトルは 'Add Place'")
+    func addModeNavigationTitle() {
+        let mode = FavoritePlaceEditorView.Mode.add
+        #expect(mode.navigationTitle == String(localized: "Add Place"))
+    }
+
+    @Test(".edit のナビゲーションタイトルは 'Edit Place'")
+    func editModeNavigationTitle() {
+        let place = FavoritePlace(name: "自宅", subtitle: "", latitude: 0, longitude: 0)
+        let mode = FavoritePlaceEditorView.Mode.edit(place)
+        #expect(mode.navigationTitle == String(localized: "Edit Place"))
+    }
+}
+
+// MARK: - GeoMemoMigrationPlan スキーマテスト
+
+@Suite("GeoMemoMigrationPlan")
+struct GeoMemoMigrationPlanTests {
+
+    @Test("schemas 配列は6バージョン含む")
+    func schemaCountIsSix() {
+        #expect(GeoMemoMigrationPlan.schemas.count == 6)
+    }
+
+    @Test("stages 配列は5ステージ含む（V1→V2, V2→V3, V3→V4, V4→V5, V5→V6）")
+    func stageCountIsFive() {
+        #expect(GeoMemoMigrationPlan.stages.count == 5)
+    }
+
+    @Test("最新スキーマ V6 が schemas に含まれている")
+    func schemasContainsV6() {
+        let identifiers = GeoMemoMigrationPlan.schemas.map { $0.versionIdentifier }
+        let hasV6 = identifiers.contains(GeoMemoSchemaV6.versionIdentifier)
+        #expect(hasV6)
+    }
+
+    @Test("V6 のモデルに FavoritePlace が含まれる")
+    func v6ModelsIncludeFavoritePlace() {
+        let modelTypes = GeoMemoSchemaV6.models.map { ObjectIdentifier($0) }
+        let favID = ObjectIdentifier(FavoritePlace.self)
+        #expect(modelTypes.contains(favID))
+    }
+
+    @Test("V6 のモデルに GeoMemo が含まれる")
+    func v6ModelsIncludeGeoMemo() {
+        let modelTypes = GeoMemoSchemaV6.models.map { ObjectIdentifier($0) }
+        let geoID = ObjectIdentifier(GeoMemo.self)
+        #expect(modelTypes.contains(geoID))
+    }
+}
+
+// MARK: - FavoritePlace SwiftData CRUD テスト
+
+@Suite("FavoritePlace CRUD（インメモリ）")
+@MainActor
+struct FavoritePlaceCRUDTests {
+
+    /// テスト用インメモリ ModelContainer を作成する
+    private func makeContainer() throws -> ModelContainer {
+        let schema = Schema([FavoritePlace.self])
+        let config = ModelConfiguration(schema: schema, isStoredInMemoryOnly: true)
+        return try ModelContainer(for: schema, configurations: [config])
+    }
+
+    @Test("insert: FavoritePlace を保存できる")
+    func insertFavoritePlace() throws {
+        let container = try makeContainer()
+        let context = container.mainContext
+
+        let place = FavoritePlace(name: "自宅", subtitle: "東京都渋谷区", latitude: 35.66, longitude: 139.70)
+        context.insert(place)
+        try context.save()
+
+        let fetched = try context.fetch(FetchDescriptor<FavoritePlace>())
+        #expect(fetched.count == 1)
+        #expect(fetched.first?.name == "自宅")
+    }
+
+    @Test("insert: 複数の FavoritePlace を保存できる")
+    func insertMultiplePlaces() throws {
+        let container = try makeContainer()
+        let context = container.mainContext
+
+        let places = [
+            FavoritePlace(name: "自宅", subtitle: "", latitude: 35.6895, longitude: 139.6917),
+            FavoritePlace(name: "職場", subtitle: "", latitude: 35.6762, longitude: 139.6503),
+            FavoritePlace(name: "ジム",  subtitle: "", latitude: 35.6580, longitude: 139.7016),
+        ]
+        places.forEach { context.insert($0) }
+        try context.save()
+
+        let fetched = try context.fetch(FetchDescriptor<FavoritePlace>())
+        #expect(fetched.count == 3)
+    }
+
+    @Test("update: name を変更できる")
+    func updateFavoritePlaceName() throws {
+        let container = try makeContainer()
+        let context = container.mainContext
+
+        let place = FavoritePlace(name: "旧名称", subtitle: "", latitude: 0, longitude: 0)
+        context.insert(place)
+        try context.save()
+
+        place.name = "新名称"
+        try context.save()
+
+        let fetched = try context.fetch(FetchDescriptor<FavoritePlace>())
+        #expect(fetched.first?.name == "新名称")
+    }
+
+    @Test("update: iconName を変更できる")
+    func updateFavoritePlaceIconName() throws {
+        let container = try makeContainer()
+        let context = container.mainContext
+
+        let place = FavoritePlace(name: "テスト", subtitle: "", latitude: 0, longitude: 0)
+        context.insert(place)
+        try context.save()
+
+        place.iconName = "house.fill"
+        try context.save()
+
+        let fetched = try context.fetch(FetchDescriptor<FavoritePlace>())
+        #expect(fetched.first?.iconName == "house.fill")
+    }
+
+    @Test("update: 座標を変更できる")
+    func updateFavoritePlaceCoordinate() throws {
+        let container = try makeContainer()
+        let context = container.mainContext
+
+        let place = FavoritePlace(name: "テスト", subtitle: "", latitude: 0.0, longitude: 0.0)
+        context.insert(place)
+        try context.save()
+
+        place.latitude = 35.6895
+        place.longitude = 139.6917
+        try context.save()
+
+        let fetched = try context.fetch(FetchDescriptor<FavoritePlace>())
+        #expect(fetched.first?.latitude == 35.6895)
+        #expect(fetched.first?.longitude == 139.6917)
+    }
+
+    @Test("delete: FavoritePlace を削除できる")
+    func deleteFavoritePlace() throws {
+        let container = try makeContainer()
+        let context = container.mainContext
+
+        let place = FavoritePlace(name: "削除対象", subtitle: "", latitude: 0, longitude: 0)
+        context.insert(place)
+        try context.save()
+
+        context.delete(place)
+        try context.save()
+
+        let fetched = try context.fetch(FetchDescriptor<FavoritePlace>())
+        #expect(fetched.isEmpty)
+    }
+
+    @Test("delete: 複数あるうち1件だけ削除できる")
+    func deleteOneOfMultiplePlaces() throws {
+        let container = try makeContainer()
+        let context = container.mainContext
+
+        let p1 = FavoritePlace(name: "自宅", subtitle: "", latitude: 35.0, longitude: 139.0)
+        let p2 = FavoritePlace(name: "職場", subtitle: "", latitude: 35.5, longitude: 139.5)
+        context.insert(p1)
+        context.insert(p2)
+        try context.save()
+
+        context.delete(p1)
+        try context.save()
+
+        let fetched = try context.fetch(FetchDescriptor<FavoritePlace>())
+        #expect(fetched.count == 1)
+        #expect(fetched.first?.name == "職場")
+    }
+
+    @Test("fetch: createdAt 昇順でソートできる")
+    func fetchSortedByCreatedAt() throws {
+        let container = try makeContainer()
+        let context = container.mainContext
+
+        let p1 = FavoritePlace(name: "古い", subtitle: "", latitude: 0, longitude: 0)
+        p1.createdAt = Date(timeIntervalSince1970: 1000)
+        let p2 = FavoritePlace(name: "新しい", subtitle: "", latitude: 0, longitude: 0)
+        p2.createdAt = Date(timeIntervalSince1970: 2000)
+        context.insert(p1)
+        context.insert(p2)
+        try context.save()
+
+        let descriptor = FetchDescriptor<FavoritePlace>(sortBy: [SortDescriptor(\.createdAt)])
+        let fetched = try context.fetch(descriptor)
+        #expect(fetched.first?.name == "古い")
+        #expect(fetched.last?.name == "新しい")
+    }
+
+    @Test("FavoritePlace の id は保存後も同一の UUID を維持する")
+    func idPersistsAfterSave() throws {
+        let container = try makeContainer()
+        let context = container.mainContext
+
+        let place = FavoritePlace(name: "テスト", subtitle: "", latitude: 0, longitude: 0)
+        let originalID = place.id
+        context.insert(place)
+        try context.save()
+
+        let fetched = try context.fetch(FetchDescriptor<FavoritePlace>())
+        #expect(fetched.first?.id == originalID)
     }
 }
