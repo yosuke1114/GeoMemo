@@ -20,12 +20,30 @@ final class GeoMemoAppDelegate: NSObject, UIApplicationDelegate {
         Task { @MainActor in
             do {
                 try await CKShareService.shared.acceptShare(metadata: metadata)
-                NotificationCenter.default.post(name: .didAcceptSharedMemo, object: metadata.share.recordID)
+                // share の所有者をフレンドとして登録（既存なら何もしない）
+                let ownerRecordID = metadata.ownerIdentity.userRecordID?.recordName ?? ""
+                let ownerName = metadata.ownerIdentity.nameComponents.map {
+                    PersonNameComponentsFormatter().string(from: $0)
+                } ?? ""
+                NotificationCenter.default.post(
+                    name: .didAcceptSharedMemo,
+                    object: AcceptedShareInfo(
+                        ownerRecordID: ownerRecordID,
+                        ownerName: ownerName,
+                        shareRecordID: metadata.share.recordID
+                    )
+                )
             } catch {
                 print("[CKShare] Failed to accept: \(error)")
             }
         }
     }
+}
+
+struct AcceptedShareInfo {
+    let ownerRecordID: String
+    let ownerName: String
+    let shareRecordID: CKRecord.ID
 }
 
 extension Notification.Name {

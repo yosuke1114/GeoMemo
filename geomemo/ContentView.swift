@@ -2,6 +2,7 @@ import SwiftUI
 import SwiftData
 import MapKit
 import CoreLocation
+import CloudKit
 // Phosphor icons loaded from local Assets.xcassets
 
 // Brand colors and Color(hex:) are defined in Theme.swift
@@ -107,6 +108,7 @@ struct ContentView: View {
     @Query(sort: \GeoMemo.createdAt, order: .reverse) private var memos: [GeoMemo]
     @Query(sort: \SharedMemo.createdAt, order: .reverse) private var allSharedMemos: [SharedMemo]
     @Query(sort: \UserProfile.createdAt) private var profiles: [UserProfile]
+    @Query(sort: \FriendConnection.createdAt) private var friends: [FriendConnection]
 
     @Environment(\.modelContext) private var modelContext
     @Environment(\.scenePhase) private var scenePhase
@@ -186,6 +188,28 @@ struct ContentView: View {
                 Task { await handleSharedMemoFired(geofenceIdentifier: identifier) }
             }
         }
+        .onReceive(NotificationCenter.default.publisher(for: .didAcceptSharedMemo)) { notification in
+            if let info = notification.object as? AcceptedShareInfo {
+                registerFriendIfNeeded(info: info)
+                Task { await syncSharedMemos() }
+            }
+        }
+    }
+
+    // MARK: - Friend Auto-Registration
+
+    /// CKShare 受諾時に、share 所有者を FriendConnection として登録（既存ならスキップ）
+    private func registerFriendIfNeeded(info: AcceptedShareInfo) {
+        guard !info.ownerRecordID.isEmpty else { return }
+        if friends.contains(where: { $0.friendRecordID == info.ownerRecordID }) { return }
+        let friend = FriendConnection(
+            friendRecordID:    info.ownerRecordID,
+            friendDisplayName: info.ownerName.isEmpty ? String(localized: "フレンド") : info.ownerName,
+            status:            .accepted,
+            inviteCode:        ""  // CKShare ベースでは不要
+        )
+        modelContext.insert(friend)
+        try? modelContext.save()
     }
 
     // MARK: - Sync Received SharedMemos
@@ -193,19 +217,20 @@ struct ContentView: View {
     @State private var isSyncing = false
 
     private func syncSharedMemos() async {
-        guard !isSyncing, let profile = profiles.first else { return }
+        guard !isSyncing, profiles.first != nil else { return }
         isSyncing = true
         defer { isSyncing = false }
         do {
-            let received = try await CloudKitShareService.shared.fetchReceivedSharedMemos(
-                myRecordID: profile.iCloudRecordID
-            )
+            let received = try await CKShareService.shared.fetchReceivedSharedMemos()
             for data in received {
-                if let existing = allSharedMemos.first(where: { $0.ckRecordName == data.ckRecordName }) {
-                    existing.apply(data)
+                let recordName = data.ckRecordID.recordName
+                if let existing = allSharedMemos.first(where: { $0.ckRecordName == recordName }) {
+                    existing.status      = data.status
+                    existing.firedAt     = data.firedAt
+                    existing.completedAt = data.completedAt
                 } else {
                     let shared = SharedMemo(
-                        ckRecordName:        data.ckRecordName,
+                        ckRecordName:        recordName,
                         memoTitle:           data.memoTitle,
                         memoLocationName:    data.memoLocationName,
                         memoLatitude:        data.memoLatitude,
@@ -214,7 +239,7 @@ struct ContentView: View {
                         memoDeadline:        data.memoDeadline,
                         memoTimeWindowStart: data.memoTimeWindowStart,
                         memoTimeWindowEnd:   data.memoTimeWindowEnd,
-                        requesterRecordID:   data.requesterRecordID,
+                        requesterRecordID:   "",  // CKShareでは依頼者IDは share の owner なので不要
                         requesterName:       data.requesterName,
                         recipientRecordID:   data.recipientRecordID,
                         recipientName:       data.recipientName,
@@ -249,8 +274,10 @@ struct ContentView: View {
         shared.status = finalStatus
         if shared.autoComplete { shared.completedAt = now }
 
+        // 受信者は Shared DB 経由でレコードにアクセスするので、recordID から探索
+        let recordID = ckRecordID(for: shared)
         do {
-            try await CloudKitShareService.shared.updateStatus(shared.ckRecordName, status: finalStatus, date: now)
+            try await CKShareService.shared.updateStatus(recordID: recordID, status: finalStatus, date: now)
         } catch {
             let event: PendingShareEvent = shared.autoComplete
                 ? .completed(ckRecordName: shared.ckRecordName, completedAt: now)
@@ -266,6 +293,15 @@ struct ContentView: View {
 
         LocationManager.shared.stopMonitoring(memoID: geofenceIdentifier)
         try? modelContext.save()
+    }
+
+    /// ローカル SharedMemo から CKRecord.ID を復元する（Private/Shared DB どちらにあるかは CKShareService 側で判定）
+    private func ckRecordID(for shared: SharedMemo) -> CKRecord.ID {
+        let zoneID = CKRecordZone.ID(
+            zoneName: CKShareService.sharingZoneName,
+            ownerName: shared.isMyRequest ? CKCurrentUserDefaultName : shared.requesterRecordID
+        )
+        return CKRecord.ID(recordName: shared.ckRecordName, zoneID: zoneID)
     }
 }
 
@@ -1668,10 +1704,14 @@ struct ListTabView: View {
         shared.completedAt = now
         LocationManager.shared.stopMonitoring(memoID: shared.geofenceIdentifier)
         try? modelContext.save()
+        let zoneID = CKRecordZone.ID(
+            zoneName: CKShareService.sharingZoneName,
+            ownerName: shared.isMyRequest ? CKCurrentUserDefaultName : shared.requesterRecordID
+        )
+        let recordID = CKRecord.ID(recordName: shared.ckRecordName, zoneID: zoneID)
         Task {
             do {
-                try await CloudKitShareService.shared.updateStatus(
-                    shared.ckRecordName, status: .completed, date: now)
+                try await CKShareService.shared.updateStatus(recordID: recordID, status: .completed, date: now)
             } catch {
                 PendingEventQueue.shared.enqueue(.completed(ckRecordName: shared.ckRecordName, completedAt: now))
             }

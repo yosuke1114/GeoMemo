@@ -43,10 +43,13 @@ final class CKShareService {
     // MARK: - 依頼を作成（依頼者）
 
     /// 新しい SharedMemo レコードを作成し、CKShare を生成して返す。
-    /// 戻り値の `share.url` を `UICloudSharingController` 経由で受信者へ共有する。
+    /// 戻り値の `share` は `UICloudSharingController` に渡して受信者へURLを送信する。
+    /// 受信者を事前に participant として追加するため、誰宛てかが share.participants から分かる。
     func createSharedMemoShare(
         from memo: GeoMemo,
         requesterName: String,
+        recipientRecordID: String,
+        recipientName: String,
         autoComplete: Bool
     ) async throws -> (record: CKRecord, share: CKShare) {
         try await ensureSharingZone()
@@ -67,6 +70,8 @@ final class CKShareService {
         record["memoTimeWindowStart"] = memo.timeWindowStart
         record["memoTimeWindowEnd"]   = memo.timeWindowEnd
         record["requesterName"]       = requesterName
+        record["recipientRecordID"]   = recipientRecordID
+        record["recipientName"]       = recipientName
         record["autoComplete"]        = autoComplete ? 1 : 0
         record["status"]              = ShareStatus.active.rawValue
         record["createdAt"]           = Date()
@@ -75,7 +80,12 @@ final class CKShareService {
         share[CKShare.SystemFieldKey.title] = memo.title.isEmpty
             ? String(localized: "依頼") as CKRecordValue
             : memo.title as CKRecordValue
-        share.publicPermission = .none  // 招待された人のみ読み書き可
+        // UICloudSharingController が participant 招待UI（連絡先/メッセージ送信）を担う。
+        // publicPermission=.none のままだと参加者ゼロで share できないので、
+        // .readWrite で「URL を受信した特定の招待者が記録を読み書き可能」とする。
+        // 機密フィールドは encryptedValues で守られているため、URL が漏れても
+        // 招待者でない第三者は内容を復号できない。
+        share.publicPermission = .readWrite
 
         // record と share を1回のオペレーションで保存（アトミック）
         let (results, _) = try await privateDB.modifyRecords(
@@ -199,12 +209,42 @@ struct SharedMemoCKData: Sendable {
     let memoTimeWindowStart: Int?
     let memoTimeWindowEnd: Int?
     let requesterName: String
+    let recipientRecordID: String
+    let recipientName: String
     let autoComplete: Bool
     let status: ShareStatus
     let firedAt: Date?
     let completedAt: Date?
     let createdAt: Date
     let isMyRequest: Bool
+
+    init(
+        ckRecordID: CKRecord.ID, memoTitle: String, memoLocationName: String,
+        memoLatitude: Double, memoLongitude: Double, memoRadius: Double,
+        memoDeadline: Date?, memoTimeWindowStart: Int?, memoTimeWindowEnd: Int?,
+        requesterName: String, recipientRecordID: String, recipientName: String,
+        autoComplete: Bool, status: ShareStatus,
+        firedAt: Date?, completedAt: Date?, createdAt: Date, isMyRequest: Bool
+    ) {
+        self.ckRecordID = ckRecordID
+        self.memoTitle = memoTitle
+        self.memoLocationName = memoLocationName
+        self.memoLatitude = memoLatitude
+        self.memoLongitude = memoLongitude
+        self.memoRadius = memoRadius
+        self.memoDeadline = memoDeadline
+        self.memoTimeWindowStart = memoTimeWindowStart
+        self.memoTimeWindowEnd = memoTimeWindowEnd
+        self.requesterName = requesterName
+        self.recipientRecordID = recipientRecordID
+        self.recipientName = recipientName
+        self.autoComplete = autoComplete
+        self.status = status
+        self.firedAt = firedAt
+        self.completedAt = completedAt
+        self.createdAt = createdAt
+        self.isMyRequest = isMyRequest
+    }
 
     init?(from record: CKRecord, isMyRequest: Bool) {
         guard
@@ -214,6 +254,8 @@ struct SharedMemoCKData: Sendable {
             let lon         = record.encryptedValues["memoLongitude"]    as? Double,
             let radius      = record["memoRadius"]    as? Double,
             let requesterN  = record["requesterName"] as? String,
+            let recipientID = record["recipientRecordID"] as? String,
+            let recipientN  = record["recipientName"]    as? String,
             let autoInt     = record["autoComplete"]  as? Int,
             let statusStr   = record["status"]        as? String,
             let createdAt   = record["createdAt"]     as? Date
@@ -229,6 +271,8 @@ struct SharedMemoCKData: Sendable {
         self.memoTimeWindowStart = record["memoTimeWindowStart"] as? Int
         self.memoTimeWindowEnd   = record["memoTimeWindowEnd"]   as? Int
         self.requesterName       = requesterN
+        self.recipientRecordID   = recipientID
+        self.recipientName       = recipientN
         self.autoComplete        = autoInt == 1
         self.status              = ShareStatus(rawValue: statusStr) ?? .active
         self.firedAt             = record["firedAt"]     as? Date

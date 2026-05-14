@@ -1,5 +1,6 @@
 import SwiftUI
 import SwiftData
+import CloudKit
 
 // MARK: - メモ依頼シート
 
@@ -21,6 +22,8 @@ struct ShareMemoSheet: View {
     @State private var autoComplete: Bool = false
     @State private var isSending = false
     @State private var errorMessage: String?
+    @State private var shareWrapper: ShareWrapper?
+    @State private var pendingSharedMemoRecordID: CKRecord.ID?
 
     var body: some View {
         NavigationStack {
@@ -57,6 +60,21 @@ struct ShareMemoSheet: View {
             .background(Brand.background)
             .navigationTitle(String(localized: "依頼する"))
             .navigationBarTitleDisplayMode(.inline)
+            .sheet(item: $shareWrapper) { wrapper in
+                CloudSharingControllerSheet(
+                    share: wrapper.share,
+                    container: wrapper.container
+                ) { didShare in
+                    if didShare {
+                        saveLocalSharedMemo()
+                        HapticManager.notification(.success)
+                        dismiss()
+                    } else {
+                        // ユーザーがキャンセル → 作成したCKレコードもクリーンアップする
+                        cleanupCancelledShare()
+                    }
+                }
+            }
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button(String(localized: "キャンセル")) { dismiss() }
@@ -206,40 +224,53 @@ struct ShareMemoSheet: View {
 
         Task {
             do {
-                let ckName = try await CloudKitShareService.shared.createSharedMemo(
+                let (record, share) = try await CKShareService.shared.createSharedMemoShare(
                     from: memo,
-                    requesterProfile: profile,
-                    recipient: friend,
-                    autoComplete: autoComplete
-                )
-
-                // ローカルにも保存（見守りダッシュボード用）
-                let sharedMemo = SharedMemo(
-                    ckRecordName: ckName,
-                    memoTitle: memo.title,
-                    memoLocationName: memo.locationName,
-                    memoLatitude: memo.latitude,
-                    memoLongitude: memo.longitude,
-                    memoRadius: memo.radius,
-                    memoDeadline: memo.deadline,
-                    memoTimeWindowStart: memo.timeWindowStart,
-                    memoTimeWindowEnd: memo.timeWindowEnd,
-                    requesterRecordID: profile.iCloudRecordID,
                     requesterName: profile.displayName,
                     recipientRecordID: friend.friendRecordID,
                     recipientName: friend.friendDisplayName,
-                    autoComplete: autoComplete,
-                    isMyRequest: true
+                    autoComplete: autoComplete
                 )
-                modelContext.insert(sharedMemo)
-                try modelContext.save()
-
-                HapticManager.notification(.success)
-                dismiss()
+                pendingSharedMemoRecordID = record.recordID
+                shareWrapper = ShareWrapper(share: share, container: CKShareService.shared.container)
+                isSending = false
             } catch {
                 errorMessage = String(localized: "送信に失敗しました。もう一度お試しください。")
                 isSending = false
             }
+        }
+    }
+
+    /// CloudSharingController で共有が完了した後、ローカルキャッシュへ保存。
+    private func saveLocalSharedMemo() {
+        guard let friend = selectedFriend, let profile = myProfile,
+              let recordID = pendingSharedMemoRecordID else { return }
+        let sharedMemo = SharedMemo(
+            ckRecordName:        recordID.recordName,
+            memoTitle:           memo.title,
+            memoLocationName:    memo.locationName,
+            memoLatitude:        memo.latitude,
+            memoLongitude:       memo.longitude,
+            memoRadius:          memo.radius,
+            memoDeadline:        memo.deadline,
+            memoTimeWindowStart: memo.timeWindowStart,
+            memoTimeWindowEnd:   memo.timeWindowEnd,
+            requesterRecordID:   profile.iCloudRecordID,
+            requesterName:       profile.displayName,
+            recipientRecordID:   friend.friendRecordID,
+            recipientName:       friend.friendDisplayName,
+            autoComplete:        autoComplete,
+            isMyRequest:         true
+        )
+        modelContext.insert(sharedMemo)
+        try? modelContext.save()
+    }
+
+    /// CloudSharingController で「停止」を選んだ場合、サーバ側の record/share を削除。
+    private func cleanupCancelledShare() {
+        guard let recordID = pendingSharedMemoRecordID else { return }
+        Task {
+            _ = try? await CKShareService.shared.privateDB.deleteRecord(withID: recordID)
         }
     }
 }

@@ -1,5 +1,6 @@
 import SwiftUI
 import SwiftData
+import CloudKit
 
 // MARK: - 見守りダッシュボード（依頼者が確認する画面）
 
@@ -209,16 +210,17 @@ struct WatchDashboardView: View {
     // MARK: - Sync
 
     private func syncStatus() async {
-        guard !isSyncing, let profile = myProfile else { return }
+        guard !isSyncing, myProfile != nil else { return }
         isSyncing = true
         defer { isSyncing = false }
         do {
-            let sentData = try await CloudKitShareService.shared.fetchSentSharedMemos(
-                myRecordID: profile.iCloudRecordID
-            )
+            let sentData = try await CKShareService.shared.fetchSentSharedMemos()
             for data in sentData {
-                if let local = allSharedMemos.first(where: { $0.ckRecordName == data.ckRecordName }) {
-                    local.apply(data)
+                let recordName = data.ckRecordID.recordName
+                if let local = allSharedMemos.first(where: { $0.ckRecordName == recordName }) {
+                    local.status      = data.status
+                    local.firedAt     = data.firedAt
+                    local.completedAt = data.completedAt
                 }
             }
             try? modelContext.save()
@@ -228,10 +230,17 @@ struct WatchDashboardView: View {
     // MARK: - Cancel
 
     private func cancelSharedMemo(_ shared: SharedMemo) async {
+        let zoneID = CKRecordZone.ID(
+            zoneName: CKShareService.sharingZoneName,
+            ownerName: shared.isMyRequest ? CKCurrentUserDefaultName : shared.requesterRecordID
+        )
+        let recordID = CKRecord.ID(recordName: shared.ckRecordName, zoneID: zoneID)
         do {
-            try await CloudKitShareService.shared.cancelSharedMemo(shared.ckRecordName)
+            try await CKShareService.shared.cancelSharedMemo(recordID: recordID)
             shared.status = .cancelled
             try? modelContext.save()
-        } catch { /* エラーは後でリトライ */ }
+        } catch {
+            PendingEventQueue.shared.enqueue(.cancelled(ckRecordName: shared.ckRecordName))
+        }
     }
 }
