@@ -1599,14 +1599,14 @@ struct FavoritePlaceEditorViewModeTests {
 @Suite("GeoMemoMigrationPlan")
 struct GeoMemoMigrationPlanTests {
 
-    @Test("schemas 配列は7バージョン含む")
-    func schemaCountIsSeven() {
-        #expect(GeoMemoMigrationPlan.schemas.count == 7)
+    @Test("schemas 配列は8バージョン含む")
+    func schemaCountIsEight() {
+        #expect(GeoMemoMigrationPlan.schemas.count == 8)
     }
 
-    @Test("stages 配列は6ステージ含む（V1→V2, V2→V3, V3→V4, V4→V5, V5→V6, V6→V7）")
-    func stageCountIsSix() {
-        #expect(GeoMemoMigrationPlan.stages.count == 6)
+    @Test("stages 配列は7ステージ含む（V1→V2, V2→V3, V3→V4, V4→V5, V5→V6, V6→V7, V7→V8）")
+    func stageCountIsSeven() {
+        #expect(GeoMemoMigrationPlan.stages.count == 7)
     }
 
     @Test("最新スキーマ V7 が schemas に含まれている")

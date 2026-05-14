@@ -18,7 +18,7 @@ struct geomemoApp: App {
     static let isUITesting         = CommandLine.arguments.contains("-UITesting")
 
     var sharedModelContainer: ModelContainer = {
-        let schema = Schema([GeoMemo.self, FavoritePlace.self, UserProfile.self, FriendConnection.self])
+        let schema = Schema([GeoMemo.self, FavoritePlace.self, UserProfile.self, FriendConnection.self, SharedMemo.self])
 
         // テスト時はインメモリストアを使用（CloudKit タイムアウト・データ汚染を防ぐ）
         // Bundle.allBundles で xctest バンドルを検出（Unit/Swift Testing 対応）

@@ -362,6 +362,9 @@ extension LocationManager: CLLocationManagerDelegate {
                 // Live Activity にルート進行状況を反映（次に向かうWP番号を1始まりで表示）
                 LiveActivityManager.shared.updateRouteProgress(memoID: memoID, current: next + 1, total: total)
             }
+        } else if identifier.hasPrefix("shared_") {
+            // ── 共有メモジオフェンス（おつかい / 見守り）──────────────
+            NotificationCenter.default.post(name: .didEnterSharedMemoRegion, object: identifier)
         } else {
             // ── 通常ジオフェンス ─────────────────────────────────────
             let memoID = identifier
@@ -373,8 +376,8 @@ extension LocationManager: CLLocationManagerDelegate {
     func locationManager(_ manager: CLLocationManager, didExitRegion region: CLRegion) {
         guard let circularRegion = region as? CLCircularRegion else { return }
         let identifier = circularRegion.identifier
-        // ルートウェイポイントの退出は無視
-        guard !identifier.contains("|wp|") else { return }
+        // ルートウェイポイントと共有メモの退出は無視
+        guard !identifier.contains("|wp|") && !identifier.hasPrefix("shared_") else { return }
         NotificationCenter.default.post(name: .didExitGeoMemoRegion, object: identifier)
     }
 

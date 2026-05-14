@@ -12,9 +12,12 @@ struct MemoDetailView: View {
     
     @AppStorage("mapStyle") private var mapStyleRaw: String = GeoMapStyle.mono.rawValue
     @State private var showingEditSheet = false
+    @State private var showShareSheet = false
     @State private var cameraPosition: MapCameraPosition
     @State private var suggestedTags: [PresetTag] = []
     @State private var listItems: [ListItem] = []
+    @ObservedObject private var store = StoreKitManager.shared
+    @State private var showProPaywall = false
 
     private var currentMapStyle: GeoMapStyle {
         GeoMapStyle(rawValue: mapStyleRaw) ?? .mono
@@ -456,6 +459,20 @@ struct MemoDetailView: View {
                     }
                     .accessibilityLabel("Share memo")
 
+                    // 依頼するボタン（Pro限定）
+                    Button {
+                        HapticManager.impact(.light)
+                        if store.isPro {
+                            showShareSheet = true
+                        } else {
+                            showProPaywall = true
+                        }
+                    } label: {
+                        Image(systemName: store.isPro ? "person.wave.2" : "person.wave.2")
+                            .font(.system(size: 17))
+                            .foregroundColor(store.isPro ? Brand.primaryText : Brand.secondaryText.opacity(0.5))
+                    }
+
                     Button(action: { showingEditSheet = true }) {
                         Text("EDIT")
                             .font(.system(size: 16, weight: .semibold))
@@ -463,6 +480,12 @@ struct MemoDetailView: View {
                     }
                 }
             }
+        }
+        .sheet(isPresented: $showShareSheet) {
+            ShareMemoSheet(memo: memo)
+        }
+        .sheet(isPresented: $showProPaywall) {
+            PaywallView()
         }
         .sheet(isPresented: $showingEditSheet) {
             MemoEditorView(mode: MemoEditorMode.edit(memo), onDelete: {

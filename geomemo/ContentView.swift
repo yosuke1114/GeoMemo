@@ -105,6 +105,11 @@ extension String: @retroactive Identifiable {
 // MARK: - Main Content View
 struct ContentView: View {
     @Query(sort: \GeoMemo.createdAt, order: .reverse) private var memos: [GeoMemo]
+    @Query(sort: \SharedMemo.createdAt, order: .reverse) private var allSharedMemos: [SharedMemo]
+    @Query(sort: \UserProfile.createdAt) private var profiles: [UserProfile]
+
+    @Environment(\.modelContext) private var modelContext
+    @Environment(\.scenePhase) private var scenePhase
 
     @State private var showList = false
     @State private var showSettings = false
@@ -112,12 +117,13 @@ struct ContentView: View {
     @State private var deepLinkMemoID: UUID?
     @State private var intentShowFavorites = false
     @State private var friendInviteCode: String?
+    @State private var showWatchDashboard = false
 
     var body: some View {
         ZStack {
             // マップは常に背景に描画しておく
             VStack(spacing: 0) {
-                CustomNavigationBar(memoCount: memos.count, showSettings: $showSettings, isSearching: $isSearching)
+                CustomNavigationBar(memoCount: memos.count, showSettings: $showSettings, isSearching: $isSearching, showWatchDashboard: $showWatchDashboard)
                 MapTabView(memos: memos, isSearching: $isSearching, deepLinkMemoID: $deepLinkMemoID, showList: $showList)
             }
             .background(Brand.background)
@@ -163,6 +169,103 @@ struct ContentView: View {
         .sheet(item: $friendInviteCode) { code in
             FriendInvitationAcceptView(inviteCode: code)
         }
+        .sheet(isPresented: $showWatchDashboard) {
+            WatchDashboardView()
+        }
+        .task { await syncSharedMemos() }
+        .onChange(of: scenePhase) { _, newPhase in
+            if newPhase == .active { Task { await syncSharedMemos() } }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .didEnterSharedMemoRegion)) { notification in
+            if let identifier = notification.object as? String {
+                Task { await handleSharedMemoFired(geofenceIdentifier: identifier) }
+            }
+        }
+    }
+
+    // MARK: - Sync Received SharedMemos
+
+    private func syncSharedMemos() async {
+        guard let profile = profiles.first else { return }
+        do {
+            let received = try await CloudKitShareService.shared.fetchReceivedSharedMemos(
+                myRecordID: profile.iCloudRecordID
+            )
+            for data in received {
+                if let existing = allSharedMemos.first(where: { $0.ckRecordName == data.ckRecordName }) {
+                    existing.statusRaw   = data.status.rawValue
+                    existing.firedAt     = data.firedAt
+                    existing.completedAt = data.completedAt
+                } else {
+                    let shared = SharedMemo(
+                        ckRecordName:        data.ckRecordName,
+                        memoTitle:           data.memoTitle,
+                        memoLocationName:    data.memoLocationName,
+                        memoLatitude:        data.memoLatitude,
+                        memoLongitude:       data.memoLongitude,
+                        memoRadius:          data.memoRadius,
+                        memoDeadline:        data.memoDeadline,
+                        memoTimeWindowStart: data.memoTimeWindowStart,
+                        memoTimeWindowEnd:   data.memoTimeWindowEnd,
+                        requesterRecordID:   data.requesterRecordID,
+                        requesterName:       data.requesterName,
+                        recipientRecordID:   data.recipientRecordID,
+                        recipientName:       data.recipientName,
+                        autoComplete:        data.autoComplete,
+                        isMyRequest:         false
+                    )
+                    modelContext.insert(shared)
+                    if data.status == .active {
+                        let region = CLCircularRegion(
+                            center: shared.coordinate,
+                            radius: max(50, shared.memoRadius),
+                            identifier: shared.geofenceIdentifier
+                        )
+                        region.notifyOnEntry = true
+                        LocationManager.shared.startMonitoring(region: region)
+                    }
+                }
+            }
+            try? modelContext.save()
+        } catch { /* ネットワーク不可時は静かに無視 */ }
+    }
+
+    // MARK: - Handle Shared Memo Geofence Fire
+
+    private func handleSharedMemoFired(geofenceIdentifier: String) async {
+        guard let shared = allSharedMemos.first(where: { $0.geofenceIdentifier == geofenceIdentifier }) else { return }
+        let now = Date()
+        shared.status  = .fired
+        shared.firedAt = now
+
+        // CloudKit でステータスを更新（失敗時はリトライキューに積む）
+        do {
+            try await CloudKitShareService.shared.updateStatus(shared.ckRecordName, status: .fired, date: now)
+        } catch {
+            PendingEventQueue.shared.enqueue(.fired(ckRecordName: shared.ckRecordName, firedAt: now))
+        }
+
+        // 受信者へローカル通知
+        await NotificationManager.shared.scheduleSharedMemoFiredNotification(
+            memoTitle:     shared.memoTitle,
+            requesterName: shared.requesterName,
+            sharedID:      shared.id.uuidString
+        )
+
+        // autoComplete: 即完了
+        if shared.autoComplete {
+            shared.status       = .completed
+            shared.completedAt  = now
+            do {
+                try await CloudKitShareService.shared.updateStatus(shared.ckRecordName, status: .completed, date: now)
+            } catch {
+                PendingEventQueue.shared.enqueue(.completed(ckRecordName: shared.ckRecordName, completedAt: now))
+            }
+        }
+
+        // ジオフェンス解除
+        LocationManager.shared.stopMonitoring(memoID: geofenceIdentifier)
+        try? modelContext.save()
     }
 }
 
@@ -171,7 +274,8 @@ struct CustomNavigationBar: View {
     let memoCount: Int
     @Binding var showSettings: Bool
     @Binding var isSearching: Bool
-    
+    @Binding var showWatchDashboard: Bool
+
     var body: some View {
         HStack(spacing: 12) {
             // Logo Icon
@@ -202,6 +306,14 @@ struct CustomNavigationBar: View {
                     .accessibilityLabel("\(memoCount) memos")
             }
             
+            // Watch Dashboard Button
+            Button(action: { showWatchDashboard = true }) {
+                Image(systemName: "eye")
+                    .font(.system(size: 17, weight: .medium))
+                    .foregroundColor(Brand.primaryText)
+                    .frame(width: 32, height: 32)
+            }
+
             // Search Button
             Button(action: { withAnimation(.easeInOut(duration: 0.25)) { isSearching.toggle() } }) {
                 Image("ph-magnifying-glass-bold")
@@ -995,6 +1107,12 @@ struct ListTabView: View {
     @Binding var intentShowFavorites: Bool
     @Binding var showList: Bool
     @Binding var showSettings: Bool
+    @Query(sort: \SharedMemo.createdAt, order: .reverse) private var allSharedMemos: [SharedMemo]
+
+    private var receivedActiveMemos: [SharedMemo] {
+        allSharedMemos.filter { !$0.isMyRequest && ($0.status == .active || $0.status == .fired) }
+    }
+
     @State private var showDoneSection: Bool = false
     @State private var showColorFilter: Bool = false
     @State private var selectedColorIndex: Int? = nil
@@ -1374,6 +1492,29 @@ struct ListTabView: View {
             }
         } else {
             List {
+                // 受信した依頼セクション（ALL タブのみ）
+                if tab == .all && !receivedActiveMemos.isEmpty {
+                    Section {
+                        ForEach(receivedActiveMemos) { shared in
+                            receivedMemoRow(shared)
+                                .listRowInsets(EdgeInsets(top: 12, leading: 20, bottom: 12, trailing: 20))
+                                .listRowSeparator(.visible, edges: .bottom)
+                                .listRowSeparatorTint(Brand.primaryText.opacity(0.1))
+                                .listRowBackground(Brand.surface.opacity(0.6))
+                        }
+                    } header: {
+                        HStack(spacing: 6) {
+                            Image(systemName: "person.2.fill")
+                                .font(.system(size: 11, weight: .semibold))
+                            Text(String(localized: "受信した依頼") + " (\(receivedActiveMemos.count))")
+                                .font(.system(size: 12, weight: .semibold))
+                                .textCase(nil)
+                        }
+                        .foregroundColor(Brand.blue)
+                        .listRowInsets(EdgeInsets(top: 8, leading: 20, bottom: 4, trailing: 20))
+                    }
+                }
+
                 // 通常メモ
                 ForEach(tabMemos) { memo in
                     NavigationLink(destination: MemoDetailView(memo: memo)) {
@@ -1469,6 +1610,71 @@ struct ListTabView: View {
             .listStyle(.plain)
             .scrollContentBackground(.hidden)
             .background(Brand.background)
+        }
+    }
+
+    // MARK: - Received Shared Memo Row
+
+    @ViewBuilder
+    private func receivedMemoRow(_ shared: SharedMemo) -> some View {
+        HStack(spacing: 12) {
+            // ステータスアイコン
+            Group {
+                if shared.status == .fired {
+                    Image(systemName: "location.fill")
+                        .foregroundStyle(.orange)
+                } else {
+                    Image(systemName: "clock")
+                        .foregroundStyle(Brand.blue)
+                }
+            }
+            .font(.system(size: 18))
+            .frame(width: 24)
+
+            VStack(alignment: .leading, spacing: 4) {
+                Text(shared.memoTitle.isEmpty ? String(localized: "（タイトルなし）") : shared.memoTitle)
+                    .font(.system(size: 15, weight: .semibold))
+                    .foregroundStyle(Brand.primaryText)
+                    .lineLimit(1)
+                Text(String(localized: "依頼: ") + shared.requesterName)
+                    .font(.system(size: 12))
+                    .foregroundStyle(Brand.secondaryText)
+            }
+
+            Spacer()
+
+            // 手動完了ボタン（発火後のみ表示）
+            if shared.status == .fired {
+                Button {
+                    HapticManager.notification(.success)
+                    completeSharedMemo(shared)
+                } label: {
+                    Text(String(localized: "完了"))
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundStyle(.white)
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 6)
+                        .background(Brand.blue)
+                        .clipShape(Capsule())
+                }
+                .buttonStyle(.plain)
+            }
+        }
+    }
+
+    private func completeSharedMemo(_ shared: SharedMemo) {
+        let now = Date()
+        shared.status      = .completed
+        shared.completedAt = now
+        LocationManager.shared.stopMonitoring(memoID: shared.geofenceIdentifier)
+        try? modelContext.save()
+        Task {
+            do {
+                try await CloudKitShareService.shared.updateStatus(
+                    shared.ckRecordName, status: .completed, date: now)
+            } catch {
+                PendingEventQueue.shared.enqueue(.completed(ckRecordName: shared.ckRecordName, completedAt: now))
+            }
         }
     }
 

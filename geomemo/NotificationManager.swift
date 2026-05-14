@@ -3,8 +3,9 @@ import UserNotifications
 import Combine
 
 extension Notification.Name {
-    static let geoMemoMarkDone    = Notification.Name("geoMemoMarkDone")
-    static let openFriendInvitation = Notification.Name("openFriendInvitation")
+    static let geoMemoMarkDone          = Notification.Name("geoMemoMarkDone")
+    static let openFriendInvitation     = Notification.Name("openFriendInvitation")
+    static let didEnterSharedMemoRegion = Notification.Name("didEnterSharedMemoRegion")
 }
 
 class NotificationManager: NSObject, ObservableObject {
@@ -107,6 +108,20 @@ class NotificationManager: NSObject, ObservableObject {
         let trigger = UNTimeIntervalNotificationTrigger(
             timeInterval: TimeInterval(max(1, dwellMinutes * 60)), repeats: false)
         await addRequest(UNNotificationRequest(identifier: "geomemo-dwell-\(memoID)", content: content, trigger: trigger))
+    }
+
+    // MARK: - Shared Memo Notifications
+
+    /// 共有メモ発火時に受信者へ表示するローカル通知
+    func scheduleSharedMemoFiredNotification(memoTitle: String, requesterName: String, sharedID: String) async {
+        let content = UNMutableNotificationContent()
+        content.title = memoTitle.isEmpty ? String(localized: "到着しました") : memoTitle
+        content.body  = requesterName + String(localized: "への到着を通知しました")
+        content.sound = .default
+        content.categoryIdentifier = Self.categoryFriendAlert
+        let trigger = UNTimeIntervalNotificationTrigger(timeInterval: 1, repeats: false)
+        await addRequest(UNNotificationRequest(
+            identifier: "shared-fired-\(sharedID)", content: content, trigger: trigger))
     }
 
     /// 滞在時間トリガー通知をキャンセルする（退場時に呼ぶ）
