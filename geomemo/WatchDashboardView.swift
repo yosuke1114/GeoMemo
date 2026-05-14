@@ -102,7 +102,7 @@ struct WatchDashboardView: View {
                                 sharedMemoRow(shared)
                                 if shared.id != group.memos.last?.id {
                                     Rectangle()
-                                        .fill(Brand.primaryText.opacity(0.08))
+                                        .fill(Brand.separator)
                                         .frame(height: 1)
                                         .padding(.leading, 16)
                                 }
@@ -185,19 +185,19 @@ struct WatchDashboardView: View {
         switch shared.status {
         case .active:
             if let deadline = shared.memoDeadline {
-                Text(String(format: String(localized: "〜%@"), Self.timeFormatter.string(from: deadline)))
+                Text("〜\(deadline, format: .dateTime.hour().minute())")
             } else {
                 Text(String(localized: "監視中"))
             }
         case .fired:
             if let firedAt = shared.firedAt {
-                Text(String(format: String(localized: "到着 %@"), Self.timeFormatter.string(from: firedAt)))
+                Text("\(String(localized: "到着")) \(firedAt, format: .dateTime.hour().minute())")
             } else {
                 Text(String(localized: "到着済み・完了待ち"))
             }
         case .completed:
             if let completedAt = shared.completedAt {
-                Text(String(format: String(localized: "完了 %@"), Self.timeFormatter.string(from: completedAt)))
+                Text("\(String(localized: "完了")) \(completedAt, format: .dateTime.hour().minute())")
             } else {
                 Text(String(localized: "完了"))
             }
@@ -206,32 +206,23 @@ struct WatchDashboardView: View {
         }
     }
 
-    private static let timeFormatter: DateFormatter = {
-        let f = DateFormatter()
-        f.dateStyle = .none
-        f.timeStyle = .short
-        return f
-    }()
-
     // MARK: - Sync
 
     private func syncStatus() async {
-        guard let profile = myProfile else { return }
+        guard !isSyncing, let profile = myProfile else { return }
         isSyncing = true
+        defer { isSyncing = false }
         do {
             let sentData = try await CloudKitShareService.shared.fetchSentSharedMemos(
                 myRecordID: profile.iCloudRecordID
             )
             for data in sentData {
                 if let local = allSharedMemos.first(where: { $0.ckRecordName == data.ckRecordName }) {
-                    local.statusRaw = data.status.rawValue
-                    local.firedAt = data.firedAt
-                    local.completedAt = data.completedAt
+                    local.apply(data)
                 }
             }
             try? modelContext.save()
         } catch { /* ネットワーク不可時は静かに無視 */ }
-        isSyncing = false
     }
 
     // MARK: - Cancel

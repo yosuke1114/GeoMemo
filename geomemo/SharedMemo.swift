@@ -88,8 +88,17 @@ enum ShareStatus: String, Codable {
         CLLocationCoordinate2D(latitude: memoLatitude, longitude: memoLongitude)
     }
 
+    static let geofencePrefix = "shared_"
+
     /// LocationManager のジオフェンス識別子（通常メモ・ルートと区別するプレフィックス）
-    var geofenceIdentifier: String { "shared_\(id.uuidString)" }
+    var geofenceIdentifier: String { "\(SharedMemo.geofencePrefix)\(id.uuidString)" }
 
     var isActive: Bool { status == .active || status == .fired }
+
+    /// CloudKit から取得したデータでローカルフィールドを更新する
+    func apply(_ data: SharedMemoData) {
+        status      = data.status
+        firedAt     = data.firedAt
+        completedAt = data.completedAt
+    }
 }

@@ -89,9 +89,14 @@ final class CloudKitShareService {
 
     private func fetchRecords(predicate: NSPredicate, isMyRequest: Bool) async throws -> [SharedMemoData] {
         let query = CKQuery(recordType: Self.recordType, predicate: predicate)
-        let (results, _) = try await publicDB.records(matching: query)
-
-        return results.compactMap { _, result in
+        var allResults: [(CKRecord.ID, Result<CKRecord, Error>)] = []
+        var (batch, cursor) = try await publicDB.records(matching: query)
+        allResults.append(contentsOf: batch)
+        while let c = cursor {
+            (batch, cursor) = try await publicDB.records(continuingMatchFrom: c)
+            allResults.append(contentsOf: batch)
+        }
+        return allResults.compactMap { _, result in
             guard let record = try? result.get() else { return nil }
             return SharedMemoData(from: record, isMyRequest: isMyRequest)
         }

@@ -13,17 +13,20 @@ final class PendingEventQueue {
     static let shared = PendingEventQueue()
 
     private let key = "pendingShareEvents"
+    private var _cache: [PendingShareEvent]?
 
     private var events: [PendingShareEvent] {
         get {
+            if let c = _cache { return c }
             guard let data = UserDefaults.standard.data(forKey: key),
                   let decoded = try? JSONDecoder().decode([PendingShareEvent].self, from: data)
-            else { return [] }
+            else { _cache = []; return [] }
+            _cache = decoded
             return decoded
         }
         set {
-            let data = try? JSONEncoder().encode(newValue)
-            UserDefaults.standard.set(data, forKey: key)
+            _cache = newValue
+            UserDefaults.standard.set(try? JSONEncoder().encode(newValue), forKey: key)
         }
     }
 
@@ -44,6 +47,5 @@ final class PendingEventQueue {
     }
 
     var all: [PendingShareEvent] { events }
-
-    func isEmpty() -> Bool { events.isEmpty }
+    var isEmpty: Bool { events.isEmpty }
 }

@@ -31,7 +31,7 @@ struct ShareMemoSheet: View {
                     .padding(16)
 
                 Rectangle()
-                    .fill(Brand.primaryText.opacity(0.08))
+                    .fill(Brand.separator)
                     .frame(height: 1)
 
                 ScrollView {
@@ -145,7 +145,7 @@ struct ShareMemoSheet: View {
                         }
                         if friend.id != acceptedFriends.last?.id {
                             Rectangle()
-                                .fill(Brand.primaryText.opacity(0.08))
+                                .fill(Brand.separator)
                                 .frame(height: 1)
                                 .padding(.leading, 56)
                         }

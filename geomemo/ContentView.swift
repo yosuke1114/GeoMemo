@@ -172,7 +172,6 @@ struct ContentView: View {
         .sheet(isPresented: $showWatchDashboard) {
             WatchDashboardView()
         }
-        .task { await syncSharedMemos() }
         .onChange(of: scenePhase) { _, newPhase in
             if newPhase == .active { Task { await syncSharedMemos() } }
         }
@@ -185,17 +184,19 @@ struct ContentView: View {
 
     // MARK: - Sync Received SharedMemos
 
+    @State private var isSyncing = false
+
     private func syncSharedMemos() async {
-        guard let profile = profiles.first else { return }
+        guard !isSyncing, let profile = profiles.first else { return }
+        isSyncing = true
+        defer { isSyncing = false }
         do {
             let received = try await CloudKitShareService.shared.fetchReceivedSharedMemos(
                 myRecordID: profile.iCloudRecordID
             )
             for data in received {
                 if let existing = allSharedMemos.first(where: { $0.ckRecordName == data.ckRecordName }) {
-                    existing.statusRaw   = data.status.rawValue
-                    existing.firedAt     = data.firedAt
-                    existing.completedAt = data.completedAt
+                    existing.apply(data)
                 } else {
                     let shared = SharedMemo(
                         ckRecordName:        data.ckRecordName,
@@ -235,35 +236,28 @@ struct ContentView: View {
     private func handleSharedMemoFired(geofenceIdentifier: String) async {
         guard let shared = allSharedMemos.first(where: { $0.geofenceIdentifier == geofenceIdentifier }) else { return }
         let now = Date()
-        shared.status  = .fired
         shared.firedAt = now
 
-        // CloudKit でステータスを更新（失敗時はリトライキューに積む）
+        // autoComplete なら fired を飛ばして completed を一度だけ書き込む
+        let finalStatus: ShareStatus = shared.autoComplete ? .completed : .fired
+        shared.status = finalStatus
+        if shared.autoComplete { shared.completedAt = now }
+
         do {
-            try await CloudKitShareService.shared.updateStatus(shared.ckRecordName, status: .fired, date: now)
+            try await CloudKitShareService.shared.updateStatus(shared.ckRecordName, status: finalStatus, date: now)
         } catch {
-            PendingEventQueue.shared.enqueue(.fired(ckRecordName: shared.ckRecordName, firedAt: now))
+            let event: PendingShareEvent = shared.autoComplete
+                ? .completed(ckRecordName: shared.ckRecordName, completedAt: now)
+                : .fired(ckRecordName: shared.ckRecordName, firedAt: now)
+            PendingEventQueue.shared.enqueue(event)
         }
 
-        // 受信者へローカル通知
         await NotificationManager.shared.scheduleSharedMemoFiredNotification(
             memoTitle:     shared.memoTitle,
             requesterName: shared.requesterName,
             sharedID:      shared.id.uuidString
         )
 
-        // autoComplete: 即完了
-        if shared.autoComplete {
-            shared.status       = .completed
-            shared.completedAt  = now
-            do {
-                try await CloudKitShareService.shared.updateStatus(shared.ckRecordName, status: .completed, date: now)
-            } catch {
-                PendingEventQueue.shared.enqueue(.completed(ckRecordName: shared.ckRecordName, completedAt: now))
-            }
-        }
-
-        // ジオフェンス解除
         LocationManager.shared.stopMonitoring(memoID: geofenceIdentifier)
         try? modelContext.save()
     }

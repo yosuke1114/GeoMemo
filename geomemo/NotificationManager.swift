@@ -114,11 +114,10 @@ class NotificationManager: NSObject, ObservableObject {
 
     /// 共有メモ発火時に受信者へ表示するローカル通知
     func scheduleSharedMemoFiredNotification(memoTitle: String, requesterName: String, sharedID: String) async {
-        let content = UNMutableNotificationContent()
-        content.title = memoTitle.isEmpty ? String(localized: "到着しました") : memoTitle
-        content.body  = requesterName + String(localized: "への到着を通知しました")
-        content.sound = .default
-        content.categoryIdentifier = Self.categoryFriendAlert
+        let title = memoTitle.isEmpty ? String(localized: "到着しました") : memoTitle
+        let body  = requesterName + String(localized: "への到着を通知しました")
+        let content = makeContent(title: title, body: body, memoID: sharedID,
+                                  defaultBody: body, categoryIdentifier: Self.categoryFriendAlert)
         let trigger = UNTimeIntervalNotificationTrigger(timeInterval: 1, repeats: false)
         await addRequest(UNNotificationRequest(
             identifier: "shared-fired-\(sharedID)", content: content, trigger: trigger))
@@ -155,12 +154,15 @@ class NotificationManager: NSObject, ObservableObject {
 
     // MARK: - Private Helpers
 
-    private func makeContent(title: String, body: String, memoID: String, defaultBody: String) -> UNMutableNotificationContent {
+    private func makeContent(
+        title: String, body: String, memoID: String, defaultBody: String,
+        categoryIdentifier: String = NotificationManager.categoryID
+    ) -> UNMutableNotificationContent {
         let content = UNMutableNotificationContent()
         content.title = title
         content.body = body.isEmpty ? defaultBody : body
         content.sound = .default
-        content.categoryIdentifier = Self.categoryID
+        content.categoryIdentifier = categoryIdentifier
         content.userInfo = ["memoID": memoID, "title": title, "body": body]
         return content
     }

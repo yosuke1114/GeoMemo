@@ -184,6 +184,7 @@ class LocationManager: NSObject, ObservableObject {
             print("Geofencing is not available on this device")
             return
         }
+        guard !manager.monitoredRegions.contains(where: { $0.identifier == region.identifier }) else { return }
         manager.startMonitoring(for: region)
     }
 
@@ -362,7 +363,7 @@ extension LocationManager: CLLocationManagerDelegate {
                 // Live Activity にルート進行状況を反映（次に向かうWP番号を1始まりで表示）
                 LiveActivityManager.shared.updateRouteProgress(memoID: memoID, current: next + 1, total: total)
             }
-        } else if identifier.hasPrefix("shared_") {
+        } else if identifier.hasPrefix(SharedMemo.geofencePrefix) {
             // ── 共有メモジオフェンス（おつかい / 見守り）──────────────
             NotificationCenter.default.post(name: .didEnterSharedMemoRegion, object: identifier)
         } else {
@@ -377,7 +378,7 @@ extension LocationManager: CLLocationManagerDelegate {
         guard let circularRegion = region as? CLCircularRegion else { return }
         let identifier = circularRegion.identifier
         // ルートウェイポイントと共有メモの退出は無視
-        guard !identifier.contains("|wp|") && !identifier.hasPrefix("shared_") else { return }
+        guard !identifier.contains("|wp|") && !identifier.hasPrefix(SharedMemo.geofencePrefix) else { return }
         NotificationCenter.default.post(name: .didExitGeoMemoRegion, object: identifier)
     }
 
