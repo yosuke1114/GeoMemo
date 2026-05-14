@@ -125,6 +125,35 @@ struct SharedMemoData: Sendable {
     let completedAt: Date?
     let isMyRequest: Bool
 
+    init(
+        ckRecordName: String, memoTitle: String, memoLocationName: String,
+        memoLatitude: Double, memoLongitude: Double, memoRadius: Double,
+        memoDeadline: Date?, memoTimeWindowStart: Int?, memoTimeWindowEnd: Int?,
+        requesterRecordID: String, requesterName: String,
+        recipientRecordID: String, recipientName: String,
+        autoComplete: Bool, status: ShareStatus,
+        firedAt: Date?, completedAt: Date?, isMyRequest: Bool
+    ) {
+        self.ckRecordName = ckRecordName
+        self.memoTitle = memoTitle
+        self.memoLocationName = memoLocationName
+        self.memoLatitude = memoLatitude
+        self.memoLongitude = memoLongitude
+        self.memoRadius = memoRadius
+        self.memoDeadline = memoDeadline
+        self.memoTimeWindowStart = memoTimeWindowStart
+        self.memoTimeWindowEnd = memoTimeWindowEnd
+        self.requesterRecordID = requesterRecordID
+        self.requesterName = requesterName
+        self.recipientRecordID = recipientRecordID
+        self.recipientName = recipientName
+        self.autoComplete = autoComplete
+        self.status = status
+        self.firedAt = firedAt
+        self.completedAt = completedAt
+        self.isMyRequest = isMyRequest
+    }
+
     init?(from record: CKRecord, isMyRequest: Bool) {
         guard
             let title       = record["memoTitle"] as? String,

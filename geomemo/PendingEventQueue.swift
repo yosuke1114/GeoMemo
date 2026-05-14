@@ -75,6 +75,12 @@ final class PendingEventQueue {
     var all: [PendingShareEvent] { events }
     var isEmpty: Bool { events.isEmpty }
 
+    /// テスト用: in-memory cache と UserDefaults の両方をクリアする
+    func resetForTesting() {
+        _cache = nil
+        UserDefaults.standard.removeObject(forKey: key)
+    }
+
     // PendingShareEvent には Equatable がない（CK 識別子＋日付の組合せで等価判定する）
     private static func areEqual(_ a: PendingShareEvent, _ b: PendingShareEvent) -> Bool {
         switch (a, b) {

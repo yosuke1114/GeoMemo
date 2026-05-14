@@ -1803,3 +1803,413 @@ struct FavoritePlaceCRUDTests {
         #expect(fetched.first?.id == originalID)
     }
 }
+
+// MARK: - SharedMemo Model Tests
+
+@Suite("SharedMemo モデル")
+struct SharedMemoModelTests {
+
+    @Test("デフォルト値で初期化される")
+    func defaults() {
+        let shared = SharedMemo(
+            ckRecordName: "rec-1", memoTitle: "", memoLocationName: "",
+            memoLatitude: 0, memoLongitude: 0, memoRadius: 100,
+            requesterRecordID: "r1", requesterName: "Alice",
+            recipientRecordID: "r2", recipientName: "Bob",
+            autoComplete: false, isMyRequest: true
+        )
+        #expect(shared.status == .active)
+        #expect(shared.firedAt == nil)
+        #expect(shared.completedAt == nil)
+        #expect(shared.isActive == true)
+    }
+
+    @Test("status setter は statusRaw を更新する")
+    func statusSetterUpdatesRaw() {
+        let shared = makeShared()
+        shared.status = .fired
+        #expect(shared.statusRaw == ShareStatus.fired.rawValue)
+        shared.status = .completed
+        #expect(shared.statusRaw == ShareStatus.completed.rawValue)
+    }
+
+    @Test("status getter は不正な値を active にフォールバック")
+    func statusGetterFallback() {
+        let shared = makeShared()
+        shared.statusRaw = "invalid-status"
+        #expect(shared.status == .active)
+    }
+
+    @Test("coordinate は緯度経度を正しく返す")
+    func coordinateReturnsLatLon() {
+        let shared = SharedMemo(
+            ckRecordName: "r", memoTitle: "", memoLocationName: "",
+            memoLatitude: 35.6895, memoLongitude: 139.6917, memoRadius: 100,
+            requesterRecordID: "", requesterName: "",
+            recipientRecordID: "", recipientName: "",
+            autoComplete: false, isMyRequest: false
+        )
+        #expect(shared.coordinate.latitude == 35.6895)
+        #expect(shared.coordinate.longitude == 139.6917)
+    }
+
+    @Test("geofenceIdentifier は shared_ プレフィックスを持つ")
+    func geofenceIdentifierFormat() {
+        let shared = makeShared()
+        #expect(shared.geofenceIdentifier.hasPrefix("shared_"))
+        #expect(shared.geofenceIdentifier.hasPrefix(SharedMemo.geofencePrefix))
+        #expect(shared.geofenceIdentifier == "shared_\(shared.id.uuidString)")
+    }
+
+    @Test("geofencePrefix 定数は shared_")
+    func geofencePrefixConstant() {
+        #expect(SharedMemo.geofencePrefix == "shared_")
+    }
+
+    @Test("isActive は active/fired のみ true")
+    func isActiveStates() {
+        let shared = makeShared()
+        shared.status = .active;    #expect(shared.isActive == true)
+        shared.status = .fired;     #expect(shared.isActive == true)
+        shared.status = .completed; #expect(shared.isActive == false)
+        shared.status = .cancelled; #expect(shared.isActive == false)
+    }
+
+    @Test("apply(_:) で statusRaw / firedAt / completedAt が同期される")
+    func applyUpdatesFields() {
+        let shared = makeShared()
+        let now = Date()
+        let later = now.addingTimeInterval(60)
+
+        let data = SharedMemoData(
+            ckRecordName: shared.ckRecordName, memoTitle: "", memoLocationName: "",
+            memoLatitude: 0, memoLongitude: 0, memoRadius: 0,
+            memoDeadline: nil, memoTimeWindowStart: nil, memoTimeWindowEnd: nil,
+            requesterRecordID: "", requesterName: "",
+            recipientRecordID: "", recipientName: "",
+            autoComplete: false, status: .completed,
+            firedAt: now, completedAt: later, isMyRequest: false
+        )
+        shared.apply(data)
+        #expect(shared.status == .completed)
+        #expect(shared.firedAt == now)
+        #expect(shared.completedAt == later)
+    }
+
+    private func makeShared() -> SharedMemo {
+        SharedMemo(
+            ckRecordName: UUID().uuidString, memoTitle: "T", memoLocationName: "L",
+            memoLatitude: 0, memoLongitude: 0, memoRadius: 100,
+            requesterRecordID: "r1", requesterName: "A",
+            recipientRecordID: "r2", recipientName: "B",
+            autoComplete: false, isMyRequest: true
+        )
+    }
+}
+
+// MARK: - ShareStatus Tests
+
+@Suite("ShareStatus enum")
+struct ShareStatusTests {
+
+    @Test("rawValue は文字列リテラルと一致する", arguments: [
+        (ShareStatus.active, "active"),
+        (.fired, "fired"),
+        (.completed, "completed"),
+        (.cancelled, "cancelled"),
+    ])
+    func rawValueMapping(status: ShareStatus, expected: String) {
+        #expect(status.rawValue == expected)
+    }
+
+    @Test("rawValue から復元可能")
+    func roundtrip() {
+        #expect(ShareStatus(rawValue: "active") == .active)
+        #expect(ShareStatus(rawValue: "fired") == .fired)
+        #expect(ShareStatus(rawValue: "completed") == .completed)
+        #expect(ShareStatus(rawValue: "cancelled") == .cancelled)
+        #expect(ShareStatus(rawValue: "unknown") == nil)
+    }
+}
+
+// MARK: - UserProfile Tests
+
+@Suite("UserProfile モデル")
+struct UserProfileTests {
+
+    @Test("init で displayName と iCloudRecordID が設定される")
+    func initSetsFields() {
+        let p = UserProfile(displayName: "Alice", iCloudRecordID: "rec-123")
+        #expect(p.displayName == "Alice")
+        #expect(p.iCloudRecordID == "rec-123")
+    }
+
+    @Test("createdAt は現在時刻付近")
+    func createdAtIsNow() {
+        let before = Date()
+        let p = UserProfile(displayName: "Bob", iCloudRecordID: "x")
+        let after = Date()
+        #expect(p.createdAt >= before && p.createdAt <= after)
+    }
+
+    @Test("id は一意の UUID")
+    func idIsUniqueUUID() {
+        let a = UserProfile(displayName: "A", iCloudRecordID: "1")
+        let b = UserProfile(displayName: "B", iCloudRecordID: "2")
+        #expect(a.id != b.id)
+    }
+}
+
+// MARK: - FriendConnection Tests
+
+@Suite("FriendConnection モデル")
+struct FriendConnectionTests {
+
+    @Test("デフォルトは pending ステータス")
+    func defaultStatusPending() {
+        let f = FriendConnection(
+            friendRecordID: "r1", friendDisplayName: "Alice",
+            status: .pending, inviteCode: "abc123"
+        )
+        #expect(f.status == .pending)
+        #expect(f.statusRaw == FriendStatus.pending.rawValue)
+    }
+
+    @Test("status setter で statusRaw が更新される")
+    func statusSetterUpdatesRaw() {
+        let f = FriendConnection(
+            friendRecordID: "r1", friendDisplayName: "A",
+            status: .pending, inviteCode: ""
+        )
+        f.status = .accepted
+        #expect(f.statusRaw == FriendStatus.accepted.rawValue)
+    }
+
+    @Test("不正な statusRaw は pending にフォールバック")
+    func invalidStatusRawFallback() {
+        let f = FriendConnection(
+            friendRecordID: "r1", friendDisplayName: "A",
+            status: .accepted, inviteCode: ""
+        )
+        f.statusRaw = "garbage"
+        #expect(f.status == .pending)
+    }
+}
+
+@Suite("FriendStatus enum")
+struct FriendStatusTests {
+
+    @Test("rawValue マッピング", arguments: [
+        (FriendStatus.pending, "pending"),
+        (.accepted, "accepted"),
+    ])
+    func rawValueMapping(status: FriendStatus, expected: String) {
+        #expect(status.rawValue == expected)
+    }
+}
+
+// MARK: - PendingShareEvent Tests
+
+@Suite("PendingShareEvent Codable")
+struct PendingShareEventCodableTests {
+
+    @Test("fired は JSON 往復で復元できる")
+    func firedRoundtrip() throws {
+        let firedAt = Date(timeIntervalSince1970: 1_700_000_000)
+        let original: PendingShareEvent = .fired(ckRecordName: "abc", firedAt: firedAt)
+        let data = try JSONEncoder().encode(original)
+        let decoded = try JSONDecoder().decode(PendingShareEvent.self, from: data)
+        if case .fired(let name, let when) = decoded {
+            #expect(name == "abc")
+            #expect(when == firedAt)
+        } else {
+            Issue.record("Expected .fired case")
+        }
+    }
+
+    @Test("completed は JSON 往復で復元できる")
+    func completedRoundtrip() throws {
+        let completedAt = Date(timeIntervalSince1970: 1_700_001_000)
+        let original: PendingShareEvent = .completed(ckRecordName: "rec-2", completedAt: completedAt)
+        let data = try JSONEncoder().encode(original)
+        let decoded = try JSONDecoder().decode(PendingShareEvent.self, from: data)
+        if case .completed(let name, let when) = decoded {
+            #expect(name == "rec-2")
+            #expect(when == completedAt)
+        } else {
+            Issue.record("Expected .completed case")
+        }
+    }
+
+    @Test("cancelled は JSON 往復で復元できる")
+    func cancelledRoundtrip() throws {
+        let original: PendingShareEvent = .cancelled(ckRecordName: "rec-3")
+        let data = try JSONEncoder().encode(original)
+        let decoded = try JSONDecoder().decode(PendingShareEvent.self, from: data)
+        if case .cancelled(let name) = decoded {
+            #expect(name == "rec-3")
+        } else {
+            Issue.record("Expected .cancelled case")
+        }
+    }
+}
+
+// MARK: - PendingEventQueue Tests
+
+@Suite("PendingEventQueue", .serialized)
+@MainActor
+struct PendingEventQueueTests {
+
+    let suiteKey = "pendingShareEvents"
+
+    init() {
+        // 各テスト前にユーザーデフォルトと in-memory cache を両方クリア
+        PendingEventQueue.shared.resetForTesting()
+    }
+
+    private func freshQueue() -> PendingEventQueue {
+        PendingEventQueue.shared.resetForTesting()
+        return PendingEventQueue.shared
+    }
+
+    @Test("初期状態は空")
+    func startsEmpty() {
+        let q = freshQueue()
+        #expect(q.isEmpty == true)
+        #expect(q.all.isEmpty == true)
+    }
+
+    @Test("enqueue でイベントが追加される")
+    func enqueueAdds() {
+        let q = freshQueue()
+        q.enqueue(.fired(ckRecordName: "a", firedAt: Date()))
+        #expect(q.isEmpty == false)
+        #expect(q.all.count == 1)
+    }
+
+    @Test("dequeue は同じ ckRecordName のイベントを削除")
+    func dequeueRemovesMatching() {
+        let q = freshQueue()
+        q.enqueue(.fired(ckRecordName: "a", firedAt: Date()))
+        q.enqueue(.completed(ckRecordName: "b", completedAt: Date()))
+        q.dequeue(ckRecordName: "a")
+        #expect(q.all.count == 1)
+        if case .completed(let name, _) = q.all[0] {
+            #expect(name == "b")
+        } else {
+            Issue.record("Expected remaining event to be .completed for b")
+        }
+    }
+
+    @Test("UserDefaults へ永続化される")
+    func persistsAcrossReads() {
+        let q = freshQueue()
+        q.enqueue(.cancelled(ckRecordName: "x"))
+        // UserDefaults に書かれているかを直接検証
+        let raw = UserDefaults.standard.data(forKey: suiteKey)
+        #expect(raw != nil)
+        if let raw,
+           let decoded = try? JSONDecoder().decode([PendingShareEvent].self, from: raw) {
+            #expect(decoded.count == 1)
+        } else {
+            Issue.record("Persistence missing or undecodable")
+        }
+    }
+
+    @Test("同じ ckRecordName を複数回 enqueue できる（複数残る）")
+    func multipleEnqueuesAccumulate() {
+        let q = freshQueue()
+        q.enqueue(.fired(ckRecordName: "a", firedAt: Date()))
+        q.enqueue(.fired(ckRecordName: "a", firedAt: Date()))
+        #expect(q.all.count == 2)
+    }
+}
+
+// MARK: - SharedMemo CRUD (SwiftData in-memory)
+
+@Suite("SharedMemo CRUD（インメモリ）")
+@MainActor
+struct SharedMemoCRUDTests {
+
+    func makeContainer() throws -> ModelContainer {
+        let schema = Schema([SharedMemo.self])
+        let config = ModelConfiguration(schema: schema, isStoredInMemoryOnly: true)
+        return try ModelContainer(for: schema, configurations: [config])
+    }
+
+    @Test("挿入と取得ができる")
+    func insertAndFetch() throws {
+        let container = try makeContainer()
+        let context = container.mainContext
+        let shared = SharedMemo(
+            ckRecordName: "rec-1", memoTitle: "T", memoLocationName: "L",
+            memoLatitude: 0, memoLongitude: 0, memoRadius: 100,
+            requesterRecordID: "r1", requesterName: "A",
+            recipientRecordID: "r2", recipientName: "B",
+            autoComplete: false, isMyRequest: true
+        )
+        context.insert(shared)
+        try context.save()
+        let fetched = try context.fetch(FetchDescriptor<SharedMemo>())
+        #expect(fetched.count == 1)
+        #expect(fetched.first?.ckRecordName == "rec-1")
+    }
+
+    @Test("isMyRequest でフィルタ可能")
+    func filterByIsMyRequest() throws {
+        let container = try makeContainer()
+        let context = container.mainContext
+        let mine = SharedMemo(
+            ckRecordName: "a", memoTitle: "", memoLocationName: "",
+            memoLatitude: 0, memoLongitude: 0, memoRadius: 0,
+            requesterRecordID: "me", requesterName: "Me",
+            recipientRecordID: "x", recipientName: "X",
+            autoComplete: false, isMyRequest: true
+        )
+        let theirs = SharedMemo(
+            ckRecordName: "b", memoTitle: "", memoLocationName: "",
+            memoLatitude: 0, memoLongitude: 0, memoRadius: 0,
+            requesterRecordID: "them", requesterName: "Them",
+            recipientRecordID: "me", recipientName: "Me",
+            autoComplete: false, isMyRequest: false
+        )
+        context.insert(mine)
+        context.insert(theirs)
+        try context.save()
+
+        let received = try context.fetch(FetchDescriptor<SharedMemo>(
+            predicate: #Predicate { !$0.isMyRequest }
+        ))
+        #expect(received.count == 1)
+        #expect(received.first?.ckRecordName == "b")
+    }
+
+    @Test("削除できる")
+    func deleteSharedMemo() throws {
+        let container = try makeContainer()
+        let context = container.mainContext
+        let shared = SharedMemo(
+            ckRecordName: "rec-del", memoTitle: "", memoLocationName: "",
+            memoLatitude: 0, memoLongitude: 0, memoRadius: 0,
+            requesterRecordID: "", requesterName: "",
+            recipientRecordID: "", recipientName: "",
+            autoComplete: false, isMyRequest: false
+        )
+        context.insert(shared)
+        try context.save()
+        context.delete(shared)
+        try context.save()
+        #expect(try context.fetch(FetchDescriptor<SharedMemo>()).isEmpty)
+    }
+}
+
+// MARK: - LocationManager geofence 20-region limit
+
+@Suite("LocationManager geofence limits")
+struct LocationManagerLimitsTests {
+
+    @Test("maxMonitoredRegions は 20")
+    func maxIsTwenty() {
+        #expect(LocationManager.maxMonitoredRegions == 20)
+    }
+}
