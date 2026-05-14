@@ -177,10 +177,6 @@ struct geomemoApp: App {
                let uuid = UUID(uuidString: idString) {
                 NotificationCenter.default.post(name: .openGeoMemo, object: uuid)
             }
-        case "friend":
-            if let code = url.pathComponents.dropFirst().first, !code.isEmpty {
-                NotificationCenter.default.post(name: .openFriendInvitation, object: code)
-            }
         case "favorites":
             NotificationCenter.default.post(name: .showGeoMemoFavorites, object: nil)
         case "search":

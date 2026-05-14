@@ -118,7 +118,6 @@ struct ContentView: View {
     @State private var isSearching = false
     @State private var deepLinkMemoID: UUID?
     @State private var intentShowFavorites = false
-    @State private var friendInviteCode: String?
     @State private var showWatchDashboard = false
 
     var body: some View {
@@ -162,14 +161,6 @@ struct ContentView: View {
         .onReceive(NotificationCenter.default.publisher(for: .searchGeoMemos)) { _ in
             showList = false
             isSearching = true
-        }
-        .onReceive(NotificationCenter.default.publisher(for: .openFriendInvitation)) { notification in
-            if let code = notification.object as? String {
-                friendInviteCode = code
-            }
-        }
-        .sheet(item: $friendInviteCode) { code in
-            FriendInvitationAcceptView(inviteCode: code)
         }
         .sheet(isPresented: $showWatchDashboard) {
             WatchDashboardView()
@@ -279,9 +270,10 @@ struct ContentView: View {
         do {
             try await CKShareService.shared.updateStatus(recordID: recordID, status: finalStatus, date: now)
         } catch {
+            let owner = recordID.zoneID.ownerName
             let event: PendingShareEvent = shared.autoComplete
-                ? .completed(ckRecordName: shared.ckRecordName, completedAt: now)
-                : .fired(ckRecordName: shared.ckRecordName, firedAt: now)
+                ? .completed(ckRecordName: shared.ckRecordName, zoneOwnerName: owner, completedAt: now)
+                : .fired(ckRecordName: shared.ckRecordName, zoneOwnerName: owner, firedAt: now)
             PendingEventQueue.shared.enqueue(event)
         }
 
@@ -1704,16 +1696,16 @@ struct ListTabView: View {
         shared.completedAt = now
         LocationManager.shared.stopMonitoring(memoID: shared.geofenceIdentifier)
         try? modelContext.save()
-        let zoneID = CKRecordZone.ID(
-            zoneName: CKShareService.sharingZoneName,
-            ownerName: shared.isMyRequest ? CKCurrentUserDefaultName : shared.requesterRecordID
-        )
+        let owner = shared.isMyRequest ? CKCurrentUserDefaultName : shared.requesterRecordID
+        let zoneID = CKRecordZone.ID(zoneName: CKShareService.sharingZoneName, ownerName: owner)
         let recordID = CKRecord.ID(recordName: shared.ckRecordName, zoneID: zoneID)
         Task {
             do {
                 try await CKShareService.shared.updateStatus(recordID: recordID, status: .completed, date: now)
             } catch {
-                PendingEventQueue.shared.enqueue(.completed(ckRecordName: shared.ckRecordName, completedAt: now))
+                PendingEventQueue.shared.enqueue(
+                    .completed(ckRecordName: shared.ckRecordName, zoneOwnerName: owner, completedAt: now)
+                )
             }
         }
     }

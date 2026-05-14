@@ -1,11 +1,15 @@
 import Foundation
+import CloudKit
 
 // MARK: - Pending Event（オフライン時の CloudKit 書き込みキュー）
 
+/// CKShare 経由のレコード更新リトライ用イベント。
+/// `zoneOwnerName` は CKRecordZone.ID の ownerName（自分の依頼=CKCurrentUserDefaultName、
+/// 受け取った依頼=共有者の iCloud RecordID）を保持する。
 enum PendingShareEvent: Codable {
-    case fired(ckRecordName: String, firedAt: Date)
-    case completed(ckRecordName: String, completedAt: Date)
-    case cancelled(ckRecordName: String)
+    case fired(ckRecordName: String, zoneOwnerName: String, firedAt: Date)
+    case completed(ckRecordName: String, zoneOwnerName: String, completedAt: Date)
+    case cancelled(ckRecordName: String, zoneOwnerName: String)
 }
 
 @MainActor
@@ -39,9 +43,9 @@ final class PendingEventQueue {
     func dequeue(ckRecordName: String) {
         events = events.filter { event in
             switch event {
-            case .fired(let name, _):     return name != ckRecordName
-            case .completed(let name, _): return name != ckRecordName
-            case .cancelled(let name):    return name != ckRecordName
+            case .fired(let name, _, _):     return name != ckRecordName
+            case .completed(let name, _, _): return name != ckRecordName
+            case .cancelled(let name, _):    return name != ckRecordName
             }
         }
     }
@@ -60,16 +64,24 @@ final class PendingEventQueue {
         for event in snapshot {
             do {
                 switch event {
-                case .fired(let name, let firedAt):
-                    try await CloudKitShareService.shared.updateStatus(name, status: .fired, date: firedAt)
-                case .completed(let name, let completedAt):
-                    try await CloudKitShareService.shared.updateStatus(name, status: .completed, date: completedAt)
-                case .cancelled(let name):
-                    try await CloudKitShareService.shared.cancelSharedMemo(name)
+                case .fired(let name, let owner, let firedAt):
+                    let recordID = makeRecordID(name: name, owner: owner)
+                    try await CKShareService.shared.updateStatus(recordID: recordID, status: .fired, date: firedAt)
+                case .completed(let name, let owner, let completedAt):
+                    let recordID = makeRecordID(name: name, owner: owner)
+                    try await CKShareService.shared.updateStatus(recordID: recordID, status: .completed, date: completedAt)
+                case .cancelled(let name, let owner):
+                    let recordID = makeRecordID(name: name, owner: owner)
+                    try await CKShareService.shared.cancelSharedMemo(recordID: recordID)
                 }
                 remove(event)
             } catch { /* 失敗時はキューに残して次回再試行 */ }
         }
+    }
+
+    private func makeRecordID(name: String, owner: String) -> CKRecord.ID {
+        let zoneID = CKRecordZone.ID(zoneName: CKShareService.sharingZoneName, ownerName: owner)
+        return CKRecord.ID(recordName: name, zoneID: zoneID)
     }
 
     var all: [PendingShareEvent] { events }
@@ -84,12 +96,12 @@ final class PendingEventQueue {
     // PendingShareEvent には Equatable がない（CK 識別子＋日付の組合せで等価判定する）
     private static func areEqual(_ a: PendingShareEvent, _ b: PendingShareEvent) -> Bool {
         switch (a, b) {
-        case (.fired(let n1, let d1), .fired(let n2, let d2)):
-            return n1 == n2 && d1 == d2
-        case (.completed(let n1, let d1), .completed(let n2, let d2)):
-            return n1 == n2 && d1 == d2
-        case (.cancelled(let n1), .cancelled(let n2)):
-            return n1 == n2
+        case (.fired(let n1, let o1, let d1), .fired(let n2, let o2, let d2)):
+            return n1 == n2 && o1 == o2 && d1 == d2
+        case (.completed(let n1, let o1, let d1), .completed(let n2, let o2, let d2)):
+            return n1 == n2 && o1 == o2 && d1 == d2
+        case (.cancelled(let n1, let o1), .cancelled(let n2, let o2)):
+            return n1 == n2 && o1 == o2
         default: return false
         }
     }

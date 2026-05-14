@@ -96,7 +96,7 @@ enum ShareStatus: String, Codable {
     var isActive: Bool { status == .active || status == .fired }
 
     /// CloudKit から取得したデータでローカルフィールドを更新する
-    func apply(_ data: SharedMemoData) {
+    func apply(_ data: SharedMemoCKData) {
         status      = data.status
         firedAt     = data.firedAt
         completedAt = data.completedAt

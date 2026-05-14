@@ -4,7 +4,6 @@ import Combine
 
 extension Notification.Name {
     static let geoMemoMarkDone          = Notification.Name("geoMemoMarkDone")
-    static let openFriendInvitation     = Notification.Name("openFriendInvitation")
     static let didEnterSharedMemoRegion = Notification.Name("didEnterSharedMemoRegion")
 }
 

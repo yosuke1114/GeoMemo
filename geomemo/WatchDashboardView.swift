@@ -230,17 +230,17 @@ struct WatchDashboardView: View {
     // MARK: - Cancel
 
     private func cancelSharedMemo(_ shared: SharedMemo) async {
-        let zoneID = CKRecordZone.ID(
-            zoneName: CKShareService.sharingZoneName,
-            ownerName: shared.isMyRequest ? CKCurrentUserDefaultName : shared.requesterRecordID
-        )
+        let owner = shared.isMyRequest ? CKCurrentUserDefaultName : shared.requesterRecordID
+        let zoneID = CKRecordZone.ID(zoneName: CKShareService.sharingZoneName, ownerName: owner)
         let recordID = CKRecord.ID(recordName: shared.ckRecordName, zoneID: zoneID)
         do {
             try await CKShareService.shared.cancelSharedMemo(recordID: recordID)
             shared.status = .cancelled
             try? modelContext.save()
         } catch {
-            PendingEventQueue.shared.enqueue(.cancelled(ckRecordName: shared.ckRecordName))
+            PendingEventQueue.shared.enqueue(
+                .cancelled(ckRecordName: shared.ckRecordName, zoneOwnerName: owner)
+            )
         }
     }
 }

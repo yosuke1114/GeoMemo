@@ -1,5 +1,6 @@
 import SwiftUI
 import SwiftData
+import CloudKit
 
 // MARK: - UserProfile Setup Sheet
 
@@ -108,8 +109,12 @@ struct UserProfileSetupView: View {
 
         Task {
             do {
-                let recordID = try await CloudKitFriendService.shared.fetchMyRecordID()
-                let profile = UserProfile(displayName: trimmed, iCloudRecordID: recordID)
+                // CKShare 移行後は、自分の iCloud RecordID をローカルに保存する必要は薄い
+                // （CKContainer.userRecordID() を必要時に直接取得すれば十分）。
+                // 後方互換のため取得して保存しておく。
+                let recordID = try await CKContainer(identifier: geomemoApp.cloudKitContainerID)
+                    .userRecordID()
+                let profile = UserProfile(displayName: trimmed, iCloudRecordID: recordID.recordName)
                 modelContext.insert(profile)
                 try modelContext.save()
                 dismiss()

@@ -11,6 +11,7 @@ import CoreLocation
 import CoreSpotlight
 import SwiftData
 import UserNotifications
+import CloudKit
 @testable import geomemo
 
 // MARK: - LocationManager.shouldNotify テスト
@@ -1881,14 +1882,15 @@ struct SharedMemoModelTests {
         let now = Date()
         let later = now.addingTimeInterval(60)
 
-        let data = SharedMemoData(
-            ckRecordName: shared.ckRecordName, memoTitle: "", memoLocationName: "",
+        let zoneID = CKRecordZone.ID(zoneName: CKShareService.sharingZoneName, ownerName: CKCurrentUserDefaultName)
+        let recordID = CKRecord.ID(recordName: shared.ckRecordName, zoneID: zoneID)
+        let data = SharedMemoCKData(
+            ckRecordID: recordID, memoTitle: "", memoLocationName: "",
             memoLatitude: 0, memoLongitude: 0, memoRadius: 0,
             memoDeadline: nil, memoTimeWindowStart: nil, memoTimeWindowEnd: nil,
-            requesterRecordID: "", requesterName: "",
-            recipientRecordID: "", recipientName: "",
+            requesterName: "", recipientRecordID: "", recipientName: "",
             autoComplete: false, status: .completed,
-            firedAt: now, completedAt: later, isMyRequest: false
+            firedAt: now, completedAt: later, createdAt: Date(), isMyRequest: false
         )
         shared.apply(data)
         #expect(shared.status == .completed)
@@ -2016,11 +2018,12 @@ struct PendingShareEventCodableTests {
     @Test("fired は JSON 往復で復元できる")
     func firedRoundtrip() throws {
         let firedAt = Date(timeIntervalSince1970: 1_700_000_000)
-        let original: PendingShareEvent = .fired(ckRecordName: "abc", firedAt: firedAt)
+        let original: PendingShareEvent = .fired(ckRecordName: "abc", zoneOwnerName: "__defaultOwner__", firedAt: firedAt)
         let data = try JSONEncoder().encode(original)
         let decoded = try JSONDecoder().decode(PendingShareEvent.self, from: data)
-        if case .fired(let name, let when) = decoded {
+        if case .fired(let name, let owner, let when) = decoded {
             #expect(name == "abc")
+            #expect(owner == "__defaultOwner__")
             #expect(when == firedAt)
         } else {
             Issue.record("Expected .fired case")
@@ -2030,11 +2033,12 @@ struct PendingShareEventCodableTests {
     @Test("completed は JSON 往復で復元できる")
     func completedRoundtrip() throws {
         let completedAt = Date(timeIntervalSince1970: 1_700_001_000)
-        let original: PendingShareEvent = .completed(ckRecordName: "rec-2", completedAt: completedAt)
+        let original: PendingShareEvent = .completed(ckRecordName: "rec-2", zoneOwnerName: "owner-x", completedAt: completedAt)
         let data = try JSONEncoder().encode(original)
         let decoded = try JSONDecoder().decode(PendingShareEvent.self, from: data)
-        if case .completed(let name, let when) = decoded {
+        if case .completed(let name, let owner, let when) = decoded {
             #expect(name == "rec-2")
+            #expect(owner == "owner-x")
             #expect(when == completedAt)
         } else {
             Issue.record("Expected .completed case")
@@ -2043,11 +2047,12 @@ struct PendingShareEventCodableTests {
 
     @Test("cancelled は JSON 往復で復元できる")
     func cancelledRoundtrip() throws {
-        let original: PendingShareEvent = .cancelled(ckRecordName: "rec-3")
+        let original: PendingShareEvent = .cancelled(ckRecordName: "rec-3", zoneOwnerName: "owner-y")
         let data = try JSONEncoder().encode(original)
         let decoded = try JSONDecoder().decode(PendingShareEvent.self, from: data)
-        if case .cancelled(let name) = decoded {
+        if case .cancelled(let name, let owner) = decoded {
             #expect(name == "rec-3")
+            #expect(owner == "owner-y")
         } else {
             Issue.record("Expected .cancelled case")
         }
@@ -2082,7 +2087,7 @@ struct PendingEventQueueTests {
     @Test("enqueue でイベントが追加される")
     func enqueueAdds() {
         let q = freshQueue()
-        q.enqueue(.fired(ckRecordName: "a", firedAt: Date()))
+        q.enqueue(.fired(ckRecordName: "a", zoneOwnerName: "owner", firedAt: Date()))
         #expect(q.isEmpty == false)
         #expect(q.all.count == 1)
     }
@@ -2090,11 +2095,11 @@ struct PendingEventQueueTests {
     @Test("dequeue は同じ ckRecordName のイベントを削除")
     func dequeueRemovesMatching() {
         let q = freshQueue()
-        q.enqueue(.fired(ckRecordName: "a", firedAt: Date()))
-        q.enqueue(.completed(ckRecordName: "b", completedAt: Date()))
+        q.enqueue(.fired(ckRecordName: "a", zoneOwnerName: "owner", firedAt: Date()))
+        q.enqueue(.completed(ckRecordName: "b", zoneOwnerName: "owner", completedAt: Date()))
         q.dequeue(ckRecordName: "a")
         #expect(q.all.count == 1)
-        if case .completed(let name, _) = q.all[0] {
+        if case .completed(let name, _, _) = q.all[0] {
             #expect(name == "b")
         } else {
             Issue.record("Expected remaining event to be .completed for b")
@@ -2104,7 +2109,7 @@ struct PendingEventQueueTests {
     @Test("UserDefaults へ永続化される")
     func persistsAcrossReads() {
         let q = freshQueue()
-        q.enqueue(.cancelled(ckRecordName: "x"))
+        q.enqueue(.cancelled(ckRecordName: "x", zoneOwnerName: "owner"))
         // UserDefaults に書かれているかを直接検証
         let raw = UserDefaults.standard.data(forKey: suiteKey)
         #expect(raw != nil)
@@ -2119,8 +2124,8 @@ struct PendingEventQueueTests {
     @Test("同じ ckRecordName を複数回 enqueue できる（複数残る）")
     func multipleEnqueuesAccumulate() {
         let q = freshQueue()
-        q.enqueue(.fired(ckRecordName: "a", firedAt: Date()))
-        q.enqueue(.fired(ckRecordName: "a", firedAt: Date()))
+        q.enqueue(.fired(ckRecordName: "a", zoneOwnerName: "owner", firedAt: Date()))
+        q.enqueue(.fired(ckRecordName: "a", zoneOwnerName: "owner", firedAt: Date()))
         #expect(q.all.count == 2)
     }
 }

@@ -16,11 +16,6 @@ struct FriendManagementView: View {
     }
 
     @State private var showProfileSetup = false
-    @State private var showShareSheet = false
-    @State private var inviteURL: URL?
-    @State private var isGeneratingInvite = false
-    @State private var inviteError: String?
-    @State private var isCheckingAccepted = false
 
     private var iCloudAvailable: Bool {
         FileManager.default.ubiquityIdentityToken != nil
@@ -49,16 +44,6 @@ struct FriendManagementView: View {
         }
         .sheet(isPresented: $showProfileSetup) {
             UserProfileSetupView()
-        }
-        .sheet(isPresented: $showShareSheet) {
-            if let url = inviteURL {
-                ShareSheet(items: [url])
-            }
-        }
-        .task {
-            if myProfile != nil {
-                await checkAcceptedInvitations()
-            }
         }
     }
 
@@ -131,9 +116,6 @@ struct FriendManagementView: View {
                 // 自分のプロフィールカード
                 profileCard
 
-                // 招待リンク生成
-                inviteSection
-
                 // フレンド一覧
                 if !acceptedFriends.isEmpty {
                     friendsListSection
@@ -144,9 +126,6 @@ struct FriendManagementView: View {
             .padding(.horizontal, 16)
             .padding(.top, 20)
             .padding(.bottom, 32)
-        }
-        .refreshable {
-            await checkAcceptedInvitations()
         }
     }
 
@@ -169,52 +148,6 @@ struct FriendManagementView: View {
             Spacer()
         }
         .padding(16)
-        .background(Brand.surface)
-        .clipShape(RoundedRectangle(cornerRadius: 12))
-    }
-
-    // MARK: - 招待セクション
-
-    private var inviteSection: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            sectionHeader(String(localized: "フレンドを招待"))
-
-            Button(action: generateInviteLink) {
-                HStack(spacing: 12) {
-                    if isGeneratingInvite {
-                        ProgressView()
-                            .frame(width: 24)
-                    } else {
-                        Image(systemName: "link.badge.plus")
-                            .font(.system(size: 18))
-                            .foregroundStyle(Brand.blue)
-                            .frame(width: 24)
-                    }
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text(String(localized: "招待リンクを送る"))
-                            .font(.system(size: 16, weight: .semibold))
-                            .foregroundStyle(Brand.primaryText)
-                        Text(String(localized: "リンクを開いた相手がフレンドになります（48時間有効）"))
-                            .font(.system(size: 12))
-                            .foregroundStyle(Brand.secondaryText)
-                    }
-                    Spacer()
-                    Image(systemName: "chevron.right")
-                        .font(.system(size: 13))
-                        .foregroundStyle(Brand.secondaryText)
-                }
-                .padding(16)
-            }
-            .disabled(isGeneratingInvite)
-
-            if let error = inviteError {
-                Text(error)
-                    .font(.system(size: 12))
-                    .foregroundStyle(.red)
-                    .padding(.horizontal, 16)
-                    .padding(.bottom, 12)
-            }
-        }
         .background(Brand.surface)
         .clipShape(RoundedRectangle(cornerRadius: 12))
     }
@@ -297,68 +230,6 @@ struct FriendManagementView: View {
             .padding(.horizontal, 16)
             .padding(.top, 14)
             .padding(.bottom, 8)
-    }
-
-    // MARK: - 招待リンク生成
-
-    private func generateInviteLink() {
-        guard let profile = myProfile else { return }
-        isGeneratingInvite = true
-        inviteError = nil
-
-        Task {
-            do {
-                let code = UUID().uuidString
-                try await CloudKitFriendService.shared.createInvitation(
-                    code: code,
-                    myRecordID: profile.iCloudRecordID,
-                    myName: profile.displayName
-                )
-                let url = URL(string: "geomemo://friend/\(code)")!
-                await MainActor.run {
-                    inviteURL = url
-                    showShareSheet = true
-                    isGeneratingInvite = false
-                }
-            } catch {
-                await MainActor.run {
-                    inviteError = String(localized: "招待リンクの生成に失敗しました。")
-                    isGeneratingInvite = false
-                }
-            }
-        }
-    }
-
-    // MARK: - 承認済み招待の確認（pull-to-refresh）
-
-    private func checkAcceptedInvitations() async {
-        guard let profile = myProfile else { return }
-        isCheckingAccepted = true
-
-        do {
-            let accepted = try await CloudKitFriendService.shared
-                .fetchAcceptedInvitations(myRecordID: profile.iCloudRecordID)
-
-            for item in accepted {
-                // すでにフレンドとして登録済みでなければ追加
-                let alreadyExists = connections.contains { $0.friendRecordID == item.accepterID }
-                if !alreadyExists {
-                    let connection = FriendConnection(
-                        friendRecordID: item.accepterID,
-                        friendDisplayName: item.accepterName,
-                        status: .accepted
-                    )
-                    modelContext.insert(connection)
-                    HapticManager.notification(.success)
-                }
-                // 処理済みの招待レコードを Public DB から削除
-                try? await CloudKitFriendService.shared.deleteInvitation(code: item.code)
-            }
-            try? modelContext.save()
-        } catch {
-            // ネットワークエラー等は静かに無視
-        }
-        isCheckingAccepted = false
     }
 
     // MARK: - フレンド削除
