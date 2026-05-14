@@ -97,6 +97,11 @@ private func clusterMemos(_ memos: [GeoMemo], in region: MKCoordinateRegion) -> 
     }
 }
 
+// String を Identifiable に準拠させてシートの item として使えるようにする
+extension String: @retroactive Identifiable {
+    public var id: String { self }
+}
+
 // MARK: - Main Content View
 struct ContentView: View {
     @Query(sort: \GeoMemo.createdAt, order: .reverse) private var memos: [GeoMemo]
@@ -106,6 +111,7 @@ struct ContentView: View {
     @State private var isSearching = false
     @State private var deepLinkMemoID: UUID?
     @State private var intentShowFavorites = false
+    @State private var friendInviteCode: String?
 
     var body: some View {
         ZStack {
@@ -148,6 +154,14 @@ struct ContentView: View {
         .onReceive(NotificationCenter.default.publisher(for: .searchGeoMemos)) { _ in
             showList = false
             isSearching = true
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .openFriendInvitation)) { notification in
+            if let code = notification.object as? String {
+                friendInviteCode = code
+            }
+        }
+        .sheet(item: $friendInviteCode) { code in
+            FriendInvitationAcceptView(inviteCode: code)
         }
     }
 }

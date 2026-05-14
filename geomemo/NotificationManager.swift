@@ -3,7 +3,8 @@ import UserNotifications
 import Combine
 
 extension Notification.Name {
-    static let geoMemoMarkDone = Notification.Name("geoMemoMarkDone")
+    static let geoMemoMarkDone    = Notification.Name("geoMemoMarkDone")
+    static let openFriendInvitation = Notification.Name("openFriendInvitation")
 }
 
 class NotificationManager: NSObject, ObservableObject {
@@ -23,9 +24,13 @@ class NotificationManager: NSObject, ObservableObject {
         checkAuthorizationStatus()
     }
 
+    // MARK: - Category / Action identifiers (Friend)
+    static let categoryFriendAlert = "FRIEND_ALERT"
+
     // MARK: - Category Registration (call once at app launch)
 
     static func registerCategories() {
+        // 通常メモカテゴリ
         let done = UNNotificationAction(
             identifier: actionDone,
             title: String(localized: "Complete"),
@@ -41,13 +46,23 @@ class NotificationManager: NSObject, ObservableObject {
             title: String(localized: "30 min later"),
             options: []
         )
-        let category = UNNotificationCategory(
+        let memoCategory = UNNotificationCategory(
             identifier: categoryID,
             actions: [done, snooze5, snooze30],
             intentIdentifiers: [],
             options: []
         )
-        UNUserNotificationCenter.current().setNotificationCategories([category])
+
+        // フレンド通知カテゴリ（発火通知・完了通知・未発火アラート）
+        let friendCategory = UNNotificationCategory(
+            identifier: categoryFriendAlert,
+            actions: [],
+            intentIdentifiers: [],
+            options: []
+        )
+
+        UNUserNotificationCenter.current()
+            .setNotificationCategories([memoCategory, friendCategory])
     }
 
     // MARK: - Authorization

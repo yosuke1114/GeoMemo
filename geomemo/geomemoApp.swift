@@ -18,7 +18,7 @@ struct geomemoApp: App {
     static let isUITesting         = CommandLine.arguments.contains("-UITesting")
 
     var sharedModelContainer: ModelContainer = {
-        let schema = Schema([GeoMemo.self, FavoritePlace.self])
+        let schema = Schema([GeoMemo.self, FavoritePlace.self, UserProfile.self, FriendConnection.self])
 
         // テスト時はインメモリストアを使用（CloudKit タイムアウト・データ汚染を防ぐ）
         // Bundle.allBundles で xctest バンドルを検出（Unit/Swift Testing 対応）
@@ -135,6 +135,10 @@ struct geomemoApp: App {
             if let idString = url.pathComponents.dropFirst().first,
                let uuid = UUID(uuidString: idString) {
                 NotificationCenter.default.post(name: .openGeoMemo, object: uuid)
+            }
+        case "friend":
+            if let code = url.pathComponents.dropFirst().first, !code.isEmpty {
+                NotificationCenter.default.post(name: .openFriendInvitation, object: code)
             }
         case "favorites":
             NotificationCenter.default.post(name: .showGeoMemoFavorites, object: nil)

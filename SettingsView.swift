@@ -250,6 +250,24 @@ struct SettingsView: View {
                 }
             }
 
+            // MARK: - FRIENDS
+            Section {
+                NavigationLink(destination: FriendManagementView()) {
+                    HStack(spacing: 14) {
+                        Image(systemName: "person.2.fill")
+                            .font(.system(size: 16))
+                            .foregroundStyle(Brand.blue)
+                            .frame(width: 24)
+                        Text(String(localized: "フレンド管理"))
+                            .foregroundColor(Brand.primaryText)
+                    }
+                }
+            } header: {
+                Text("FRIENDS")
+            } footer: {
+                Text(String(localized: "メモの共有・依頼・見守りに使うフレンドを管理します。"))
+            }
+
             // MARK: - iCLOUD
             Section {
                 HStack {

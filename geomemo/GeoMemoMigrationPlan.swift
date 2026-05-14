@@ -186,12 +186,23 @@ enum GeoMemoSchemaV6: VersionedSchema {
     // V6: GeoMemo は V5 から変更なし。FavoritePlace テーブルを新規追加
 }
 
+// MARK: - Schema V7（UserProfile / FriendConnection 追加）
+
+enum GeoMemoSchemaV7: VersionedSchema {
+    static var versionIdentifier = Schema.Version(7, 0, 0)
+    static var models: [any PersistentModel.Type] {
+        [GeoMemo.self, FavoritePlace.self, UserProfile.self, FriendConnection.self]
+    }
+    // V7: GeoMemo / FavoritePlace は変更なし。UserProfile / FriendConnection を新規追加
+}
+
 // MARK: - Migration Plan
 
 enum GeoMemoMigrationPlan: SchemaMigrationPlan {
     static var schemas: [any VersionedSchema.Type] {
         [GeoMemoSchemaV1.self, GeoMemoSchemaV2.self, GeoMemoSchemaV3.self,
-         GeoMemoSchemaV4.self, GeoMemoSchemaV5.self, GeoMemoSchemaV6.self]
+         GeoMemoSchemaV4.self, GeoMemoSchemaV5.self, GeoMemoSchemaV6.self,
+         GeoMemoSchemaV7.self]
     }
 
     static var stages: [MigrationStage] {
@@ -212,10 +223,15 @@ enum GeoMemoMigrationPlan: SchemaMigrationPlan {
                 fromVersion: GeoMemoSchemaV4.self,
                 toVersion: GeoMemoSchemaV5.self
             ),
-            // V5→V6: FavoritePlace テーブル追加、既存 GeoMemo は変更なし → lightweight
+            // V5→V6: FavoritePlace テーブル追加
             MigrationStage.lightweight(
                 fromVersion: GeoMemoSchemaV5.self,
                 toVersion: GeoMemoSchemaV6.self
+            ),
+            // V6→V7: UserProfile / FriendConnection テーブル追加
+            MigrationStage.lightweight(
+                fromVersion: GeoMemoSchemaV6.self,
+                toVersion: GeoMemoSchemaV7.self
             )
         ]
     }

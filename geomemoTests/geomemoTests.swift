@@ -1599,35 +1599,45 @@ struct FavoritePlaceEditorViewModeTests {
 @Suite("GeoMemoMigrationPlan")
 struct GeoMemoMigrationPlanTests {
 
-    @Test("schemas 配列は6バージョン含む")
-    func schemaCountIsSix() {
-        #expect(GeoMemoMigrationPlan.schemas.count == 6)
+    @Test("schemas 配列は7バージョン含む")
+    func schemaCountIsSeven() {
+        #expect(GeoMemoMigrationPlan.schemas.count == 7)
     }
 
-    @Test("stages 配列は5ステージ含む（V1→V2, V2→V3, V3→V4, V4→V5, V5→V6）")
-    func stageCountIsFive() {
-        #expect(GeoMemoMigrationPlan.stages.count == 5)
+    @Test("stages 配列は6ステージ含む（V1→V2, V2→V3, V3→V4, V4→V5, V5→V6, V6→V7）")
+    func stageCountIsSix() {
+        #expect(GeoMemoMigrationPlan.stages.count == 6)
     }
 
-    @Test("最新スキーマ V6 が schemas に含まれている")
-    func schemasContainsV6() {
+    @Test("最新スキーマ V7 が schemas に含まれている")
+    func schemasContainsV7() {
         let identifiers = GeoMemoMigrationPlan.schemas.map { $0.versionIdentifier }
-        let hasV6 = identifiers.contains(GeoMemoSchemaV6.versionIdentifier)
-        #expect(hasV6)
+        let hasV7 = identifiers.contains(GeoMemoSchemaV7.versionIdentifier)
+        #expect(hasV7)
     }
 
-    @Test("V6 のモデルに FavoritePlace が含まれる")
-    func v6ModelsIncludeFavoritePlace() {
-        let modelTypes = GeoMemoSchemaV6.models.map { ObjectIdentifier($0) }
-        let favID = ObjectIdentifier(FavoritePlace.self)
-        #expect(modelTypes.contains(favID))
+    @Test("V7 のモデルに FavoritePlace が含まれる")
+    func v7ModelsIncludeFavoritePlace() {
+        let modelTypes = GeoMemoSchemaV7.models.map { ObjectIdentifier($0) }
+        #expect(modelTypes.contains(ObjectIdentifier(FavoritePlace.self)))
     }
 
-    @Test("V6 のモデルに GeoMemo が含まれる")
-    func v6ModelsIncludeGeoMemo() {
-        let modelTypes = GeoMemoSchemaV6.models.map { ObjectIdentifier($0) }
-        let geoID = ObjectIdentifier(GeoMemo.self)
-        #expect(modelTypes.contains(geoID))
+    @Test("V7 のモデルに GeoMemo が含まれる")
+    func v7ModelsIncludeGeoMemo() {
+        let modelTypes = GeoMemoSchemaV7.models.map { ObjectIdentifier($0) }
+        #expect(modelTypes.contains(ObjectIdentifier(GeoMemo.self)))
+    }
+
+    @Test("V7 のモデルに UserProfile が含まれる")
+    func v7ModelsIncludeUserProfile() {
+        let modelTypes = GeoMemoSchemaV7.models.map { ObjectIdentifier($0) }
+        #expect(modelTypes.contains(ObjectIdentifier(UserProfile.self)))
+    }
+
+    @Test("V7 のモデルに FriendConnection が含まれる")
+    func v7ModelsIncludeFriendConnection() {
+        let modelTypes = GeoMemoSchemaV7.models.map { ObjectIdentifier($0) }
+        #expect(modelTypes.contains(ObjectIdentifier(FriendConnection.self)))
     }
 }
 
