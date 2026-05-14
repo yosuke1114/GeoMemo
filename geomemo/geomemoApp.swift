@@ -10,9 +10,32 @@ import SwiftData
 import AppIntents
 import CoreSpotlight
 import StoreKit
+import CloudKit
+
+// MARK: - CKShare Acceptance Delegate
+
+final class GeoMemoAppDelegate: NSObject, UIApplicationDelegate {
+    func application(_ application: UIApplication,
+                     userDidAcceptCloudKitShareWith metadata: CKShare.Metadata) {
+        Task { @MainActor in
+            do {
+                try await CKShareService.shared.acceptShare(metadata: metadata)
+                NotificationCenter.default.post(name: .didAcceptSharedMemo, object: metadata.share.recordID)
+            } catch {
+                print("[CKShare] Failed to accept: \(error)")
+            }
+        }
+    }
+}
+
+extension Notification.Name {
+    static let didAcceptSharedMemo = Notification.Name("didAcceptSharedMemo")
+}
 
 @main
 struct geomemoApp: App {
+    @UIApplicationDelegateAdaptor(GeoMemoAppDelegate.self) private var appDelegate
+
     static let appGroupID          = "group.com.yokuro.geomemo"
     static let cloudKitContainerID = "iCloud.com.yokuro.geomemo"
     static let isUITesting         = CommandLine.arguments.contains("-UITesting")

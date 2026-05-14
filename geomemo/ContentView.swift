@@ -173,7 +173,13 @@ struct ContentView: View {
             WatchDashboardView()
         }
         .onChange(of: scenePhase) { _, newPhase in
-            if newPhase == .active { Task { await syncSharedMemos() } }
+            if newPhase == .active {
+                Task {
+                    async let drain: () = PendingEventQueue.shared.drain()
+                    async let sync:  () = syncSharedMemos()
+                    _ = await (drain, sync)
+                }
+            }
         }
         .onReceive(NotificationCenter.default.publisher(for: .didEnterSharedMemoRegion)) { notification in
             if let identifier = notification.object as? String {
