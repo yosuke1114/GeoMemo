@@ -179,12 +179,19 @@ class LocationManager: NSObject, ObservableObject {
         manager.requestLocation()
     }
 
+    /// iOS は同時に最大 20 個のジオフェンスしか監視できない
+    static let maxMonitoredRegions = 20
+
     func startMonitoring(region: CLCircularRegion) {
         guard CLLocationManager.isMonitoringAvailable(for: CLCircularRegion.self) else {
             print("Geofencing is not available on this device")
             return
         }
         guard !manager.monitoredRegions.contains(where: { $0.identifier == region.identifier }) else { return }
+        guard manager.monitoredRegions.count < Self.maxMonitoredRegions else {
+            print("[LocationManager] 20-region limit reached; cannot monitor \(region.identifier)")
+            return
+        }
         manager.startMonitoring(for: region)
     }
 

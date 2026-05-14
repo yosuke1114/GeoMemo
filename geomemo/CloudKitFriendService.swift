@@ -17,14 +17,23 @@ final class CloudKitFriendService {
     // MARK: - My iCloud Record ID
 
     func fetchMyRecordID() async throws -> String {
-        let recordID = try await container.userRecordID()
-        return recordID.recordName
+        do {
+            let recordID = try await container.userRecordID()
+            return recordID.recordName
+        } catch let error as CKError where error.code == .notAuthenticated {
+            throw FriendServiceError.notSignedIn
+        }
     }
 
     // MARK: - iCloud 利用可能チェック
 
-    var isAvailable: Bool {
-        FileManager.default.ubiquityIdentityToken != nil
+    /// CloudKit アカウントが利用可能か（iCloud Drive ではなく CloudKit 側を確認する）
+    func checkAvailability() async -> Bool {
+        do {
+            return try await container.accountStatus() == .available
+        } catch {
+            return false
+        }
     }
 
     // MARK: - 招待コード生成 & Public DB 書き込み

@@ -105,7 +105,7 @@ final class CloudKitShareService {
 
 // MARK: - SharedMemoData（CK レコードから SwiftData 用データに変換）
 
-struct SharedMemoData {
+struct SharedMemoData: Sendable {
     let ckRecordName: String
     let memoTitle: String
     let memoLocationName: String
