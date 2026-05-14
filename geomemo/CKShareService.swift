@@ -19,8 +19,8 @@ final class CKShareService {
     var privateDB: CKDatabase { container.privateCloudDatabase }
     var sharedDB:  CKDatabase { container.sharedCloudDatabase  }
 
-    static let sharingZoneName = "geomemoSharingZone"
-    static let recordType      = "SharedMemo"  // 旧 SharedMemoRecord と区別
+    nonisolated static let sharingZoneName = "geomemoSharingZone"
+    nonisolated static let recordType      = "SharedMemo"  // 旧 SharedMemoRecord と区別
 
     private var zoneEnsured = false
 
@@ -58,13 +58,12 @@ final class CKShareService {
         let recordID = CKRecord.ID(recordName: UUID().uuidString, zoneID: zoneID)
         let record = CKRecord(recordType: Self.recordType, recordID: recordID)
 
-        // 機密フィールドは encryptedValues に
+        // 機密フィールドのみ encryptedValues に入れる（CK Dashboard でも復号できない）
         record.encryptedValues["memoTitle"]        = memo.title
         record.encryptedValues["memoLocationName"] = memo.locationName
         record.encryptedValues["memoLatitude"]     = memo.latitude
         record.encryptedValues["memoLongitude"]    = memo.longitude
 
-        // 非機密フィールド
         record["memoRadius"]          = memo.radius
         record["memoDeadline"]        = memo.deadline
         record["memoTimeWindowStart"] = memo.timeWindowStart
@@ -87,7 +86,7 @@ final class CKShareService {
         // 招待者でない第三者は内容を復号できない。
         share.publicPermission = .readWrite
 
-        // record と share を1回のオペレーションで保存（アトミック）
+        // record と share をアトミックに保存：途中で失敗すると dangling record が残るのを防ぐ
         let (results, _) = try await privateDB.modifyRecords(
             saving: [record, share], deleting: []
         )
@@ -138,17 +137,21 @@ final class CKShareService {
     // MARK: - 自分宛ての SharedMemo を取得（受信者）
 
     /// Shared DB から、自分が受諾済みの SharedMemo を取得する。
-    /// 他人のゾーンは見えないので、まずゾーン一覧を取得して各ゾーンを走査する。
+    /// 他人のゾーンは見えないので、まずゾーン一覧を取得して各ゾーンを並列に走査する。
     func fetchReceivedSharedMemos() async throws -> [SharedMemoCKData] {
         let zones = try await sharedDB.allRecordZones()
-        var results: [SharedMemoCKData] = []
-        for zone in zones {
-            let predicate = NSPredicate(format: "status != %@", ShareStatus.cancelled.rawValue)
-            let query = CKQuery(recordType: Self.recordType, predicate: predicate)
-            let zoneResults = try await fetchAll(database: sharedDB, query: query, zoneID: zone.zoneID, isMyRequest: false)
-            results.append(contentsOf: zoneResults)
+        let predicate = NSPredicate(format: "status != %@", ShareStatus.cancelled.rawValue)
+        return try await withThrowingTaskGroup(of: [SharedMemoCKData].self) { group in
+            for zone in zones {
+                group.addTask {
+                    let query = CKQuery(recordType: Self.recordType, predicate: predicate)
+                    return try await self.fetchAll(database: self.sharedDB, query: query, zoneID: zone.zoneID, isMyRequest: false)
+                }
+            }
+            var all: [SharedMemoCKData] = []
+            for try await batch in group { all.append(contentsOf: batch) }
+            return all
         }
-        return results
     }
 
     // MARK: - Share 受諾（受信者）

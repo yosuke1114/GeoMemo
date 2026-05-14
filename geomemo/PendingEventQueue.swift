@@ -16,6 +16,9 @@ enum PendingShareEvent: Codable {
 final class PendingEventQueue {
     static let shared = PendingEventQueue()
 
+    /// オフライン中に永続的に書き込みが失敗した場合の暴走防止。古いイベントから捨てる。
+    static let maxEvents = 500
+
     private let key = "pendingShareEvents"
     private var _cache: [PendingShareEvent]?
 
@@ -37,6 +40,9 @@ final class PendingEventQueue {
     func enqueue(_ event: PendingShareEvent) {
         var current = events
         current.append(event)
+        if current.count > Self.maxEvents {
+            current.removeFirst(current.count - Self.maxEvents)
+        }
         events = current
     }
 

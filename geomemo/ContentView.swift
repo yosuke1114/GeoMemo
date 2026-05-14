@@ -213,12 +213,11 @@ struct ContentView: View {
         defer { isSyncing = false }
         do {
             let received = try await CKShareService.shared.fetchReceivedSharedMemos()
+            var didChange = false
             for data in received {
                 let recordName = data.ckRecordID.recordName
                 if let existing = allSharedMemos.first(where: { $0.ckRecordName == recordName }) {
-                    existing.status      = data.status
-                    existing.firedAt     = data.firedAt
-                    existing.completedAt = data.completedAt
+                    if existing.apply(data) { didChange = true }
                 } else {
                     let shared = SharedMemo(
                         ckRecordName:        recordName,
@@ -238,6 +237,7 @@ struct ContentView: View {
                         isMyRequest:         false
                     )
                     modelContext.insert(shared)
+                    didChange = true
                     if data.status == .active {
                         let region = CLCircularRegion(
                             center: shared.coordinate,
@@ -249,7 +249,7 @@ struct ContentView: View {
                     }
                 }
             }
-            try? modelContext.save()
+            if didChange { try? modelContext.save() }
         } catch { /* ネットワーク不可時は静かに無視 */ }
     }
 
@@ -265,12 +265,10 @@ struct ContentView: View {
         shared.status = finalStatus
         if shared.autoComplete { shared.completedAt = now }
 
-        // 受信者は Shared DB 経由でレコードにアクセスするので、recordID から探索
-        let recordID = ckRecordID(for: shared)
         do {
-            try await CKShareService.shared.updateStatus(recordID: recordID, status: finalStatus, date: now)
+            try await CKShareService.shared.updateStatus(recordID: shared.cloudKitRecordID, status: finalStatus, date: now)
         } catch {
-            let owner = recordID.zoneID.ownerName
+            let owner = shared.zoneOwnerName
             let event: PendingShareEvent = shared.autoComplete
                 ? .completed(ckRecordName: shared.ckRecordName, zoneOwnerName: owner, completedAt: now)
                 : .fired(ckRecordName: shared.ckRecordName, zoneOwnerName: owner, firedAt: now)
@@ -285,15 +283,6 @@ struct ContentView: View {
 
         LocationManager.shared.stopMonitoring(memoID: geofenceIdentifier)
         try? modelContext.save()
-    }
-
-    /// ローカル SharedMemo から CKRecord.ID を復元する（Private/Shared DB どちらにあるかは CKShareService 側で判定）
-    private func ckRecordID(for shared: SharedMemo) -> CKRecord.ID {
-        let zoneID = CKRecordZone.ID(
-            zoneName: CKShareService.sharingZoneName,
-            ownerName: shared.isMyRequest ? CKCurrentUserDefaultName : shared.requesterRecordID
-        )
-        return CKRecord.ID(recordName: shared.ckRecordName, zoneID: zoneID)
     }
 }
 
@@ -1696,9 +1685,8 @@ struct ListTabView: View {
         shared.completedAt = now
         LocationManager.shared.stopMonitoring(memoID: shared.geofenceIdentifier)
         try? modelContext.save()
-        let owner = shared.isMyRequest ? CKCurrentUserDefaultName : shared.requesterRecordID
-        let zoneID = CKRecordZone.ID(zoneName: CKShareService.sharingZoneName, ownerName: owner)
-        let recordID = CKRecord.ID(recordName: shared.ckRecordName, zoneID: zoneID)
+        let recordID = shared.cloudKitRecordID
+        let owner = shared.zoneOwnerName
         Task {
             do {
                 try await CKShareService.shared.updateStatus(recordID: recordID, status: .completed, date: now)

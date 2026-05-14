@@ -215,31 +215,28 @@ struct WatchDashboardView: View {
         defer { isSyncing = false }
         do {
             let sentData = try await CKShareService.shared.fetchSentSharedMemos()
+            var didChange = false
             for data in sentData {
                 let recordName = data.ckRecordID.recordName
-                if let local = allSharedMemos.first(where: { $0.ckRecordName == recordName }) {
-                    local.status      = data.status
-                    local.firedAt     = data.firedAt
-                    local.completedAt = data.completedAt
+                if let local = allSharedMemos.first(where: { $0.ckRecordName == recordName }),
+                   local.apply(data) {
+                    didChange = true
                 }
             }
-            try? modelContext.save()
+            if didChange { try? modelContext.save() }
         } catch { /* ネットワーク不可時は静かに無視 */ }
     }
 
     // MARK: - Cancel
 
     private func cancelSharedMemo(_ shared: SharedMemo) async {
-        let owner = shared.isMyRequest ? CKCurrentUserDefaultName : shared.requesterRecordID
-        let zoneID = CKRecordZone.ID(zoneName: CKShareService.sharingZoneName, ownerName: owner)
-        let recordID = CKRecord.ID(recordName: shared.ckRecordName, zoneID: zoneID)
         do {
-            try await CKShareService.shared.cancelSharedMemo(recordID: recordID)
+            try await CKShareService.shared.cancelSharedMemo(recordID: shared.cloudKitRecordID)
             shared.status = .cancelled
             try? modelContext.save()
         } catch {
             PendingEventQueue.shared.enqueue(
-                .cancelled(ckRecordName: shared.ckRecordName, zoneOwnerName: owner)
+                .cancelled(ckRecordName: shared.ckRecordName, zoneOwnerName: shared.zoneOwnerName)
             )
         }
     }

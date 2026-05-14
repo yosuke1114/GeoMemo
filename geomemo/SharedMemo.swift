@@ -1,6 +1,7 @@
 import Foundation
 import SwiftData
 import CoreLocation
+import CloudKit
 
 // MARK: - ShareStatus
 
@@ -95,10 +96,27 @@ enum ShareStatus: String, Codable {
 
     var isActive: Bool { status == .active || status == .fired }
 
-    /// CloudKit から取得したデータでローカルフィールドを更新する
-    func apply(_ data: SharedMemoCKData) {
+    /// CKShare 共有ゾーンの所有者名（自分の依頼=自分、受け取った依頼=依頼者）
+    var zoneOwnerName: String {
+        isMyRequest ? CKCurrentUserDefaultName : requesterRecordID
+    }
+
+    /// CloudKit 操作で使う完全な CKRecord.ID（zone owner も含む）
+    var cloudKitRecordID: CKRecord.ID {
+        let zoneID = CKRecordZone.ID(zoneName: CKShareService.sharingZoneName, ownerName: zoneOwnerName)
+        return CKRecord.ID(recordName: ckRecordName, zoneID: zoneID)
+    }
+
+    /// CloudKit から取得したデータでローカルフィールドを更新する。
+    /// 変更がなかった場合は `false` を返してデータストアの不要な dirty 化を防ぐ。
+    @discardableResult
+    func apply(_ data: SharedMemoCKData) -> Bool {
+        guard status != data.status || firedAt != data.firedAt || completedAt != data.completedAt else {
+            return false
+        }
         status      = data.status
         firedAt     = data.firedAt
         completedAt = data.completedAt
+        return true
     }
 }
