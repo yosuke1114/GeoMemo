@@ -114,6 +114,17 @@ class StoreKitManager: ObservableObject {
             }
         }
         // 既存のトランザクションが見つからなければ Free
+        #if DEBUG
+        // 実機 Development build では Sandbox 課金が通せないため、
+        // DEBUG ビルドではデフォルトで Pro 機能を解放して CloudKit Schema
+        // 生成・QA を行えるようにする。
+        // Free 状態をデバッグしたい場合は scheme の Arguments に
+        // "-noProOverride" を追加すると通常の Free 動作になる。
+        if !CommandLine.arguments.contains("-noProOverride") {
+            isPro = true
+            return
+        }
+        #endif
         isPro = false
     }
 
