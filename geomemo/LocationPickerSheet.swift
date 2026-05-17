@@ -59,6 +59,10 @@ struct LocationPickerSheetV2: View {
     // Favorites manager
     @State private var showFavoritesManager = false
 
+    /// Apple Maps 風 bottom sheet の現在の detent。初期は小さい高さで表示して
+    /// マップを優先表示し、ユーザーが必要なときだけ引き上げて検索/お気に入りに到達する。
+    @State private var sheetDetent: PresentationDetent = .height(160)
+
     init(initialCoordinate: CLLocationCoordinate2D, radius: Double, showFavorites: Bool = true, onLocationSelected: @escaping (CLLocationCoordinate2D, String) -> Void) {
         self.initialCoordinate = initialCoordinate
         self.radius = radius
@@ -71,233 +75,306 @@ struct LocationPickerSheetV2: View {
     }
     
     var body: some View {
-        ZStack {
-            VStack(spacing: 0) {
-                // Map
-                Map(position: $cameraPosition) {
-                    Annotation("", coordinate: selectedCoordinate) {
-                        ZStack {
-                            Circle()
-                                .fill(Brand.primaryText)
-                                .frame(width: 16, height: 16)
-                            Circle()
-                                .stroke(Brand.background, lineWidth: 3)
-                                .frame(width: 16, height: 16)
-                        }
-                    }
-                    
-                    // Radius circle
-                    MapCircle(center: selectedCoordinate, radius: radius)
-                        .foregroundStyle(Brand.blue.opacity(0.1))
-                        .stroke(Brand.blue.opacity(0.6), lineWidth: 1.5)
-                }
-                .mapStyle(.standard(elevation: .realistic))
-                .onMapCameraChange { context in
-                    selectedCoordinate = context.camera.centerCoordinate
-                }
-                .task(id: "\(selectedCoordinate.latitude),\(selectedCoordinate.longitude)") {
-                    try? await Task.sleep(for: .milliseconds(300))
-                    reverseGeocode(coordinate: selectedCoordinate)
-                }
-                
-                // Bottom Sheet
-                VStack(spacing: 0) {
-                    Rectangle()
-                        .fill(Brand.primaryText.opacity(0.1))
-                        .frame(height: 1)
-                    
-                    VStack(spacing: 12) {
-                        Text("Drag the map to select a location", comment: "location picker hint")
-                            .font(.system(size: 13, weight: .regular))
-                            .foregroundColor(Brand.primaryText.opacity(0.5))
-                            .frame(maxWidth: .infinity, alignment: .center)
-                        
-                        HStack(spacing: 12) {
-                            HStack(spacing: 8) {
-                                Image("ph-map-pin-fill")
-                                    .resizable()
-                                    .frame(width: 20, height: 20)
-                                    .foregroundColor(Brand.blue)
-                                
-                                Text(locationName)
-                                    .font(.system(size: 16, weight: .bold))
-                                    .foregroundColor(Brand.primaryText)
-                                    .lineLimit(1)
-                            }
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                            
-                            Button(action: {
-                                onLocationSelected(selectedCoordinate, locationName)
-                                dismiss()
-                            }) {
-                                Text("SELECT", comment: "location picker confirm")
-                                    .font(.system(size: 15, weight: .semibold))
-                                    .foregroundColor(.white)
-                                    .frame(width: 100, height: 44)
-                                    .background(Brand.blue)
-                                    .cornerRadius(8)
-                            }
-                        }
-                    }
-                    .padding(.horizontal, 16)
-                    .padding(.vertical, 16)
-                }
-                .frame(height: 120)
-                .background(Brand.surface)
-            }
-            .ignoresSafeArea()
-            
-            // Search Bar Overlay
-            VStack {
-                // サーチバー + キャンセル（1行）
-                HStack(spacing: 10) {
-                    HStack(spacing: 8) {
-                        Image("ph-magnifying-glass")
-                            .resizable()
-                            .frame(width: 16, height: 16)
-                            .foregroundColor(Brand.primaryText.opacity(0.5))
+        ZStack(alignment: .top) {
+            // 1. 全画面マップ
+            mapLayer
 
-                        TextField(String(localized: "Search places..."), text: $searchText)
-                            .font(.system(size: 15, weight: .regular))
-                            .foregroundColor(Brand.primaryText)
-                            .focused($isSearchFieldFocused)
-                            .onChange(of: searchText) { _, newValue in
-                                if newValue.isEmpty {
-                                    isSearching = false
-                                    searchCompleter.clear()
-                                } else {
-                                    isSearching = true
-                                    searchCompleter.update(
-                                        query: newValue,
-                                        region: MKCoordinateRegion(
-                                            center: selectedCoordinate,
-                                            span: MKCoordinateSpan(latitudeDelta: 10, longitudeDelta: 10)
-                                        )
-                                    )
-                                }
-                            }
-                    }
-                    .padding(.horizontal, 12)
-                    .padding(.vertical, 10)
-                    .background(Brand.surface)
-                    .cornerRadius(8)
-
-                    Button(action: { dismiss() }) {
-                        Text("Cancel")
-                            .font(.system(size: 15, weight: .semibold))
-                            .foregroundColor(Brand.primaryText)
-                    }
-                }
-                .padding(.horizontal, 16)
-                .padding(.top, 60)
-                
-                // Favorite Places (検索していない時だけ表示)
-                if showFavorites && !isSearching && !favoritePlaces.isEmpty {
-                    VStack(spacing: 0) {
-                        HStack {
-                            Text(String(localized: "FAVORITE PLACES"))
-                                .font(.system(size: 11, weight: .semibold))
-                                .foregroundStyle(Brand.secondaryText)
-                                .tracking(0.8)
-                            Spacer()
-                            Button(String(localized: "Manage")) {
-                                showFavoritesManager = true
-                            }
-                            .font(.system(size: 12, weight: .medium))
-                            .foregroundStyle(Brand.blue)
-                        }
-                        .padding(.horizontal, 16)
-                        .padding(.vertical, 8)
-
-                        ForEach(favoritePlaces) { place in
-                            Button {
-                                let coord = place.coordinate
-                                cameraPosition = .camera(MapCamera(centerCoordinate: coord, distance: 1000))
-                                selectedCoordinate = coord
-                                locationName = place.name
-                            } label: {
-                                HStack(spacing: 12) {
-                                    Image(systemName: place.iconName)
-                                        .font(.system(size: 16))
-                                        .foregroundStyle(Brand.blue)
-                                        .frame(width: 24)
-                                    VStack(alignment: .leading, spacing: 2) {
-                                        Text(place.name)
-                                            .font(.system(size: 15, weight: .semibold))
-                                            .foregroundStyle(Brand.primaryText)
-                                        if !place.subtitle.isEmpty {
-                                            Text(place.subtitle)
-                                                .font(.system(size: 12))
-                                                .foregroundStyle(Brand.secondaryText)
-                                        }
-                                    }
-                                    Spacer()
-                                }
-                                .padding(.horizontal, 16)
-                                .padding(.vertical, 10)
-                            }
-                            if place.id != favoritePlaces.last?.id {
-                                Rectangle()
-                                    .fill(Brand.primaryText.opacity(0.1))
-                                    .frame(height: 1)
-                                    .padding(.leading, 52)
-                            }
-                        }
-                    }
-                    .background(Brand.surface)
-                    .cornerRadius(8)
-                    .padding(.horizontal, 16)
-                    .padding(.top, 8)
-                }
-
-                // Search Results List
-                if isSearching && !searchCompleter.completions.isEmpty {
-                    ScrollView {
-                        VStack(spacing: 0) {
-                            ForEach(searchCompleter.completions, id: \.self) { completion in
-                                Button(action: {
-                                    selectCompletion(completion)
-                                }) {
-                                    VStack(alignment: .leading, spacing: 4) {
-                                        Text(completion.title)
-                                            .font(.system(size: 16, weight: .semibold))
-                                            .foregroundColor(Brand.primaryText)
-                                        
-                                        if !completion.subtitle.isEmpty {
-                                            Text(completion.subtitle)
-                                                .font(.system(size: 13, weight: .regular))
-                                                .foregroundColor(Brand.primaryText.opacity(0.6))
-                                        }
-                                    }
-                                    .frame(maxWidth: .infinity, alignment: .leading)
-                                    .padding(.horizontal, 16)
-                                    .padding(.vertical, 12)
-                                }
-                                
-                                if completion != searchCompleter.completions.last {
-                                    Rectangle()
-                                        .fill(Brand.primaryText.opacity(0.1))
-                                        .frame(height: 1)
-                                }
-                            }
-                        }
-                    }
-                    .frame(maxHeight: 300)
-                    .background(Brand.surface)
-                    .cornerRadius(8)
-                    .padding(.horizontal, 16)
-                    .padding(.top, 8)
-                }
-                
-                Spacer()
-            }
+            // 2. 上部に「キャンセル」+「選択」のオーバーレイ
+            topBar
         }
+        .ignoresSafeArea()
         .onAppear {
             reverseGeocode(coordinate: selectedCoordinate)
+        }
+        // 3. Apple Maps 風 bottom sheet (検索 + お気に入り)
+        .sheet(isPresented: .constant(true)) {
+            bottomSheet
+                .presentationDetents(
+                    [.height(160), .medium, .large],
+                    selection: $sheetDetent
+                )
+                .presentationBackgroundInteraction(.enabled(upThrough: .medium))
+                .presentationDragIndicator(.visible)
+                .interactiveDismissDisabled()
         }
         .sheet(isPresented: $showFavoritesManager) {
             FavoritePlacesView()
         }
+    }
+
+    // MARK: - Map Layer
+
+    private var mapLayer: some View {
+        Map(position: $cameraPosition) {
+            Annotation("", coordinate: selectedCoordinate) {
+                ZStack {
+                    Circle()
+                        .fill(Brand.primaryText)
+                        .frame(width: 16, height: 16)
+                    Circle()
+                        .stroke(Brand.background, lineWidth: 3)
+                        .frame(width: 16, height: 16)
+                }
+            }
+
+            // Radius circle
+            MapCircle(center: selectedCoordinate, radius: radius)
+                .foregroundStyle(Brand.blue.opacity(0.1))
+                .stroke(Brand.blue.opacity(0.6), lineWidth: 1.5)
+        }
+        .mapStyle(.standard(elevation: .realistic))
+        .onMapCameraChange { context in
+            selectedCoordinate = context.camera.centerCoordinate
+        }
+        .task(id: "\(selectedCoordinate.latitude),\(selectedCoordinate.longitude)") {
+            try? await Task.sleep(for: .milliseconds(300))
+            reverseGeocode(coordinate: selectedCoordinate)
+        }
+    }
+
+    // MARK: - Top Bar (キャンセル + 選択)
+
+    private var topBar: some View {
+        HStack(spacing: 12) {
+            // キャンセル
+            Button(action: { dismiss() }) {
+                HStack(spacing: 4) {
+                    Image(systemName: "xmark")
+                        .font(.footnote.weight(.semibold))
+                    Text("Cancel")
+                        .font(.subheadline.weight(.semibold))
+                }
+                .foregroundColor(Brand.primaryText)
+                .padding(.horizontal, 14)
+                .padding(.vertical, 10)
+                .background(.regularMaterial, in: Capsule())
+            }
+
+            Spacer(minLength: 0)
+
+            // 現在の選択位置 (中央ピル)
+            HStack(spacing: 6) {
+                Image("ph-map-pin-fill")
+                    .resizable()
+                    .frame(width: 14, height: 14)
+                    .foregroundColor(Brand.blue)
+                Text(locationName)
+                    .font(.footnote.weight(.semibold))
+                    .foregroundColor(Brand.primaryText)
+                    .lineLimit(1)
+            }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 8)
+            .background(.regularMaterial, in: Capsule())
+            .layoutPriority(0)
+
+            Spacer(minLength: 0)
+
+            // 選択
+            Button(action: {
+                onLocationSelected(selectedCoordinate, locationName)
+                dismiss()
+            }) {
+                Text("SELECT", comment: "location picker confirm")
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundColor(.white)
+                    .padding(.horizontal, 18)
+                    .padding(.vertical, 10)
+                    .background(Brand.blue, in: Capsule())
+            }
+        }
+        .padding(.horizontal, 12)
+        .padding(.top, 56)
+    }
+
+    // MARK: - Bottom Sheet (検索 + お気に入り)
+
+    private var bottomSheet: some View {
+        ScrollView {
+            VStack(spacing: 16) {
+                // 検索バー
+                HStack(spacing: 8) {
+                    Image("ph-magnifying-glass")
+                        .resizable()
+                        .frame(width: 16, height: 16)
+                        .foregroundColor(Brand.primaryText.opacity(0.5))
+                        .accessibilityHidden(true)
+
+                    TextField(String(localized: "Search places..."), text: $searchText)
+                        .font(.body)
+                        .foregroundColor(Brand.primaryText)
+                        .focused($isSearchFieldFocused)
+                        .submitLabel(.search)
+                        .onChange(of: searchText) { _, newValue in
+                            if newValue.isEmpty {
+                                isSearching = false
+                                searchCompleter.clear()
+                            } else {
+                                isSearching = true
+                                sheetDetent = .large  // 検索中はシートを最大化して結果を見せる
+                                searchCompleter.update(
+                                    query: newValue,
+                                    region: MKCoordinateRegion(
+                                        center: selectedCoordinate,
+                                        span: MKCoordinateSpan(latitudeDelta: 10, longitudeDelta: 10)
+                                    )
+                                )
+                            }
+                        }
+
+                    if !searchText.isEmpty {
+                        Button {
+                            searchText = ""
+                            isSearching = false
+                            searchCompleter.clear()
+                            isSearchFieldFocused = false
+                        } label: {
+                            Image(systemName: "xmark.circle.fill")
+                                .foregroundStyle(Brand.secondaryText)
+                        }
+                        .accessibilityLabel(String(localized: "検索をクリア"))
+                    }
+                }
+                .padding(.horizontal, 14)
+                .padding(.vertical, 12)
+                .background(Brand.secondaryBackground, in: RoundedRectangle(cornerRadius: 12))
+                .padding(.horizontal, 16)
+
+                // お気に入り (検索していないときだけ表示)
+                if showFavorites && !isSearching {
+                    favoritesSection
+                }
+
+                // 検索結果
+                if isSearching && !searchCompleter.completions.isEmpty {
+                    searchResultsSection
+                }
+            }
+            .padding(.top, 12)
+            .padding(.bottom, 24)
+        }
+        .scrollDismissesKeyboard(.interactively)
+        .presentationBackground(Brand.background)
+    }
+
+    // MARK: - Favorites Section
+
+    private var favoritesSection: some View {
+        VStack(spacing: 0) {
+            HStack {
+                Text(String(localized: "FAVORITE PLACES"))
+                    .font(.caption2.weight(.semibold))
+                    .foregroundStyle(Brand.secondaryText)
+                    .tracking(0.8)
+                Spacer()
+                Button(String(localized: "Manage")) {
+                    showFavoritesManager = true
+                }
+                .font(.caption.weight(.medium))
+                .foregroundStyle(Brand.blue)
+            }
+            .padding(.horizontal, 16)
+            .padding(.bottom, 8)
+
+            VStack(spacing: 0) {
+                if favoritePlaces.isEmpty {
+                    Button {
+                        showFavoritesManager = true
+                    } label: {
+                        HStack(spacing: 12) {
+                            Image(systemName: "plus.circle")
+                                .font(.title3)
+                                .foregroundStyle(Brand.blue)
+                                .frame(minWidth: 24)
+                                .accessibilityHidden(true)
+                            Text(String(localized: "お気に入りの場所を追加"))
+                                .font(.subheadline.weight(.medium))
+                                .foregroundStyle(Brand.primaryText)
+                            Spacer(minLength: 0)
+                        }
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 14)
+                        .contentShape(Rectangle())
+                    }
+                } else {
+                    ForEach(favoritePlaces) { place in
+                        Button {
+                            // お気に入りタップで位置選択を確定 → 親シートも閉じる
+                            HapticManager.selection()
+                            onLocationSelected(place.coordinate, place.name)
+                            dismiss()
+                        } label: {
+                            HStack(spacing: 12) {
+                                Image(systemName: place.iconName)
+                                    .font(.body)
+                                    .foregroundStyle(Brand.blue)
+                                    .frame(width: 24)
+                                    .accessibilityHidden(true)
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text(place.name)
+                                        .font(.subheadline.weight(.semibold))
+                                        .foregroundStyle(Brand.primaryText)
+                                    if !place.subtitle.isEmpty {
+                                        Text(place.subtitle)
+                                            .font(.caption)
+                                            .foregroundStyle(Brand.secondaryText)
+                                            .lineLimit(1)
+                                    }
+                                }
+                                Spacer(minLength: 0)
+                            }
+                            .padding(.horizontal, 16)
+                            .padding(.vertical, 12)
+                            .contentShape(Rectangle())
+                        }
+                        if place.id != favoritePlaces.last?.id {
+                            Rectangle()
+                                .fill(Brand.primaryText.opacity(0.08))
+                                .frame(height: 1)
+                                .padding(.leading, 52)
+                        }
+                    }
+                }
+            }
+            .background(Brand.surface)
+            .clipShape(RoundedRectangle(cornerRadius: 12))
+            .padding(.horizontal, 16)
+        }
+    }
+
+    // MARK: - Search Results Section
+
+    private var searchResultsSection: some View {
+        VStack(spacing: 0) {
+            ForEach(searchCompleter.completions, id: \.self) { completion in
+                Button(action: { selectCompletion(completion) }) {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text(completion.title)
+                            .font(.body.weight(.semibold))
+                            .foregroundColor(Brand.primaryText)
+                        if !completion.subtitle.isEmpty {
+                            Text(completion.subtitle)
+                                .font(.footnote)
+                                .foregroundColor(Brand.primaryText.opacity(0.6))
+                                .lineLimit(2)
+                        }
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 12)
+                    .contentShape(Rectangle())
+                }
+                if completion != searchCompleter.completions.last {
+                    Rectangle()
+                        .fill(Brand.primaryText.opacity(0.08))
+                        .frame(height: 1)
+                        .padding(.leading, 16)
+                }
+            }
+        }
+        .background(Brand.surface)
+        .clipShape(RoundedRectangle(cornerRadius: 12))
+        .padding(.horizontal, 16)
     }
     
     // MARK: - Reverse Geocoding
