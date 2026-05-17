@@ -132,16 +132,11 @@ struct SettingsView: View {
                 Button {
                     showRadiusPicker = true
                 } label: {
-                    HStack {
+                    LabeledContent {
+                        rowTrailing(text: radiusLabel)
+                    } label: {
                         Text("Default Radius")
                             .foregroundColor(Brand.primaryText)
-                        Spacer()
-                        Text(radiusLabel)
-                            .foregroundColor(Brand.secondaryText)
-                        Image("ph-caret-right-bold")
-                            .resizable()
-                            .frame(width: 12, height: 12)
-                            .foregroundColor(Brand.secondaryText)
                     }
                 }
             } header: {
@@ -153,32 +148,22 @@ struct SettingsView: View {
                 Button {
                     openSettings()
                 } label: {
-                    HStack {
+                    LabeledContent {
+                        rowTrailing(text: locationStatus)
+                    } label: {
                         Text("Location")
                             .foregroundColor(Brand.primaryText)
-                        Spacer()
-                        Text(locationStatus)
-                            .foregroundColor(Brand.secondaryText)
-                        Image("ph-caret-right-bold")
-                            .resizable()
-                            .frame(width: 12, height: 12)
-                            .foregroundColor(Brand.secondaryText)
                     }
                 }
 
                 Button {
                     openSettings()
                 } label: {
-                    HStack {
+                    LabeledContent {
+                        rowTrailing(text: notificationStatus)
+                    } label: {
                         Text("Notifications")
                             .foregroundColor(Brand.primaryText)
-                        Spacer()
-                        Text(notificationStatus)
-                            .foregroundColor(Brand.secondaryText)
-                        Image("ph-caret-right-bold")
-                            .resizable()
-                            .frame(width: 12, height: 12)
-                            .foregroundColor(Brand.secondaryText)
                     }
                 }
             } header: {
@@ -190,16 +175,11 @@ struct SettingsView: View {
                 // Export
                 if let url = exportURL {
                     ShareLink(item: url) {
-                        HStack {
+                        LabeledContent {
+                            rowTrailing(text: "\(memos.count) memos")
+                        } label: {
                             Text("Export backup")
                                 .foregroundColor(Brand.primaryText)
-                            Spacer()
-                            Text("\(memos.count) memos")
-                                .foregroundColor(Brand.secondaryText)
-                            Image("ph-caret-right-bold")
-                                .resizable()
-                                .frame(width: 12, height: 12)
-                                .foregroundColor(Brand.secondaryText)
                         }
                     }
                 } else {
@@ -211,16 +191,11 @@ struct SettingsView: View {
                             showExportError = true
                         }
                     } label: {
-                        HStack {
+                        LabeledContent {
+                            rowTrailing(text: "\(memos.count) memos")
+                        } label: {
                             Text("Export backup")
                                 .foregroundColor(Brand.primaryText)
-                            Spacer()
-                            Text("\(memos.count) memos")
-                                .foregroundColor(Brand.secondaryText)
-                            Image("ph-caret-right-bold")
-                                .resizable()
-                                .frame(width: 12, height: 12)
-                                .foregroundColor(Brand.secondaryText)
                         }
                     }
                 }
@@ -229,14 +204,15 @@ struct SettingsView: View {
                 Button {
                     showImporter = true
                 } label: {
-                    HStack {
-                        Text("Import backup")
-                            .foregroundColor(Brand.primaryText)
-                        Spacer()
+                    LabeledContent {
                         Image("ph-caret-right-bold")
                             .resizable()
                             .frame(width: 12, height: 12)
                             .foregroundColor(Brand.secondaryText)
+                            .accessibilityHidden(true)
+                    } label: {
+                        Text("Import backup")
+                            .foregroundColor(Brand.primaryText)
                     }
                 }
             } header: {
@@ -255,9 +231,10 @@ struct SettingsView: View {
                 NavigationLink(destination: FriendManagementView()) {
                     HStack(spacing: 14) {
                         Image(systemName: "person.2.fill")
-                            .font(.system(size: 16))
+                            .font(.body)
                             .foregroundStyle(Brand.blue)
-                            .frame(width: 24)
+                            .frame(minWidth: 24)
+                            .accessibilityHidden(true)
                         Text(String(localized: "フレンド管理"))
                             .foregroundColor(Brand.primaryText)
                     }
@@ -270,25 +247,25 @@ struct SettingsView: View {
 
             // MARK: - iCLOUD
             Section {
-                HStack {
-                    Text("iCloud Sync")
-                        .foregroundColor(Brand.primaryText)
-                    Spacer()
+                LabeledContent {
                     if iCloudEnabled {
                         iCloudStatusBadge
                     } else {
                         Text("Disabled")
                             .foregroundColor(.orange)
                     }
+                } label: {
+                    Text("iCloud Sync")
+                        .foregroundColor(Brand.primaryText)
                 }
 
                 if iCloudEnabled, let last = syncMonitor.lastSyncDate {
-                    HStack {
-                        Text("Last synced")
-                            .foregroundColor(Brand.primaryText)
-                        Spacer()
+                    LabeledContent {
                         Text(last, style: .relative)
                             .foregroundColor(Brand.secondaryText)
+                    } label: {
+                        Text("Last synced")
+                            .foregroundColor(Brand.primaryText)
                     }
                 }
 
@@ -314,12 +291,12 @@ struct SettingsView: View {
 
             // MARK: - ABOUT
             Section {
-                HStack {
-                    Text("Version")
-                        .foregroundColor(Brand.primaryText)
-                    Spacer()
+                LabeledContent {
                     Text(appVersion)
                         .foregroundColor(Brand.secondaryText)
+                } label: {
+                    Text("Version")
+                        .foregroundColor(Brand.primaryText)
                 }
 
                 NavigationLink {
@@ -346,8 +323,9 @@ struct SettingsView: View {
                         Image("ph-caret-left-bold")
                             .resizable()
                             .frame(width: 16, height: 16)
+                            .accessibilityHidden(true)
                         Text("Back")
-                            .font(.system(size: 16))
+                            .font(.body)
                     }
                     .foregroundColor(Brand.blue)
                 }
@@ -402,6 +380,21 @@ struct SettingsView: View {
     }
 
     // MARK: - Computed Properties
+
+    /// 設定行右側の "値 + 右向き chevron" を一貫したスタイルで描画する。
+    /// LabeledContent の trailing スロットに置けば AX サイズ時は自動で縦に折り返す。
+    private func rowTrailing(text: String) -> some View {
+        HStack(spacing: 6) {
+            Text(text)
+                .foregroundColor(Brand.secondaryText)
+                .multilineTextAlignment(.trailing)
+            Image("ph-caret-right-bold")
+                .resizable()
+                .frame(width: 12, height: 12)
+                .foregroundColor(Brand.secondaryText)
+                .accessibilityHidden(true)
+        }
+    }
 
     @ViewBuilder
     private var iCloudStatusBadge: some View {
@@ -534,7 +527,7 @@ struct LicenseView: View {
         List {
             Section {
                 Text("This app does not use any open source libraries.")
-                    .font(.system(size: 14))
+                    .font(.subheadline)
                     .foregroundColor(Brand.secondaryText)
             }
         }
