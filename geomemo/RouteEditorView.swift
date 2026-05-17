@@ -65,13 +65,13 @@ struct RouteEditorView: View {
                 // ナビバー
                 HStack {
                     Button(String(localized: "CANCEL")) { dismiss() }
-                        .font(.system(size: 16, weight: .regular))
+                        .font(.body)
                         .foregroundColor(Brand.primaryText)
 
                     Spacer()
 
                     Text("ROUTE")
-                        .font(.system(size: 16, weight: .bold))
+                        .font(.body.weight(.bold))
                         .foregroundColor(Brand.primaryText)
 
                     Spacer()
@@ -80,7 +80,7 @@ struct RouteEditorView: View {
                         waypoints = pending
                         dismiss()
                     }
-                    .font(.system(size: 16, weight: .bold))
+                    .font(.body.weight(.bold))
                     .foregroundColor(Brand.blue)
                 }
                 .padding(.horizontal, 20)
@@ -91,7 +91,7 @@ struct RouteEditorView: View {
                 // ヒントバナー
                 if pending.isEmpty {
                     Text(String(localized: "Tap the map to add waypoints (max 5)"))
-                        .font(.system(size: 13, weight: .medium))
+                        .font(.footnote.weight(.medium))
                         .foregroundColor(.white)
                         .padding(.horizontal, 14)
                         .padding(.vertical, 8)
@@ -100,7 +100,7 @@ struct RouteEditorView: View {
                         .padding(.top, 12)
                 } else if pending.count >= maxWaypoints {
                     Text(String(localized: "Maximum 5 waypoints reached"))
-                        .font(.system(size: 13, weight: .medium))
+                        .font(.footnote.weight(.medium))
                         .foregroundColor(.white)
                         .padding(.horizontal, 14)
                         .padding(.vertical, 8)
@@ -128,7 +128,7 @@ struct RouteEditorView: View {
                 .frame(width: 30, height: 30)
                 .shadow(color: .black.opacity(0.3), radius: 3, x: 0, y: 2)
             Text("\(number)")
-                .font(.system(size: 13, weight: .bold))
+                .font(.footnote.weight(.bold))
                 .foregroundColor(.white)
         }
     }
@@ -149,7 +149,7 @@ struct RouteEditorView: View {
                                     .fill(Brand.blue)
                                     .frame(width: 26, height: 26)
                                 Text("\(index + 1)")
-                                    .font(.system(size: 11, weight: .bold))
+                                    .font(.caption2.weight(.bold))
                                     .foregroundColor(.white)
                             }
 
@@ -157,11 +157,11 @@ struct RouteEditorView: View {
                                 Text(wp.name.isEmpty
                                     ? String(format: String(localized: "Waypoint %d"), index + 1)
                                     : wp.name)
-                                    .font(.system(size: 15, weight: .medium))
+                                    .font(.subheadline.weight(.medium))
                                     .foregroundColor(Brand.primaryText)
                                     .lineLimit(1)
                                 Text(String(format: "%.4f, %.4f", wp.latitude, wp.longitude))
-                                    .font(.system(size: 11, weight: .regular))
+                                    .font(.caption2)
                                     .foregroundColor(Brand.tertiaryText)
                             }
 

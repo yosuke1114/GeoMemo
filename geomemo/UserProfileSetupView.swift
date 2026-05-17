@@ -12,6 +12,9 @@ struct UserProfileSetupView: View {
     @State private var isLoading = false
     @State private var errorMessage: String?
 
+    /// プロフィール画面トップの大きな person アイコンを Dynamic Type に追従させる。
+    @ScaledMetric(relativeTo: .largeTitle) private var headerIconSize: CGFloat = 56
+
     private var isValid: Bool {
         !displayName.trimmingCharacters(in: .whitespaces).isEmpty
     }
@@ -22,16 +25,18 @@ struct UserProfileSetupView: View {
                 // Header
                 VStack(spacing: 12) {
                     Image(systemName: "person.circle.fill")
-                        .font(.system(size: 56))
+                        .font(.system(size: headerIconSize))
                         .foregroundStyle(Brand.blue)
                         .padding(.top, 40)
+                        .accessibilityHidden(true)
 
                     Text(String(localized: "プロフィールを設定"))
-                        .font(.system(size: 22, weight: .bold))
+                        .font(.title2.weight(.bold))
                         .foregroundStyle(Brand.primaryText)
+                        .multilineTextAlignment(.center)
 
                     Text(String(localized: "メモの共有や見守りに使われる表示名を設定してください。"))
-                        .font(.system(size: 14))
+                        .font(.subheadline)
                         .foregroundStyle(Brand.secondaryText)
                         .multilineTextAlignment(.center)
                         .padding(.horizontal, 32)
@@ -41,24 +46,26 @@ struct UserProfileSetupView: View {
                 // Name input
                 VStack(alignment: .leading, spacing: 8) {
                     Text(String(localized: "表示名"))
-                        .font(.system(size: 12, weight: .semibold))
+                        .font(.caption.weight(.semibold))
                         .foregroundStyle(Brand.secondaryText)
                         .tracking(0.5)
                         .padding(.horizontal, 20)
+                        .accessibilityHidden(true)
 
                     TextField(String(localized: "例：田中 洋輔"), text: $displayName)
-                        .font(.system(size: 17))
+                        .font(.body)
                         .foregroundStyle(Brand.primaryText)
                         .padding(.horizontal, 16)
                         .padding(.vertical, 14)
                         .background(Brand.surface)
                         .clipShape(RoundedRectangle(cornerRadius: 10))
                         .padding(.horizontal, 16)
+                        .accessibilityLabel(String(localized: "表示名"))
                 }
 
                 if let error = errorMessage {
                     Text(error)
-                        .font(.system(size: 13))
+                        .font(.footnote)
                         .foregroundStyle(.red)
                         .padding(.horizontal, 20)
                         .padding(.top, 12)
@@ -74,18 +81,22 @@ struct UserProfileSetupView: View {
                                 .tint(.white)
                         } else {
                             Text(String(localized: "設定する"))
-                                .font(.system(size: 17, weight: .semibold))
+                                .font(.body.weight(.semibold))
                                 .foregroundStyle(.white)
                         }
                     }
                     .frame(maxWidth: .infinity)
-                    .frame(height: 52)
+                    .frame(minHeight: 52)
+                    .padding(.vertical, 6)
                     .background(isValid ? Brand.blue : Brand.blue.opacity(0.4))
                     .clipShape(RoundedRectangle(cornerRadius: 14))
                 }
                 .disabled(!isValid || isLoading)
                 .padding(.horizontal, 16)
                 .padding(.bottom, 32)
+                .accessibilityLabel(isLoading
+                    ? String(localized: "保存中")
+                    : String(localized: "設定する"))
             }
             .background(Brand.background)
             .navigationBarTitleDisplayMode(.inline)

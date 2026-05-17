@@ -9,6 +9,9 @@ struct FavoritePlacesView: View {
     @State private var showAddSheet = false
     @State private var editingPlace: FavoritePlace?
 
+    /// 空状態のラージアイコン用。Dynamic Type に追従する。
+    @ScaledMetric(relativeTo: .largeTitle) private var emptyIconSize: CGFloat = 48
+
     var body: some View {
         NavigationStack {
             Group {
@@ -49,13 +52,14 @@ struct FavoritePlacesView: View {
     private var emptyState: some View {
         VStack(spacing: 16) {
             Image(systemName: "mappin.and.ellipse")
-                .font(.system(size: 48))
+                .font(.system(size: emptyIconSize))
                 .foregroundStyle(Brand.blue.opacity(0.5))
+                .accessibilityHidden(true)
             Text(String(localized: "No favorite places yet"))
-                .font(.system(size: 17, weight: .semibold))
+                .font(.body.weight(.semibold))
                 .foregroundStyle(Brand.primaryText)
             Text(String(localized: "Save locations you visit often to quickly set them when creating a memo."))
-                .font(.system(size: 14))
+                .font(.subheadline)
                 .foregroundStyle(Brand.secondaryText)
                 .multilineTextAlignment(.center)
                 .padding(.horizontal, 40)
@@ -63,9 +67,11 @@ struct FavoritePlacesView: View {
                 showAddSheet = true
             } label: {
                 Text(String(localized: "Add Place"))
-                    .font(.system(size: 15, weight: .semibold))
+                    .font(.subheadline.weight(.semibold))
                     .foregroundStyle(.white)
-                    .frame(width: 160, height: 44)
+                    .padding(.horizontal, 24)
+                    .padding(.vertical, 12)
+                    .frame(minWidth: 160, minHeight: 44)
                     .background(Brand.blue)
                     .clipShape(RoundedRectangle(cornerRadius: 10))
             }
@@ -99,17 +105,17 @@ struct FavoritePlacesView: View {
     private func placeRow(_ place: FavoritePlace) -> some View {
         HStack(spacing: 14) {
             Image(systemName: place.iconName)
-                .font(.system(size: 18))
+                .font(.body)
                 .foregroundStyle(Brand.blue)
                 .frame(width: 32)
 
             VStack(alignment: .leading, spacing: 3) {
                 Text(place.name)
-                    .font(.system(size: 16, weight: .semibold))
+                    .font(.body.weight(.semibold))
                     .foregroundStyle(Brand.primaryText)
                 if !place.subtitle.isEmpty {
                     Text(place.subtitle)
-                        .font(.system(size: 13))
+                        .font(.footnote)
                         .foregroundStyle(Brand.secondaryText)
                 }
             }
@@ -120,7 +126,7 @@ struct FavoritePlacesView: View {
                 editingPlace = place
             } label: {
                 Image(systemName: "pencil")
-                    .font(.system(size: 15))
+                    .font(.subheadline)
                     .foregroundStyle(Brand.secondaryText)
                     .frame(width: 36, height: 36)
             }

@@ -250,7 +250,10 @@ struct ContentView: View {
                 }
             }
             if didChange { try? modelContext.save() }
-        } catch { /* ネットワーク不可時は静かに無視 */ }
+        } catch {
+            // ネットワーク不可は通常運用の一部なので、UI を遮るのは "今ユーザー操作で
+            // 取得を期待していたとき" だけにする。ここはバックグラウンド同期なので silent。
+        }
     }
 
     // MARK: - Handle Shared Memo Geofence Fire
@@ -303,7 +306,7 @@ struct CustomNavigationBar: View {
             
             // Logo Text
             Text(verbatim: "GEOMEMO")
-                .font(.system(size: 24, weight: .heavy, design: .default))
+                .font(.title2.weight(.heavy))
                 .foregroundColor(Brand.primaryText)
             
             Spacer()
@@ -326,7 +329,7 @@ struct CustomNavigationBar: View {
             // Watch Dashboard Button
             Button(action: { showWatchDashboard = true }) {
                 Image(systemName: "eye")
-                    .font(.system(size: 17, weight: .medium))
+                    .font(.body.weight(.medium))
                     .foregroundColor(Brand.primaryText)
                     .frame(width: 32, height: 32)
             }
@@ -377,7 +380,7 @@ private struct SinglePinView: View {
                             .stroke(Brand.background, lineWidth: 2)
                     )
                 Image(systemName: "arrow.triangle.turn.up.right.circle.fill")
-                    .font(.system(size: 7, weight: .bold))
+                    .font(.caption2.weight(.bold))
                     .foregroundStyle(Brand.background)
             }
         } else {
@@ -402,7 +405,7 @@ private struct ClusterPinView: View {
                 .fill(Brand.blue)
                 .frame(width: 32, height: 32)
             Text("\(count)")
-                .font(.system(size: 13, weight: .bold))
+                .font(.footnote.weight(.bold))
                 .foregroundColor(.white)
         }
         .overlay(
@@ -428,7 +431,7 @@ private struct CalloutView: View {
                         .italic(memo.isUntitled)
                         .lineLimit(1)
                     Text(memo.locationName.isEmpty ? String(localized: "Unknown Location") : memo.locationName)
-                        .font(.system(size: 12))
+                        .font(.caption)
                         .foregroundColor(Brand.secondaryText)
                         .lineLimit(1)
                 }
@@ -495,7 +498,7 @@ private struct ClusterListSheet: View {
             // Header
             HStack {
                 Text("\(memos.count) memos")
-                    .font(.system(size: 16, weight: .bold))
+                    .font(.body.weight(.bold))
                     .foregroundColor(Brand.primaryText)
                 Spacer()
             }
@@ -523,7 +526,7 @@ private struct ClusterListSheet: View {
                                         .italic(memo.isUntitled)
                                         .lineLimit(1)
                                     Text(memo.locationName.isEmpty ? "Unknown Location" : memo.locationName)
-                                        .font(.system(size: 12))
+                                        .font(.caption)
                                         .foregroundColor(Brand.secondaryText)
                                         .lineLimit(1)
                                 }
@@ -887,7 +890,9 @@ struct MapTabView: View {
                     .accessibilityIdentifier("listViewButton")
                 }
                 .padding(.trailing, 16)
-                .padding(.bottom, 80)
+                // ADD MEMO ボタン (高さ ~72pt + bottom 16pt) と重ならないように、
+                // 下端をその上に十分余裕を持って配置する。
+                .padding(.bottom, 112)
             }
         }
     }
@@ -917,11 +922,12 @@ struct MapTabView: View {
                         .resizable()
                         .frame(width: 20, height: 20)
                     Text("ADD MEMO")
-                        .font(.system(size: 18, weight: .heavy, design: .default))
+                        .font(.body.weight(.heavy))
                 }
                 .foregroundColor(Brand.primaryText)
                 .frame(maxWidth: .infinity)
-                .frame(height: 56)
+                .frame(minHeight: 56)
+                .padding(.vertical, 8)
                 .background(Brand.background)
                 .clipShape(RoundedRectangle(cornerRadius: 8))
                 .overlay(
@@ -968,7 +974,7 @@ struct MapTabView: View {
                     .foregroundColor(Brand.secondaryText)
                 TextField("Search memos & places...", text: $searchText)
                     .textFieldStyle(.plain)
-                    .font(.system(size: 16))
+                    .font(.body)
                     .onChange(of: searchText) { _, newValue in
                         searchDebounceTask?.cancel()
                         if newValue.isEmpty {
@@ -1002,7 +1008,7 @@ struct MapTabView: View {
                         memoResults = []
                     }
                 }
-                .font(.system(size: 14, weight: .medium))
+                .font(.subheadline.weight(.medium))
                 .foregroundColor(Brand.blue)
             }
             .padding(.horizontal, 16)
@@ -1126,6 +1132,9 @@ struct ListTabView: View {
     @Binding var showSettings: Bool
     @Query(sort: \SharedMemo.createdAt, order: .reverse) private var allSharedMemos: [SharedMemo]
 
+    /// 空状態の大きな装飾アイコンを Dynamic Type に追従させる。
+    @ScaledMetric(relativeTo: .largeTitle) private var emptyTabIconSize: CGFloat = 36
+
     private var receivedActiveMemos: [SharedMemo] {
         allSharedMemos.filter { !$0.isMyRequest && ($0.status == .active || $0.status == .fired) }
     }
@@ -1204,7 +1213,7 @@ struct ListTabView: View {
                             .frame(width: 16, height: 16)
                             .foregroundColor(Brand.tertiaryText)
                         TextField(String(localized: "Search memos..."), text: $listSearchText)
-                            .font(.system(size: 16))
+                            .font(.body)
                             .foregroundColor(Brand.primaryText)
                         if !listSearchText.isEmpty {
                             Button(action: { listSearchText = "" }) {
@@ -1230,10 +1239,10 @@ struct ListTabView: View {
                             .frame(width: 48, height: 48)
                             .foregroundColor(Brand.primaryText.opacity(0.45))
                         Text("No memos yet")
-                            .font(.system(size: 18, weight: .medium))
+                            .font(.body.weight(.medium))
                             .foregroundColor(Brand.primaryText.opacity(0.5))
                         Text("Tap the map to add a memo")
-                            .font(.system(size: 14, weight: .regular))
+                            .font(.subheadline)
                             .foregroundColor(Brand.secondaryText)
                             .multilineTextAlignment(.center)
                             .padding(.horizontal, 32)
@@ -1271,7 +1280,7 @@ struct ListTabView: View {
                         .resizable()
                         .frame(width: 18, height: 18)
                     Text("MAP")
-                        .font(.system(size: 16, weight: .bold))
+                        .font(.body.weight(.bold))
                 }
                 .foregroundColor(Brand.primaryText)
             }
@@ -1348,7 +1357,7 @@ struct ListTabView: View {
                                     .frame(width: 14, height: 14)
                             } else {
                                 Image(systemName: "circle.grid.3x3")
-                                    .font(.system(size: 14))
+                                    .font(.subheadline)
                                     .foregroundColor(showColorFilter ? Brand.blue : Brand.secondaryText)
                             }
                         }
@@ -1371,7 +1380,7 @@ struct ListTabView: View {
                                 .fill(Brand.secondaryBackground)
                                 .frame(width: 28, height: 28)
                             Image(systemName: "xmark")
-                                .font(.system(size: 10, weight: .bold))
+                                .font(.caption2.weight(.bold))
                                 .foregroundColor(selectedColorIndex == nil ? Brand.primaryText : Brand.secondaryText)
                         }
                         .overlay(
@@ -1462,7 +1471,7 @@ struct ListTabView: View {
         switch tab {
         case .favorites:
             Image(systemName: isSelected ? "heart.fill" : "heart")
-                .font(.system(size: 15))
+                .font(.subheadline)
                 .foregroundColor(isSelected ? Color(hex: "E5484D") : Brand.secondaryText)
         case .all:
             Text(String(localized: "ALL"))
@@ -1498,12 +1507,12 @@ struct ListTabView: View {
             VStack(spacing: 12) {
                 Spacer()
                 Image(systemName: tab == .favorites ? "heart" : "tray")
-                    .font(.system(size: 36))
+                    .font(.system(size: emptyTabIconSize))
                     .foregroundColor(Brand.primaryText.opacity(0.2))
                 Text(tab == .favorites
                      ? String(localized: "No favorites yet")
                      : String(localized: "No matching memos"))
-                    .font(.system(size: 16, weight: .medium))
+                    .font(.body.weight(.medium))
                     .foregroundColor(Brand.primaryText.opacity(0.4))
                 Spacer()
             }
@@ -1522,9 +1531,9 @@ struct ListTabView: View {
                     } header: {
                         HStack(spacing: 6) {
                             Image(systemName: "person.2.fill")
-                                .font(.system(size: 11, weight: .semibold))
+                                .font(.caption2.weight(.semibold))
                             Text(String(localized: "受信した依頼") + " (\(receivedActiveMemos.count))")
-                                .font(.system(size: 12, weight: .semibold))
+                                .font(.caption.weight(.semibold))
                                 .textCase(nil)
                         }
                         .foregroundColor(Brand.blue)
@@ -1613,9 +1622,9 @@ struct ListTabView: View {
                         } label: {
                             HStack(spacing: 6) {
                                 Image(systemName: showDoneSection ? "chevron.down" : "chevron.right")
-                                    .font(.system(size: 11, weight: .semibold))
+                                    .font(.caption2.weight(.semibold))
                                 Text("Complete (\(doneMemos.count))")
-                                    .font(.system(size: 12, weight: .semibold))
+                                    .font(.caption.weight(.semibold))
                                     .textCase(nil)
                             }
                             .foregroundColor(Brand.secondaryText)
@@ -1645,16 +1654,16 @@ struct ListTabView: View {
                         .foregroundStyle(Brand.blue)
                 }
             }
-            .font(.system(size: 18))
+            .font(.body)
             .frame(width: 24)
 
             VStack(alignment: .leading, spacing: 4) {
                 Text(shared.memoTitle.isEmpty ? String(localized: "（タイトルなし）") : shared.memoTitle)
-                    .font(.system(size: 15, weight: .semibold))
+                    .font(.subheadline.weight(.semibold))
                     .foregroundStyle(Brand.primaryText)
                     .lineLimit(1)
                 Text(String(localized: "依頼: ") + shared.requesterName)
-                    .font(.system(size: 12))
+                    .font(.caption)
                     .foregroundStyle(Brand.secondaryText)
             }
 
@@ -1667,7 +1676,7 @@ struct ListTabView: View {
                     completeSharedMemo(shared)
                 } label: {
                     Text(String(localized: "完了"))
-                        .font(.system(size: 13, weight: .semibold))
+                        .font(.footnote.weight(.semibold))
                         .foregroundStyle(.white)
                         .padding(.horizontal, 12)
                         .padding(.vertical, 6)
@@ -1745,7 +1754,7 @@ struct MemoListRow: View {
                     }
                     if memo.isFavorite {
                         Image(systemName: "heart.fill")
-                            .font(.system(size: 12))
+                            .font(.caption)
                             .foregroundColor(Color(hex: "E5484D"))
                             .accessibilityLabel("Favorite")
                     }
@@ -1760,7 +1769,7 @@ struct MemoListRow: View {
                 // Note
                 if !memo.note.isEmpty {
                     Text(memo.note)
-                        .font(.system(size: 14, weight: .regular))
+                        .font(.subheadline)
                         .foregroundColor(Brand.primaryText.opacity(0.6))
                         .lineLimit(1)
                 }
@@ -1768,17 +1777,17 @@ struct MemoListRow: View {
                 // Location Info
                 HStack(spacing: 4) {
                     Text(locationText)
-                        .font(.system(size: 11, weight: .medium))
+                        .font(.caption2.weight(.medium))
                         .foregroundColor(Brand.secondaryText)
                         .textCase(.uppercase)
                     
                     if let distanceText {
                         Text("•")
-                            .font(.system(size: 11, weight: .medium))
+                            .font(.caption2.weight(.medium))
                             .foregroundColor(Brand.secondaryText)
                         
                         Text(distanceText)
-                            .font(.system(size: 11, weight: .medium))
+                            .font(.caption2.weight(.medium))
                             .foregroundColor(Brand.secondaryText)
                     }
                 }
@@ -1861,7 +1870,7 @@ private struct SearchResultsView: View {
 
                 if memoResults.isEmpty && placeResults.isEmpty {
                     Text("No results found")
-                        .font(.system(size: 14))
+                        .font(.subheadline)
                         .foregroundColor(Brand.secondaryText)
                         .padding(24)
                 }
@@ -1876,7 +1885,7 @@ private struct SectionHeader: View {
     var body: some View {
         HStack {
             Text(title)
-                .font(.system(size: 12, weight: .bold))
+                .font(.caption.weight(.bold))
                 .foregroundColor(Brand.secondaryText)
                 .textCase(.uppercase)
             Spacer()
@@ -1906,7 +1915,7 @@ private struct MemoResultRow: View {
                     .foregroundColor(memo.isUntitled ? Brand.tertiaryText : Brand.primaryText)
                     .italic(memo.isUntitled)
                 Text(memo.locationName)
-                    .font(.system(size: 12))
+                    .font(.caption)
                     .foregroundColor(Brand.secondaryText)
             }
             Spacer()
@@ -1936,11 +1945,11 @@ private struct PlaceResultRow: View {
             }
             VStack(alignment: .leading, spacing: 2) {
                 Text(completion.title)
-                    .font(.system(size: 14, weight: .semibold))
+                    .font(.subheadline.weight(.semibold))
                     .foregroundColor(Brand.primaryText)
                 if !completion.subtitle.isEmpty {
                     Text(completion.subtitle)
-                        .font(.system(size: 12))
+                        .font(.caption)
                         .foregroundColor(Brand.secondaryText)
                         .lineLimit(1)
                 }

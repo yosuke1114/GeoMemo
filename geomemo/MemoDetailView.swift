@@ -55,7 +55,7 @@ struct MemoDetailView: View {
                                             .fill(memoColor)
                                             .frame(width: 22, height: 22)
                                         Text("\(index + 1)")
-                                            .font(.system(size: 10, weight: .bold))
+                                            .font(.caption2.weight(.bold))
                                             .foregroundColor(.white)
                                     }
                                 }
@@ -95,7 +95,7 @@ struct MemoDetailView: View {
                             .frame(width: 14, height: 14)
                             .foregroundColor(Brand.blue)
                         Text(memo.locationName.isEmpty ? String(localized: "Unknown Location") : memo.locationName)
-                            .font(.system(size: 13, weight: .medium))
+                            .font(.footnote.weight(.medium))
                             .foregroundColor(Brand.primaryText)
                     }
                     .padding(.horizontal, 12)
@@ -120,7 +120,7 @@ struct MemoDetailView: View {
                         }
                         if memo.isFavorite {
                             Image(systemName: "heart.fill")
-                                .font(.system(size: 14))
+                                .font(.subheadline)
                                 .foregroundColor(Color(hex: "E5484D"))
                         }
                         Text(memo.displayTitle)
@@ -135,7 +135,7 @@ struct MemoDetailView: View {
                         checklistSection
                     } else if !memo.note.isEmpty {
                         Text(memo.note)
-                            .font(.system(size: 16, weight: .regular))
+                            .font(.body)
                             .foregroundColor(Brand.primaryText)
                             .lineSpacing(8)
                             .frame(maxWidth: .infinity, alignment: .leading)
@@ -181,7 +181,7 @@ struct MemoDetailView: View {
                     if !suggestedTags.isEmpty {
                         HStack(alignment: .center, spacing: 8) {
                             Image(systemName: "sparkles")
-                                .font(.system(size: 11))
+                                .font(.caption2)
                                 .foregroundColor(Brand.blue)
                             ScrollView(.horizontal, showsIndicators: false) {
                                 HStack(spacing: 6) {
@@ -219,7 +219,7 @@ struct MemoDetailView: View {
                         // ROUTE TRIGGER Rows
                         HStack {
                             Text("ROUTE TRIGGER")
-                                .font(.system(size: 13, weight: .semibold))
+                                .font(.footnote.weight(.semibold))
                                 .foregroundColor(Brand.tertiaryText)
                                 .tracking(0.5)
                             Spacer()
@@ -238,13 +238,13 @@ struct MemoDetailView: View {
                                         .fill(memoColor)
                                         .frame(width: 22, height: 22)
                                     Text("\(index + 1)")
-                                        .font(.system(size: 10, weight: .bold))
+                                        .font(.caption2.weight(.bold))
                                         .foregroundColor(.white)
                                 }
                                 Text(wp.name.isEmpty
                                     ? String(format: String(localized: "Waypoint %d"), index + 1)
                                     : wp.name)
-                                    .font(.system(size: 15, weight: .regular))
+                                    .font(.subheadline)
                                     .foregroundColor(Brand.primaryText)
                                     .lineLimit(1)
                                 Spacer()
@@ -255,12 +255,12 @@ struct MemoDetailView: View {
 
                         HStack {
                             Text("DETECTION RADIUS")
-                                .font(.system(size: 13, weight: .semibold))
+                                .font(.footnote.weight(.semibold))
                                 .foregroundColor(Brand.tertiaryText)
                                 .tracking(0.5)
                             Spacer()
                             Text(formatRadius(memo.radius))
-                                .font(.system(size: 16, weight: .regular))
+                                .font(.body)
                                 .foregroundColor(Brand.tertiaryText)
                         }
                         .padding(.horizontal, 16)
@@ -270,14 +270,14 @@ struct MemoDetailView: View {
                         // RADIUS Row
                         HStack {
                             Text("RADIUS")
-                                .font(.system(size: 13, weight: .semibold))
+                                .font(.footnote.weight(.semibold))
                                 .foregroundColor(Brand.tertiaryText)
                                 .tracking(0.5)
 
                             Spacer()
 
                             Text(formatRadius(memo.radius))
-                                .font(.system(size: 16, weight: .regular))
+                                .font(.body)
                                 .foregroundColor(Brand.tertiaryText)
                         }
                         .padding(.horizontal, 16)
@@ -286,7 +286,7 @@ struct MemoDetailView: View {
                         // ON ENTRY Row
                         HStack {
                             Text("ON ENTRY")
-                                .font(.system(size: 13, weight: .semibold))
+                                .font(.footnote.weight(.semibold))
                                 .foregroundColor(Brand.primaryText)
                                 .tracking(0.5)
 
@@ -310,7 +310,7 @@ struct MemoDetailView: View {
                         // ON EXIT Row
                         HStack {
                             Text("ON EXIT")
-                                .font(.system(size: 13, weight: .semibold))
+                                .font(.footnote.weight(.semibold))
                                 .foregroundColor(Brand.primaryText)
                                 .tracking(0.5)
 
@@ -344,7 +344,7 @@ struct MemoDetailView: View {
                     VStack(spacing: 0) {
                         HStack {
                             Text("TRIGGER CONDITIONS")
-                                .font(.system(size: 13, weight: .semibold))
+                                .font(.footnote.weight(.semibold))
                                 .foregroundColor(Brand.tertiaryText)
                                 .tracking(0.5)
                             Spacer()
@@ -356,12 +356,12 @@ struct MemoDetailView: View {
                         if let deadline = memo.deadline {
                             HStack {
                                 Text("EXPIRY")
-                                    .font(.system(size: 13, weight: .semibold))
+                                    .font(.footnote.weight(.semibold))
                                     .foregroundColor(Brand.primaryText)
                                     .tracking(0.5)
                                 Spacer()
                                 Text(deadline, style: .date)
-                                    .font(.system(size: 16, weight: .regular))
+                                    .font(.body)
                                     .foregroundColor(Brand.tertiaryText)
                                     .environment(\.locale, .autoupdatingCurrent)
                             }
@@ -373,12 +373,12 @@ struct MemoDetailView: View {
                         if let start = memo.timeWindowStart, let end = memo.timeWindowEnd {
                             HStack {
                                 Text("TIME WINDOW")
-                                    .font(.system(size: 13, weight: .semibold))
+                                    .font(.footnote.weight(.semibold))
                                     .foregroundColor(Brand.primaryText)
                                     .tracking(0.5)
                                 Spacer()
                                 Text("\(String(format: "%02d:%02d", start / 60, start % 60)) 〜 \(String(format: "%02d:%02d", end / 60, end % 60))")
-                                    .font(.system(size: 16, weight: .regular))
+                                    .font(.body)
                                     .foregroundColor(Brand.tertiaryText)
                             }
                             .padding(.horizontal, 16)
@@ -389,7 +389,7 @@ struct MemoDetailView: View {
                         if let days = memo.activeDays {
                             HStack {
                                 Text("DAYS")
-                                    .font(.system(size: 13, weight: .semibold))
+                                    .font(.footnote.weight(.semibold))
                                     .foregroundColor(Brand.primaryText)
                                     .tracking(0.5)
                                 Spacer()
@@ -399,7 +399,7 @@ struct MemoDetailView: View {
                                         (4, String(localized: "Thu")), (5, String(localized: "Fri")), (6, String(localized: "Sat")), (0, String(localized: "Sun"))
                                     ], id: \.0) { day, label in
                                         Text(label)
-                                            .font(.system(size: 12, weight: .medium))
+                                            .font(.caption.weight(.medium))
                                             .frame(width: 28, height: 28)
                                             .background(
                                                 days.contains(day)
@@ -446,7 +446,7 @@ struct MemoDetailView: View {
                         }
                     }) {
                         Image(systemName: memo.isFavorite ? "heart.fill" : "heart")
-                            .font(.system(size: 18))
+                            .font(.body)
                             .foregroundColor(memo.isFavorite ? Color(hex: "E5484D") : Brand.primaryText)
                             .scaleEffect(memo.isFavorite ? 1.15 : 1.0)
                     }
@@ -454,7 +454,7 @@ struct MemoDetailView: View {
 
                     ShareLink(item: shareText, subject: Text(memo.displayTitle)) {
                         Image(systemName: "square.and.arrow.up")
-                            .font(.system(size: 18))
+                            .font(.body)
                             .foregroundColor(Brand.primaryText)
                     }
                     .accessibilityLabel("Share memo")
@@ -469,13 +469,13 @@ struct MemoDetailView: View {
                         }
                     } label: {
                         Image(systemName: store.isPro ? "person.wave.2" : "person.wave.2")
-                            .font(.system(size: 17))
+                            .font(.body)
                             .foregroundColor(store.isPro ? Brand.primaryText : Brand.secondaryText.opacity(0.5))
                     }
 
                     Button(action: { showingEditSheet = true }) {
                         Text("EDIT")
-                            .font(.system(size: 16, weight: .semibold))
+                            .font(.body.weight(.semibold))
                             .foregroundColor(Brand.blue)
                     }
                 }
@@ -507,7 +507,7 @@ struct MemoDetailView: View {
             // Header row with RESET button
             HStack {
                 Text("LIST")
-                    .font(.system(size: 13, weight: .semibold))
+                    .font(.footnote.weight(.semibold))
                     .foregroundColor(Brand.tertiaryText)
                     .tracking(0.5)
                 Spacer()
@@ -521,7 +521,7 @@ struct MemoDetailView: View {
                         memo.listItems = listItems
                     }) {
                         Text(String(localized: "RESET"))
-                            .font(.system(size: 12, weight: .semibold))
+                            .font(.caption.weight(.semibold))
                             .foregroundColor(Brand.blue)
                     }
                 }
@@ -536,10 +536,10 @@ struct MemoDetailView: View {
                 }) {
                     HStack(spacing: 12) {
                         Image(systemName: item.isChecked ? "checkmark.circle.fill" : "circle")
-                            .font(.system(size: 22))
+                            .font(.title2)
                             .foregroundColor(item.isChecked ? Brand.blue : Brand.primaryText.opacity(0.25))
                         Text(item.text)
-                            .font(.system(size: 16, weight: .regular))
+                            .font(.body)
                             .foregroundColor(item.isChecked ? Brand.tertiaryText : Brand.primaryText)
                             .strikethrough(item.isChecked, color: Brand.tertiaryText)
                             .frame(maxWidth: .infinity, alignment: .leading)
@@ -629,12 +629,12 @@ struct MemoDetailView: View {
     private func timerRow(label: String, minutes: Int) -> some View {
         HStack {
             Text(label)
-                .font(.system(size: 13, weight: .semibold))
+                .font(.footnote.weight(.semibold))
                 .foregroundColor(Brand.primaryText)
                 .tracking(0.5)
             Spacer()
             Text(formatMinutes(minutes))
-                .font(.system(size: 13, weight: .regular))
+                .font(.footnote)
                 .foregroundColor(Brand.secondaryText)
         }
         .padding(.horizontal, 16)

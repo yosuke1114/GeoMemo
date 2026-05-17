@@ -47,7 +47,7 @@ struct FavoritePlaceEditorView: View {
                             } label: {
                                 VStack(spacing: 4) {
                                     Image(systemName: icon.systemName)
-                                        .font(.system(size: 20))
+                                        .font(.title3)
                                         .foregroundStyle(iconName == icon.systemName ? .white : Brand.primaryText)
                                         .frame(width: 44, height: 44)
                                         .background(
@@ -57,7 +57,7 @@ struct FavoritePlaceEditorView: View {
                                         )
                                         .clipShape(RoundedRectangle(cornerRadius: 10))
                                     Text(icon.label)
-                                        .font(.system(size: 10))
+                                        .font(.caption2)
                                         .foregroundStyle(Brand.secondaryText)
                                 }
                             }
@@ -71,7 +71,7 @@ struct FavoritePlaceEditorView: View {
                     // MARK: Name
                     sectionHeader("NAME")
                     TextField(String(localized: "e.g. Office, Home, Gym"), text: $name)
-                        .font(.system(size: 16))
+                        .font(.body)
                         .foregroundStyle(Brand.primaryText)
                         .padding(.horizontal, 20)
                         .padding(.vertical, 14)
@@ -85,16 +85,16 @@ struct FavoritePlaceEditorView: View {
                     } label: {
                         HStack(spacing: 12) {
                             Image(systemName: "mappin.and.ellipse")
-                                .font(.system(size: 16))
+                                .font(.body)
                                 .foregroundStyle(Brand.blue)
                             VStack(alignment: .leading, spacing: 2) {
                                 if subtitle.isEmpty {
                                     Text(String(localized: "Tap to select location"))
-                                        .font(.system(size: 15))
+                                        .font(.subheadline)
                                         .foregroundStyle(Brand.secondaryText)
                                 } else {
                                     Text(subtitle)
-                                        .font(.system(size: 15, weight: .medium))
+                                        .font(.subheadline.weight(.medium))
                                         .foregroundStyle(Brand.primaryText)
                                     Text(String(format: "%.4f, %.4f", latitude, longitude))
                                         .font(.system(size: 11, weight: .regular, design: .monospaced))
@@ -103,7 +103,7 @@ struct FavoritePlaceEditorView: View {
                             }
                             Spacer()
                             Image(systemName: "chevron.right")
-                                .font(.system(size: 13))
+                                .font(.footnote)
                                 .foregroundStyle(Brand.secondaryText)
                         }
                         .padding(.horizontal, 20)
@@ -170,7 +170,7 @@ struct FavoritePlaceEditorView: View {
     @ViewBuilder
     private func sectionHeader(_ title: String) -> some View {
         Text(title)
-            .font(.system(size: 11, weight: .semibold))
+            .font(.caption2.weight(.semibold))
             .foregroundStyle(Brand.secondaryText)
             .tracking(0.8)
             .frame(maxWidth: .infinity, alignment: .leading)

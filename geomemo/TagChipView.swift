@@ -19,7 +19,7 @@ struct TagChip: View {
                         .foregroundStyle(foregroundColor)
                 }
                 Text(label)
-                    .font(.system(size: 12, weight: .medium))
+                    .font(.caption.weight(.medium))
                     .foregroundStyle(foregroundColor)
             }
             .padding(.horizontal, 10)

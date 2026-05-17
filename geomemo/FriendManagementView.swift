@@ -52,13 +52,14 @@ struct FriendManagementView: View {
     private var iCloudUnavailableView: some View {
         VStack(spacing: 16) {
             Image(systemName: "icloud.slash")
-                .font(.system(size: 48))
+                .font(.system(size: emptyStateIconSize))
                 .foregroundStyle(Brand.secondaryText.opacity(0.5))
+                .accessibilityHidden(true)
             Text(String(localized: "iCloudサインインが必要です"))
-                .font(.system(size: 17, weight: .semibold))
+                .font(.body.weight(.semibold))
                 .foregroundStyle(Brand.primaryText)
             Text(String(localized: "設定 → Apple ID からiCloudにサインインしてください。"))
-                .font(.system(size: 14))
+                .font(.subheadline)
                 .foregroundStyle(Brand.secondaryText)
                 .multilineTextAlignment(.center)
                 .padding(.horizontal, 40)
@@ -66,9 +67,11 @@ struct FriendManagementView: View {
                 UIApplication.shared.open(URL(string: UIApplication.openSettingsURLString)!)
             } label: {
                 Text(String(localized: "設定を開く"))
-                    .font(.system(size: 15, weight: .semibold))
+                    .font(.subheadline.weight(.semibold))
                     .foregroundStyle(.white)
-                    .frame(width: 160, height: 44)
+                    .padding(.horizontal, 24)
+                    .padding(.vertical, 12)
+                    .frame(minWidth: 160, minHeight: 44)
                     .background(Brand.blue)
                     .clipShape(RoundedRectangle(cornerRadius: 10))
             }
@@ -77,18 +80,21 @@ struct FriendManagementView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
+    @ScaledMetric(relativeTo: .largeTitle) private var emptyStateIconSize: CGFloat = 48
+
     // MARK: - プロフィール未設定
 
     private var profileNotSetView: some View {
         VStack(spacing: 16) {
             Image(systemName: "person.circle")
-                .font(.system(size: 48))
+                .font(.system(size: emptyStateIconSize))
                 .foregroundStyle(Brand.blue.opacity(0.5))
+                .accessibilityHidden(true)
             Text(String(localized: "プロフィールを設定してください"))
-                .font(.system(size: 17, weight: .semibold))
+                .font(.body.weight(.semibold))
                 .foregroundStyle(Brand.primaryText)
             Text(String(localized: "フレンド機能を使うには表示名の設定が必要です。"))
-                .font(.system(size: 14))
+                .font(.subheadline)
                 .foregroundStyle(Brand.secondaryText)
                 .multilineTextAlignment(.center)
                 .padding(.horizontal, 40)
@@ -96,9 +102,11 @@ struct FriendManagementView: View {
                 showProfileSetup = true
             } label: {
                 Text(String(localized: "プロフィールを設定"))
-                    .font(.system(size: 15, weight: .semibold))
+                    .font(.subheadline.weight(.semibold))
                     .foregroundStyle(.white)
-                    .frame(width: 200, height: 44)
+                    .padding(.horizontal, 24)
+                    .padding(.vertical, 12)
+                    .frame(minWidth: 200, minHeight: 44)
                     .background(Brand.blue)
                     .clipShape(RoundedRectangle(cornerRadius: 10))
             }
@@ -134,22 +142,25 @@ struct FriendManagementView: View {
     private var profileCard: some View {
         HStack(spacing: 14) {
             Image(systemName: "person.circle.fill")
-                .font(.system(size: 36))
+                .font(.largeTitle)
                 .foregroundStyle(Brand.blue)
+                .accessibilityHidden(true)
 
             VStack(alignment: .leading, spacing: 4) {
                 Text(myProfile?.displayName ?? "")
-                    .font(.system(size: 17, weight: .semibold))
+                    .font(.body.weight(.semibold))
                     .foregroundStyle(Brand.primaryText)
                 Text(String(localized: "自分のプロフィール"))
-                    .font(.system(size: 12))
+                    .font(.caption)
                     .foregroundStyle(Brand.secondaryText)
             }
-            Spacer()
+            Spacer(minLength: 0)
         }
         .padding(16)
         .background(Brand.surface)
         .clipShape(RoundedRectangle(cornerRadius: 12))
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel(String(localized: "自分のプロフィール、\(myProfile?.displayName ?? "")"))
     }
 
     // MARK: - フレンド一覧
@@ -175,19 +186,22 @@ struct FriendManagementView: View {
     private func friendRow(_ friend: FriendConnection) -> some View {
         HStack(spacing: 14) {
             Image(systemName: "person.circle.fill")
-                .font(.system(size: 28))
+                .font(.title)
                 .foregroundStyle(Brand.blue.opacity(0.7))
-                .frame(width: 36)
+                .frame(minWidth: 36)
+                .accessibilityHidden(true)
 
             Text(friend.friendDisplayName)
-                .font(.system(size: 16, weight: .semibold))
+                .font(.body.weight(.semibold))
                 .foregroundStyle(Brand.primaryText)
 
-            Spacer()
+            Spacer(minLength: 0)
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 14)
         .contentShape(Rectangle())
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel(friend.friendDisplayName)
         .swipeActions(edge: .trailing, allowsFullSwipe: true) {
             Button(role: .destructive) {
                 deleteFriend(friend)
@@ -202,14 +216,15 @@ struct FriendManagementView: View {
     private var emptyFriendsView: some View {
         VStack(spacing: 12) {
             Image(systemName: "person.2.slash")
-                .font(.system(size: 36))
+                .font(.title)
                 .foregroundStyle(Brand.secondaryText.opacity(0.4))
                 .padding(.top, 24)
+                .accessibilityHidden(true)
             Text(String(localized: "まだフレンドがいません"))
-                .font(.system(size: 15, weight: .semibold))
+                .font(.subheadline.weight(.semibold))
                 .foregroundStyle(Brand.primaryText)
             Text(String(localized: "招待リンクを送ってフレンドを追加しましょう。\n下に引いて更新すると新しいフレンドが表示されます。"))
-                .font(.system(size: 13))
+                .font(.footnote)
                 .foregroundStyle(Brand.secondaryText)
                 .multilineTextAlignment(.center)
                 .padding(.horizontal, 24)
@@ -224,12 +239,13 @@ struct FriendManagementView: View {
 
     private func sectionHeader(_ title: String) -> some View {
         Text(title)
-            .font(.system(size: 11, weight: .semibold))
+            .font(.caption2.weight(.semibold))
             .foregroundStyle(Brand.secondaryText)
             .tracking(0.8)
             .padding(.horizontal, 16)
             .padding(.top, 14)
             .padding(.bottom, 8)
+            .accessibilityAddTraits(.isHeader)
     }
 
     // MARK: - フレンド削除

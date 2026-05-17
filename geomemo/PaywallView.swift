@@ -5,6 +5,10 @@ struct PaywallView: View {
     @Environment(\.dismiss) private var dismiss
     @ObservedObject private var store = StoreKitManager.shared
 
+    /// 値段は強調表示なので大きいが Dynamic Type にも追従させる。
+    @ScaledMetric(relativeTo: .largeTitle) private var priceSize: CGFloat = 36
+    @ScaledMetric(relativeTo: .largeTitle) private var heroIconSize: CGFloat = 48
+
     var body: some View {
         NavigationStack {
             ScrollView {
@@ -14,16 +18,17 @@ struct PaywallView: View {
                     VStack(spacing: 12) {
                         Image("ph-map-pin-fill")
                             .resizable()
-                            .frame(width: 48, height: 48)
+                            .frame(width: heroIconSize, height: heroIconSize)
                             .foregroundStyle(Brand.blue)
                             .padding(.top, 40)
+                            .accessibilityHidden(true)
 
                         Text("GEOMEMO PRO")
-                            .font(.system(size: 28, weight: .heavy))
+                            .font(.title.weight(.heavy))
                             .foregroundStyle(Brand.primaryText)
 
                         Text(String(localized: "Unlock unlimited memos"))
-                            .font(.system(size: 16, weight: .regular))
+                            .font(.body)
                             .foregroundStyle(Brand.secondaryText)
                     }
                     .padding(.bottom, 40)
@@ -71,24 +76,24 @@ struct PaywallView: View {
                     VStack(spacing: 12) {
                         if let product = store.proProduct {
                             Text(product.displayPrice)
-                                .font(.system(size: 36, weight: .heavy, design: .monospaced))
+                                .font(.system(size: priceSize, weight: .heavy, design: .monospaced))
                                 .foregroundStyle(Brand.primaryText)
 
                             Text(String(localized: "One-time purchase · No subscription"))
-                                .font(.system(size: 13, weight: .regular))
+                                .font(.footnote)
                                 .foregroundStyle(Brand.tertiaryText)
                         } else if store.isLoadingProducts {
                             ProgressView()
                                 .tint(Brand.blue)
                         } else {
                             Text(String(localized: "Product unavailable"))
-                                .font(.system(size: 16, weight: .medium))
+                                .font(.body.weight(.medium))
                                 .foregroundStyle(Brand.secondaryText)
                             Button(action: {
                                 Task { await store.loadProducts() }
                             }) {
                                 Text(String(localized: "Retry"))
-                                    .font(.system(size: 14, weight: .semibold))
+                                    .font(.subheadline.weight(.semibold))
                                     .foregroundStyle(Brand.blue)
                             }
                         }
@@ -99,7 +104,7 @@ struct PaywallView: View {
                     // MARK: Error
                     if let error = store.purchaseError {
                         Text(error)
-                            .font(.system(size: 13))
+                            .font(.footnote)
                             .foregroundStyle(Color(hex: "E5484D"))
                             .multilineTextAlignment(.center)
                             .padding(.horizontal, 20)
@@ -117,12 +122,13 @@ struct PaywallView: View {
                                     .tint(.white)
                             } else {
                                 Text(String(localized: "Upgrade to Pro"))
-                                    .font(.system(size: 18, weight: .bold))
+                                    .font(.body.weight(.bold))
                                     .foregroundStyle(.white)
                             }
                         }
                         .frame(maxWidth: .infinity)
-                        .frame(height: 56)
+                        .frame(minHeight: 56)
+                        .padding(.vertical, 6)
                         .background(Brand.blue)
                         .clipShape(RoundedRectangle(cornerRadius: 12))
                     }
@@ -134,7 +140,7 @@ struct PaywallView: View {
                         Task { await store.restore() }
                     }) {
                         Text(String(localized: "Restore Purchase"))
-                            .font(.system(size: 14, weight: .regular))
+                            .font(.subheadline)
                             .foregroundStyle(Brand.secondaryText)
                             .underline()
                     }
@@ -143,7 +149,7 @@ struct PaywallView: View {
 
                     // MARK: Legal
                     Text(String(localized: "Payment is charged to your Apple ID account. The purchase is non-refundable."))
-                        .font(.system(size: 11))
+                        .font(.caption2)
                         .foregroundStyle(Brand.tertiaryText)
                         .multilineTextAlignment(.center)
                         .padding(.horizontal, 32)
@@ -179,17 +185,17 @@ struct PaywallView: View {
 
             VStack(alignment: .leading, spacing: 3) {
                 Text(title)
-                    .font(.system(size: 15, weight: .semibold))
+                    .font(.subheadline.weight(.semibold))
                     .foregroundStyle(Brand.primaryText)
                 Text(subtitle)
-                    .font(.system(size: 12, weight: .regular))
+                    .font(.caption)
                     .foregroundStyle(Brand.secondaryText)
             }
 
             Spacer()
 
             Image(systemName: "checkmark")
-                .font(.system(size: 13, weight: .bold))
+                .font(.footnote.weight(.bold))
                 .foregroundStyle(Brand.blue)
                 .padding(.top, 2)
         }

@@ -93,11 +93,11 @@ private struct SplashContent: View {
                 // Text
                 VStack(spacing: 8) {
                     Text(verbatim: "GEOMEMO")
-                        .font(.system(size: 28, weight: .bold))
+                        .font(.title.weight(.bold))
                         .foregroundColor(.white)
 
                     Text("Leave memos at places")
-                        .font(.system(size: 13, weight: .regular))
+                        .font(.footnote)
                         .tracking(1)
                         .foregroundColor(.white.opacity(0.5))
                 }

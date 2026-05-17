@@ -226,7 +226,7 @@ struct MemoEditorView: View {
                         }
 
                         Text(mode.navigationTitle)
-                            .font(.system(size: 18, weight: .bold))
+                            .font(.body.weight(.bold))
                             .foregroundColor(Brand.primaryText)
                     }
                 }
@@ -237,7 +237,7 @@ struct MemoEditorView: View {
                         saveOrUpdate()
                     }) {
                         Text(mode.saveButtonLabel)
-                            .font(.system(size: 16, weight: .bold))
+                            .font(.body.weight(.bold))
                             .foregroundColor(Brand.blue)
                     }
                 }
@@ -359,11 +359,11 @@ struct MemoEditorView: View {
                             Text(locationName.uppercased())
                         }
                     }
-                    .font(.system(size: 12, weight: .bold))
+                    .font(.caption.weight(.bold))
                     .foregroundColor(Brand.primaryText)
 
                     Image(systemName: "pencil")
-                        .font(.system(size: 11, weight: .semibold))
+                        .font(.caption2.weight(.semibold))
                         .foregroundColor(Brand.primaryText.opacity(0.7))
                 }
                 .padding(.horizontal, 12)
@@ -416,7 +416,7 @@ struct MemoEditorView: View {
     // MARK: - Title Section
     private var titleSection: some View {
         TextField("Title", text: $title)
-            .font(.system(size: 20, weight: .semibold))
+            .font(.title3.weight(.semibold))
             .foregroundColor(Brand.primaryText)
             .padding(.horizontal, 20)
             .padding(.vertical, 16)
@@ -430,10 +430,10 @@ struct MemoEditorView: View {
             HStack {
                 VStack(alignment: .leading, spacing: 2) {
                     Text("LIST MODE")
-                        .font(.system(size: 13, weight: .semibold))
+                        .font(.footnote.weight(.semibold))
                         .foregroundColor(store.isPro ? Brand.primaryText.opacity(0.5) : Brand.secondaryText.opacity(0.5))
                     Text(String(localized: "Checklist instead of a note"))
-                        .font(.system(size: 12, weight: .regular))
+                        .font(.caption)
                         .foregroundColor(store.isPro ? Brand.secondaryText : Brand.secondaryText.opacity(0.4))
                 }
                 Spacer()
@@ -443,7 +443,7 @@ struct MemoEditorView: View {
                         .tint(Brand.blue)
                 } else {
                     Image(systemName: "lock.fill")
-                        .font(.system(size: 16))
+                        .font(.body)
                         .foregroundStyle(Brand.secondaryText.opacity(0.5))
                 }
             }
@@ -465,14 +465,14 @@ struct MemoEditorView: View {
                 ForEach($listItems) { $item in
                     HStack(spacing: 12) {
                         Image(systemName: item.isChecked ? "checkmark.circle.fill" : "circle")
-                            .font(.system(size: 20))
+                            .font(.title3)
                             .foregroundColor(item.isChecked ? Brand.blue : Brand.primaryText.opacity(0.3))
                             .onTapGesture {
                                 HapticManager.selection()
                                 item.isChecked.toggle()
                             }
                         TextField(String(localized: "Item"), text: $item.text)
-                            .font(.system(size: 16))
+                            .font(.body)
                             .foregroundColor(Brand.primaryText)
                         Spacer()
                         Button(action: {
@@ -480,7 +480,7 @@ struct MemoEditorView: View {
                             listItems.removeAll { $0.id == item.id }
                         }) {
                             Image(systemName: "xmark")
-                                .font(.system(size: 13, weight: .medium))
+                                .font(.footnote.weight(.medium))
                                 .foregroundColor(Brand.primaryText.opacity(0.3))
                         }
                     }
@@ -491,17 +491,17 @@ struct MemoEditorView: View {
                 // Add new item row
                 HStack(spacing: 12) {
                     Image(systemName: "plus.circle")
-                        .font(.system(size: 20))
+                        .font(.title3)
                         .foregroundColor(Brand.blue.opacity(0.6))
                     TextField(String(localized: "Add item…"), text: $newItemText)
-                        .font(.system(size: 16))
+                        .font(.body)
                         .foregroundColor(Brand.primaryText)
                         .submitLabel(.done)
                         .onSubmit { addListItem() }
                     if !newItemText.isEmpty {
                         Button(action: addListItem) {
                             Text(String(localized: "追加"))
-                                .font(.system(size: 14, weight: .semibold))
+                                .font(.subheadline.weight(.semibold))
                                 .foregroundColor(Brand.blue)
                         }
                     }
@@ -527,14 +527,14 @@ struct MemoEditorView: View {
         ZStack(alignment: .topLeading) {
             if note.isEmpty {
                 Text("Memo")
-                    .font(.system(size: 16, weight: .regular))
+                    .font(.body)
                     .foregroundColor(Brand.tertiaryText)
                     .padding(.horizontal, 24)
                     .padding(.vertical, 20)
             }
 
             TextEditor(text: $note)
-                .font(.system(size: 16, weight: .regular))
+                .font(.body)
                 .foregroundColor(Brand.primaryText)
                 .scrollContentBackground(.hidden)
                 .frame(height: 120)
@@ -554,7 +554,7 @@ struct MemoEditorView: View {
     private var radiusSection: some View {
         VStack(alignment: .leading, spacing: 12) {
             Text("RADIUS")
-                .font(.system(size: 13, weight: .semibold))
+                .font(.footnote.weight(.semibold))
                 .foregroundColor(Brand.primaryText.opacity(0.5))
                 .padding(.horizontal, 20)
                 .padding(.top, 16)
@@ -578,10 +578,11 @@ struct MemoEditorView: View {
             selectedRadius = value
         }) {
             Text(label)
-                .font(.system(size: 15, weight: selectedRadius == value ? .bold : .semibold))
+                .font(.subheadline.weight(selectedRadius == value ? .bold : .semibold))
                 .foregroundColor(selectedRadius == value ? Brand.blue : Brand.secondaryText)
                 .frame(maxWidth: .infinity)
-                .frame(height: 44)
+                .frame(minHeight: 44)
+                .padding(.vertical, 4)
                 .background(selectedRadius == value ? Brand.background : Color.clear)
                 .clipShape(RoundedRectangle(cornerRadius: 6))
                 .padding(2)
@@ -592,7 +593,7 @@ struct MemoEditorView: View {
     private var colorSection: some View {
         VStack(alignment: .leading, spacing: 12) {
             Text("COLOR")
-                .font(.system(size: 13, weight: .semibold))
+                .font(.footnote.weight(.semibold))
                 .foregroundColor(Brand.primaryText.opacity(0.5))
                 .padding(.horizontal, 20)
                 .padding(.top, 16)
@@ -632,7 +633,7 @@ struct MemoEditorView: View {
         VStack(alignment: .leading, spacing: 12) {
             HStack {
                 Text("TAGS")
-                    .font(.system(size: 13, weight: .semibold))
+                    .font(.footnote.weight(.semibold))
                     .foregroundColor(Brand.primaryText.opacity(0.5))
                 Spacer()
                 Button(action: {
@@ -641,9 +642,9 @@ struct MemoEditorView: View {
                 }) {
                     HStack(spacing: 4) {
                         Image(systemName: "sparkles")
-                            .font(.system(size: 13))
+                            .font(.footnote)
                         Text(String(localized: "AI提案"))
-                            .font(.system(size: 12, weight: .medium))
+                            .font(.caption.weight(.medium))
                     }
                     .foregroundStyle(Brand.blue)
                 }
@@ -699,7 +700,7 @@ struct MemoEditorView: View {
             if showCustomTagInput {
                 HStack(spacing: 8) {
                     TextField(String(localized: "タグを入力…"), text: $newCustomTag)
-                        .font(.system(size: 14))
+                        .font(.subheadline)
                         .foregroundStyle(Brand.primaryText)
                         .submitLabel(.done)
                         .onSubmit { addCustomTag() }
@@ -710,7 +711,7 @@ struct MemoEditorView: View {
 
                     Button(action: addCustomTag) {
                         Text(String(localized: "追加"))
-                            .font(.system(size: 14, weight: .semibold))
+                            .font(.subheadline.weight(.semibold))
                             .foregroundStyle(Brand.blue)
                     }
                 }
@@ -727,11 +728,11 @@ struct MemoEditorView: View {
                 }) {
                     HStack(spacing: 4) {
                         Image(systemName: showCustomTagInput ? "minus.circle" : "plus.circle")
-                            .font(.system(size: 14))
+                            .font(.subheadline)
                         Text(showCustomTagInput
                              ? String(localized: "キャンセル")
                              : String(localized: "カスタムタグを追加"))
-                            .font(.system(size: 13, weight: .medium))
+                            .font(.footnote.weight(.medium))
                     }
                     .foregroundStyle(Brand.primaryText.opacity(0.6))
                 }
@@ -773,7 +774,7 @@ struct MemoEditorView: View {
     private var notifySection: some View {
         VStack(alignment: .leading, spacing: 0) {
             Text("NOTIFICATIONS")
-                .font(.system(size: 13, weight: .semibold))
+                .font(.footnote.weight(.semibold))
                 .foregroundColor(Brand.primaryText.opacity(0.5))
                 .padding(.horizontal, 20)
                 .padding(.top, 16)
@@ -783,10 +784,10 @@ struct MemoEditorView: View {
             HStack {
                 VStack(alignment: .leading, spacing: 2) {
                     Text("ROUTE TRIGGER")
-                        .font(.system(size: 17, weight: .semibold))
+                        .font(.body.weight(.semibold))
                         .foregroundColor(store.isPro ? Brand.primaryText : Brand.primaryText.opacity(0.4))
                     Text(String(localized: "Notify when passing waypoints"))
-                        .font(.system(size: 12, weight: .regular))
+                        .font(.caption)
                         .foregroundColor(store.isPro ? Brand.secondaryText : Brand.secondaryText.opacity(0.4))
                 }
                 Spacer()
@@ -796,7 +797,7 @@ struct MemoEditorView: View {
                         .tint(Brand.blue)
                 } else {
                     Image(systemName: "lock.fill")
-                        .font(.system(size: 16))
+                        .font(.body)
                         .foregroundStyle(Brand.secondaryText.opacity(0.5))
                 }
             }
@@ -823,11 +824,11 @@ struct MemoEditorView: View {
                         Text(routeWaypoints.isEmpty
                             ? String(localized: "ADD WAYPOINTS")
                             : String(format: String(localized: "%d WAYPOINTS — EDIT"), routeWaypoints.count))
-                            .font(.system(size: 15, weight: .semibold))
+                            .font(.subheadline.weight(.semibold))
                             .foregroundColor(Brand.blue)
                         Spacer()
                         Image(systemName: "chevron.right")
-                            .font(.system(size: 13, weight: .semibold))
+                            .font(.footnote.weight(.semibold))
                             .foregroundColor(Brand.secondaryText)
                     }
                     .padding(.horizontal, 20)
@@ -842,7 +843,7 @@ struct MemoEditorView: View {
                 // ON ENTRY
                 HStack {
                     Text("ON ENTRY")
-                        .font(.system(size: 17, weight: .semibold))
+                        .font(.body.weight(.semibold))
                         .foregroundColor(Brand.primaryText)
                     Spacer()
                     Toggle("", isOn: $notifyOnEntry)
@@ -860,10 +861,10 @@ struct MemoEditorView: View {
                     HStack {
                         VStack(alignment: .leading, spacing: 2) {
                             Text("DWELL TIME")
-                                .font(.system(size: 17, weight: .semibold))
+                                .font(.body.weight(.semibold))
                                 .foregroundColor(Brand.primaryText)
                             Text(String(localized: "Notify after staying in the area"))
-                                .font(.system(size: 12, weight: .regular))
+                                .font(.caption)
                                 .foregroundColor(Brand.secondaryText)
                         }
                         Spacer()
@@ -889,7 +890,7 @@ struct MemoEditorView: View {
                 // ON EXIT
                 HStack {
                     Text("ON EXIT")
-                        .font(.system(size: 17, weight: .semibold))
+                        .font(.body.weight(.semibold))
                         .foregroundColor(Brand.primaryText)
                     Spacer()
                     Toggle("", isOn: $notifyOnExit)
@@ -907,10 +908,10 @@ struct MemoEditorView: View {
                     HStack {
                         VStack(alignment: .leading, spacing: 2) {
                             Text("EXIT DELAY")
-                                .font(.system(size: 17, weight: .semibold))
+                                .font(.body.weight(.semibold))
                                 .foregroundColor(Brand.primaryText)
                             Text(String(localized: "Notify after leaving the area"))
-                                .font(.system(size: 12, weight: .regular))
+                                .font(.caption)
                                 .foregroundColor(Brand.secondaryText)
                         }
                         Spacer()
@@ -937,10 +938,10 @@ struct MemoEditorView: View {
                 HStack {
                     VStack(alignment: .leading, spacing: 2) {
                         Text("PASS-THROUGH")
-                            .font(.system(size: 17, weight: .semibold))
+                            .font(.body.weight(.semibold))
                             .foregroundColor(Brand.primaryText)
                         Text(String(localized: "Show in Dynamic Island when nearby"))
-                            .font(.system(size: 12, weight: .regular))
+                            .font(.caption)
                             .foregroundColor(Brand.secondaryText)
                     }
                     Spacer()
@@ -960,7 +961,7 @@ struct MemoEditorView: View {
     private var triggerConditionsSection: some View {
         VStack(alignment: .leading, spacing: 0) {
             Text("TRIGGER CONDITIONS")
-                .font(.system(size: 13, weight: .semibold))
+                .font(.footnote.weight(.semibold))
                 .foregroundColor(Brand.primaryText.opacity(0.5))
                 .padding(.horizontal, 20)
                 .padding(.top, 16)
@@ -969,7 +970,7 @@ struct MemoEditorView: View {
             // 期限 (EXPIRY)
             HStack {
                 Text("EXPIRY")
-                    .font(.system(size: 17, weight: .semibold))
+                    .font(.body.weight(.semibold))
                     .foregroundColor(Brand.primaryText)
                 Spacer()
                 Toggle("", isOn: $hasDeadline)
@@ -1000,7 +1001,7 @@ struct MemoEditorView: View {
             // 時間帯 (TIME)
             HStack {
                 Text("TIME WINDOW")
-                    .font(.system(size: 17, weight: .semibold))
+                    .font(.body.weight(.semibold))
                     .foregroundColor(Brand.primaryText)
                 Spacer()
                 Toggle("", isOn: $hasTimeWindow)
@@ -1035,7 +1036,7 @@ struct MemoEditorView: View {
             // 曜日 (DAYS)
             HStack {
                 Text("DAYS")
-                    .font(.system(size: 17, weight: .semibold))
+                    .font(.body.weight(.semibold))
                     .foregroundColor(Brand.primaryText)
                 Spacer()
                 Toggle("", isOn: $hasDayFilter)
@@ -1078,7 +1079,7 @@ struct MemoEditorView: View {
                                 : Brand.primaryText
                         )
                         .cornerRadius(8)
-                        .font(.system(size: 13, weight: .medium))
+                        .font(.footnote.weight(.medium))
                     }
                 }
                 .padding(.horizontal, 20)
@@ -1096,7 +1097,7 @@ struct MemoEditorView: View {
     private var deleteSection: some View {
         Button(action: { showDeleteAlert = true }) {
             Text("DELETE MEMO")
-                .font(.system(size: 16, weight: .bold))
+                .font(.body.weight(.bold))
                 .foregroundColor(.red)
         }
         .frame(maxWidth: .infinity, alignment: .center)
@@ -1269,7 +1270,7 @@ private struct PhotoSectionView: View {
                         .foregroundColor(Brand.blue)
 
                     Text("ADD PHOTO")
-                        .font(.system(size: 16, weight: .bold))
+                        .font(.body.weight(.bold))
                         .foregroundColor(Brand.blue)
 
                     Spacer()

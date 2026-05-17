@@ -48,7 +48,7 @@ struct ShareMemoSheet: View {
 
                         if let error = errorMessage {
                             Text(error)
-                                .font(.system(size: 13))
+                                .font(.footnote)
                                 .foregroundStyle(.red)
                                 .padding(.horizontal, 20)
                         }
@@ -86,11 +86,14 @@ struct ShareMemoSheet: View {
                             ProgressView()
                         } else {
                             Text(String(localized: "依頼を送る"))
-                                .font(.system(size: 15, weight: .semibold))
+                                .font(.subheadline.weight(.semibold))
                         }
                     }
                     .disabled(selectedFriend == nil || isSending || myProfile == nil)
                     .foregroundStyle(selectedFriend != nil ? Brand.blue : Brand.secondaryText)
+                    .accessibilityLabel(isSending
+                        ? String(localized: "送信中")
+                        : String(localized: "依頼を送る"))
                 }
             }
         }
@@ -101,24 +104,26 @@ struct ShareMemoSheet: View {
     private var memoPreview: some View {
         HStack(spacing: 14) {
             Image(systemName: "mappin.circle.fill")
-                .font(.system(size: 32))
+                .font(.title)
                 .foregroundStyle(Brand.blue)
+                .accessibilityHidden(true)
 
             VStack(alignment: .leading, spacing: 4) {
                 Text(memo.displayTitle)
-                    .font(.system(size: 16, weight: .semibold))
+                    .font(.body.weight(.semibold))
                     .foregroundStyle(Brand.primaryText)
-                    .lineLimit(1)
+                    .lineLimit(2)
                 Text(memo.locationName)
-                    .font(.system(size: 13))
+                    .font(.footnote)
                     .foregroundStyle(Brand.secondaryText)
-                    .lineLimit(1)
+                    .lineLimit(2)
             }
-            Spacer()
+            Spacer(minLength: 0)
         }
         .padding(14)
         .background(Brand.surface)
         .clipShape(RoundedRectangle(cornerRadius: 12))
+        .accessibilityElement(children: .combine)
     }
 
     // MARK: - フレンド選択
@@ -131,14 +136,16 @@ struct ShareMemoSheet: View {
                 HStack {
                     Image(systemName: "person.2.slash")
                         .foregroundStyle(Brand.secondaryText)
+                        .accessibilityHidden(true)
                     Text(String(localized: "フレンドがいません。設定からフレンドを追加してください。"))
-                        .font(.system(size: 14))
+                        .font(.subheadline)
                         .foregroundStyle(Brand.secondaryText)
                 }
                 .padding(16)
                 .background(Brand.surface)
                 .clipShape(RoundedRectangle(cornerRadius: 12))
                 .padding(.horizontal, 16)
+                .accessibilityElement(children: .combine)
             } else {
                 VStack(spacing: 0) {
                     ForEach(acceptedFriends) { friend in
@@ -149,18 +156,21 @@ struct ShareMemoSheet: View {
                             HStack(spacing: 14) {
                                 Image(systemName: selectedFriend?.id == friend.id
                                       ? "checkmark.circle.fill" : "circle")
-                                    .font(.system(size: 22))
+                                    .font(.title3)
                                     .foregroundStyle(selectedFriend?.id == friend.id
                                                      ? Brand.blue : Brand.primaryText.opacity(0.3))
+                                    .accessibilityHidden(true)
 
                                 Text(friend.friendDisplayName)
-                                    .font(.system(size: 16, weight: .semibold))
+                                    .font(.body.weight(.semibold))
                                     .foregroundStyle(Brand.primaryText)
-                                Spacer()
+                                Spacer(minLength: 0)
                             }
                             .padding(.horizontal, 16)
                             .padding(.vertical, 14)
                         }
+                        .accessibilityLabel(friend.friendDisplayName)
+                        .accessibilityAddTraits(selectedFriend?.id == friend.id ? .isSelected : [])
                         if friend.id != acceptedFriends.last?.id {
                             Rectangle()
                                 .fill(Brand.separator)
@@ -185,14 +195,14 @@ struct ShareMemoSheet: View {
             HStack {
                 VStack(alignment: .leading, spacing: 2) {
                     Text(String(localized: "現地到着で自動完了"))
-                        .font(.system(size: 16, weight: .semibold))
+                        .font(.body.weight(.semibold))
                         .foregroundStyle(Brand.primaryText)
                     Text(String(localized: "ONにすると発火と同時に完了通知を送ります"))
-                        .font(.system(size: 12))
+                        .font(.caption)
                         .foregroundStyle(Brand.secondaryText)
                 }
-                Spacer()
-                Toggle("", isOn: $autoComplete)
+                Spacer(minLength: 8)
+                Toggle(String(localized: "現地到着で自動完了"), isOn: $autoComplete)
                     .labelsHidden()
                     .tint(Brand.blue)
             }
@@ -208,11 +218,12 @@ struct ShareMemoSheet: View {
 
     private func sectionHeader(_ title: String) -> some View {
         Text(title)
-            .font(.system(size: 11, weight: .semibold))
+            .font(.caption2.weight(.semibold))
             .foregroundStyle(Brand.secondaryText)
             .tracking(0.8)
             .padding(.horizontal, 20)
             .padding(.bottom, 8)
+            .accessibilityAddTraits(.isHeader)
     }
 
     // MARK: - 送信
