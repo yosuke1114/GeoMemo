@@ -1,0 +1,200 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Privacy Policy — GeoMemo</title>
+<style>
+  :root { color-scheme: light dark; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Helvetica Neue", "Hiragino Sans", sans-serif;
+    line-height: 1.65;
+    max-width: 720px;
+    margin: 0 auto;
+    padding: 40px 20px 80px;
+    color: #1a1a1a;
+    background: #ffffff;
+  }
+  @media (prefers-color-scheme: dark) {
+    body { color: #f5f5f5; background: #1a1a1a; }
+    a { color: #7b79ff; }
+  }
+  h1 { font-size: 1.8em; margin-bottom: 0.2em; }
+  h2 { font-size: 1.25em; margin-top: 1.8em; border-bottom: 1px solid currentColor; padding-bottom: 0.3em; opacity: 0.95; }
+  h3 { font-size: 1.05em; margin-top: 1.4em; }
+  .meta { color: #888; font-size: 0.9em; margin-bottom: 2em; }
+  ul { padding-left: 1.2em; }
+  li { margin-bottom: 0.4em; }
+  code { background: rgba(127,127,127,0.15); padding: 0.1em 0.4em; border-radius: 4px; font-size: 0.95em; }
+  hr { border: none; border-top: 1px solid rgba(127,127,127,0.3); margin: 3em 0; }
+</style>
+</head>
+<body>
+
+<h1>Privacy Policy — GeoMemo</h1>
+<p class="meta">Last updated: 2026-05-17</p>
+
+<p>
+GeoMemo ("the App") is a location-based note-taking app. This policy explains what data the App handles,
+where it is stored, and how it is shared. The App is designed to keep your data on your own iCloud account
+and on your device — not on servers we operate.
+</p>
+
+<h2>1. Data We Process</h2>
+
+<p>The App processes the following kinds of data, all linked to your iCloud account:</p>
+<ul>
+  <li><strong>Precise location</strong> — coordinates of notes you create and your current location for geofence triggers. Used to remind you when you arrive at, leave, or pass by a saved place.</li>
+  <li><strong>User content</strong> — note titles, body text, optional checklist items, route waypoints, custom tags, and attached photos.</li>
+  <li><strong>Display name</strong> — the name you enter when setting up a profile for the optional friend / memo-sharing feature.</li>
+  <li><strong>Photos</strong> — images you explicitly attach to a note from your photo library.</li>
+</ul>
+
+<h2>2. Where Your Data Is Stored</h2>
+
+<p>
+All data is stored on your device and synchronized to <strong>your private Apple iCloud account</strong>
+via Apple's CloudKit service. We (the developer) do <strong>not</strong> operate any server that
+receives, stores, or processes your data.
+</p>
+
+<ul>
+  <li>Personal notes, favorite places, and your profile live in your <strong>iCloud Private Database</strong>. Only you have access.</li>
+  <li>When you explicitly share a memo with a friend, the shared record is stored in your iCloud account and made available to the invited friend via Apple's CloudKit Sharing (CKShare). Sensitive fields (title, location name, latitude/longitude) are protected by CloudKit's per-share encryption.</li>
+  <li>A small amount of app preferences (theme, notification toggles, queued retry events) is stored locally on your device in <code>UserDefaults</code>.</li>
+</ul>
+
+<h2>3. Data Sharing</h2>
+
+<p>
+The App does <strong>not</strong> sell, rent, lease, or share any of your data with third parties. The
+App does not include any third-party analytics, advertising, attribution, crash reporting, or tracking SDKs.
+</p>
+
+<p>
+The only sharing that can occur is when <strong>you, the user, explicitly invite a friend</strong> to a
+specific memo using the share feature. In that case the memo is shared peer-to-peer through Apple's
+CloudKit Sharing infrastructure. Only the friends you invite can read that memo.
+</p>
+
+<h2>4. Tracking</h2>
+
+<p>
+The App does <strong>not</strong> track you. We do not use the Advertising Identifier (IDFA), we do not
+build profiles about you, and we do not request App Tracking Transparency permission because we have
+nothing to track.
+</p>
+
+<h2>5. Permissions the App Requests</h2>
+
+<ul>
+  <li><strong>Location (While Using / Always)</strong> — required to anchor memos to coordinates and to fire geofence-based reminders. "Always" is requested only if you choose to enable background geofences.</li>
+  <li><strong>Notifications</strong> — required to deliver geofence and shared-memo reminders.</li>
+  <li><strong>Photo Library</strong> — required only when you choose to attach an image to a memo.</li>
+  <li><strong>iCloud / CloudKit</strong> — required for sync, the friend feature, and shared memos. The App will still work locally if you decline.</li>
+</ul>
+
+<p>You can revoke any of these permissions at any time in iOS Settings.</p>
+
+<h2>6. Data Retention and Deletion</h2>
+
+<p>
+Your data lives in your iCloud account for as long as you keep it. You can delete individual memos,
+favorites, or shared invitations at any time inside the App. You can wipe all data by either:
+</p>
+<ul>
+  <li>Deleting the App from your device, or</li>
+  <li>Signing out of iCloud on your device, or</li>
+  <li>Removing the GeoMemo iCloud container data from Settings → Apple ID → iCloud → Manage Storage.</li>
+</ul>
+
+<h2>7. Children</h2>
+
+<p>
+The App is not directed at children under 13 and we do not knowingly collect data from children under 13.
+</p>
+
+<h2>8. Changes to This Policy</h2>
+
+<p>
+We may update this policy as the App evolves. The "Last updated" date at the top will reflect the most
+recent change. Material changes will be noted within the App when reasonable.
+</p>
+
+<h2>9. Contact</h2>
+
+<p>
+If you have questions about this policy or about how the App handles your data, please open an issue at
+<a href="https://github.com/yosuke1114/GeoMemo/issues">https://github.com/yosuke1114/GeoMemo/issues</a>.
+</p>
+
+<hr>
+
+<h1 lang="ja">プライバシーポリシー — GeoMemo</h1>
+<p class="meta">最終更新: 2026-05-17</p>
+
+<p lang="ja">
+GeoMemo (以下「本アプリ」) は位置情報ベースのメモアプリです。本ポリシーは、本アプリが扱うデータ、その保存場所、共有方法を説明します。本アプリはユーザーのデータを、ユーザー自身の iCloud アカウントとデバイス上に保管する設計です。開発者が運営するサーバーには保存されません。
+</p>
+
+<h2 lang="ja">1. 取り扱うデータ</h2>
+<ul lang="ja">
+  <li><strong>正確な位置情報</strong> — メモ作成時の座標と、ジオフェンス通知のための現在地。「到着・離脱・通過」の通知トリガー判定に使用します。</li>
+  <li><strong>ユーザーコンテンツ</strong> — メモのタイトル、本文、チェックリスト、ルート Waypoint、カスタムタグ、添付画像。</li>
+  <li><strong>表示名</strong> — メモ依頼・見守り機能のプロフィール作成時に入力した名前。</li>
+  <li><strong>写真</strong> — ユーザーが明示的にメモへ添付した画像。</li>
+</ul>
+
+<h2 lang="ja">2. データの保存先</h2>
+<p lang="ja">
+すべてのデータはデバイス上に保存され、Apple の CloudKit を通じて <strong>ユーザー自身の iCloud Private Database</strong> に同期されます。開発者は独自サーバーを運用しておらず、ユーザーデータを受信・保存・処理することはありません。
+</p>
+<ul lang="ja">
+  <li>個人メモ、お気に入り、プロフィールは iCloud Private Database に保存され、本人以外アクセス不可です。</li>
+  <li>明示的にメモを共有した場合、CKShare により招待した相手のみに読み取り権限が付与されます。タイトル・位置情報など機密フィールドは CloudKit の暗号化 (<code>encryptedValues</code>) で保護されます。</li>
+  <li>テーマ設定、通知設定、再送キューなど少量のアプリ設定はデバイスの <code>UserDefaults</code> に保存されます。</li>
+</ul>
+
+<h2 lang="ja">3. 第三者提供</h2>
+<p lang="ja">
+本アプリはユーザーデータを第三者に販売・貸与・提供しません。第三者の解析、広告、アトリビューション、クラッシュレポート、トラッキング SDK は一切組み込まれていません。
+</p>
+<p lang="ja">
+共有が発生するのは、ユーザーが明示的にフレンドへ特定のメモを共有するときのみです。共有は Apple の CloudKit Sharing 経由のピアツーピア通信で、招待された相手だけが該当メモを閲覧できます。
+</p>
+
+<h2 lang="ja">4. トラッキング</h2>
+<p lang="ja">
+本アプリはユーザーをトラッキングしません。広告 ID (IDFA) は使用せず、プロファイリングも行わず、App Tracking Transparency 許諾を求めません (求める必要がないため)。
+</p>
+
+<h2 lang="ja">5. 要求する権限</h2>
+<ul lang="ja">
+  <li><strong>位置情報 (使用中 / 常に)</strong> — メモを座標に紐付けジオフェンス通知を発火させるために必要。「常に」はバックグラウンドジオフェンスを有効にした場合にのみ要求します。</li>
+  <li><strong>通知</strong> — ジオフェンスや共有メモのリマインダー送信に必要。</li>
+  <li><strong>写真ライブラリ</strong> — ユーザーがメモに画像を添付したときにのみ要求。</li>
+  <li><strong>iCloud / CloudKit</strong> — 同期・フレンド機能・共有メモに必要。拒否してもローカル機能は使えます。</li>
+</ul>
+<p lang="ja">いずれの権限も iOS の設定からいつでも取り消せます。</p>
+
+<h2 lang="ja">6. データ保持と削除</h2>
+<p lang="ja">データはユーザーが保管する限り iCloud に残ります。アプリ内で個別のメモ・お気に入り・依頼を削除できます。すべて削除するには:</p>
+<ul lang="ja">
+  <li>本アプリをデバイスから削除する、または</li>
+  <li>デバイスから iCloud をサインアウトする、または</li>
+  <li>設定 → Apple ID → iCloud → ストレージを管理 から GeoMemo のコンテナデータを削除する</li>
+</ul>
+
+<h2 lang="ja">7. 子供のデータ</h2>
+<p lang="ja">本アプリは 13 歳未満を対象としておらず、13 歳未満のデータを意図的に収集することはありません。</p>
+
+<h2 lang="ja">8. ポリシーの変更</h2>
+<p lang="ja">本アプリの進化に応じて本ポリシーを更新する場合があります。最新更新日は冒頭に記載します。重要な変更があった場合はアプリ内でも通知します。</p>
+
+<h2 lang="ja">9. お問い合わせ</h2>
+<p lang="ja">
+本ポリシーやデータの取り扱いについてご質問があれば、<a href="https://github.com/yosuke1114/GeoMemo/issues">https://github.com/yosuke1114/GeoMemo/issues</a> から Issue を作成してください。
+</p>
+
+</body>
+</html>
