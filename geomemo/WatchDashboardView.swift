@@ -25,14 +25,20 @@ struct WatchDashboardView: View {
     }
 
     @State private var isSyncing = false
+    @State private var pendingCount = 0
 
     var body: some View {
         NavigationStack {
-            Group {
-                if sentMemos.isEmpty {
-                    emptyState
-                } else {
-                    dashboardList
+            VStack(spacing: 0) {
+                if pendingCount > 0 {
+                    pendingBanner
+                }
+                Group {
+                    if sentMemos.isEmpty {
+                        emptyState
+                    } else {
+                        dashboardList
+                    }
                 }
             }
             .background(Brand.background)
@@ -46,6 +52,7 @@ struct WatchDashboardView: View {
                 ToolbarItem(placement: .primaryAction) {
                     if isSyncing {
                         ProgressView()
+                            .accessibilityLabel(String(localized: "更新中"))
                     } else {
                         Button {
                             Task { await syncStatus() }
@@ -53,11 +60,34 @@ struct WatchDashboardView: View {
                             Image(systemName: "arrow.clockwise")
                                 .foregroundStyle(Brand.blue)
                         }
+                        .accessibilityLabel(String(localized: "最新の状態に更新"))
                     }
                 }
             }
         }
-        .task { await syncStatus() }
+        .task {
+            await syncStatus()
+            pendingCount = PendingEventQueue.shared.all.count
+        }
+    }
+
+    // MARK: - 再送待ちバナー
+
+    private var pendingBanner: some View {
+        HStack(spacing: 10) {
+            Image(systemName: "arrow.triangle.2.circlepath")
+                .foregroundStyle(.orange)
+                .font(.footnote.weight(.semibold))
+                .accessibilityHidden(true)
+            Text(String(localized: "未送信の更新が \(pendingCount) 件あります。通信が戻り次第再送します。"))
+                .font(.footnote.weight(.medium))
+                .foregroundStyle(Brand.primaryText)
+            Spacer(minLength: 0)
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 10)
+        .background(Color.orange.opacity(0.12))
+        .accessibilityElement(children: .combine)
     }
 
     // MARK: - 空状態
@@ -65,18 +95,22 @@ struct WatchDashboardView: View {
     private var emptyState: some View {
         VStack(spacing: 16) {
             Image(systemName: "eye.slash")
-                .font(.system(size: 48))
+                .font(.system(size: emptyStateIconSize))
                 .foregroundStyle(Brand.secondaryText.opacity(0.4))
+                .accessibilityHidden(true)
             Text(String(localized: "依頼中のメモはありません"))
-                .font(.system(size: 17, weight: .semibold))
+                .font(.body.weight(.semibold))
                 .foregroundStyle(Brand.primaryText)
             Text(String(localized: "メモ詳細から「依頼する」ボタンで\nフレンドに依頼できます。"))
-                .font(.system(size: 14))
+                .font(.subheadline)
                 .foregroundStyle(Brand.secondaryText)
                 .multilineTextAlignment(.center)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
+
+    /// Dynamic Type 設定に応じて空状態の大きな装飾アイコンを伸縮させる。
+    @ScaledMetric(relativeTo: .largeTitle) private var emptyStateIconSize: CGFloat = 48
 
     // MARK: - ダッシュボードリスト
 
@@ -88,15 +122,19 @@ struct WatchDashboardView: View {
                         // 人名ヘッダー
                         HStack(spacing: 8) {
                             Image(systemName: "person.circle.fill")
-                                .font(.system(size: 16))
+                                .font(.footnote)
+                                .imageScale(.large)
                                 .foregroundStyle(Brand.blue)
+                                .accessibilityHidden(true)
                             Text(group.name)
-                                .font(.system(size: 13, weight: .semibold))
+                                .font(.footnote.weight(.semibold))
                                 .foregroundStyle(Brand.secondaryText)
                                 .tracking(0.5)
                         }
                         .padding(.horizontal, 16)
                         .padding(.bottom, 8)
+                        .accessibilityElement(children: .combine)
+                        .accessibilityAddTraits(.isHeader)
 
                         VStack(spacing: 0) {
                             ForEach(group.memos) { shared in
@@ -127,23 +165,26 @@ struct WatchDashboardView: View {
         HStack(spacing: 12) {
             // ステータスアイコン
             statusIcon(for: shared.status)
-                .frame(width: 24)
+                .frame(minWidth: 24)
+                .accessibilityHidden(true)
 
             VStack(alignment: .leading, spacing: 4) {
                 Text(shared.memoTitle.isEmpty ? String(localized: "（タイトルなし）") : shared.memoTitle)
-                    .font(.system(size: 15, weight: .semibold))
+                    .font(.subheadline.weight(.semibold))
                     .foregroundStyle(statusTitleColor(for: shared.status))
-                    .lineLimit(1)
+                    .lineLimit(2)
 
                 statusSubtitle(for: shared)
-                    .font(.system(size: 12))
+                    .font(.caption)
                     .foregroundStyle(Brand.secondaryText)
             }
 
-            Spacer()
+            Spacer(minLength: 0)
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 14)
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel(rowAccessibilityLabel(for: shared))
         .swipeActions(edge: .trailing, allowsFullSwipe: false) {
             if shared.status == .active {
                 Button(role: .destructive) {
@@ -153,6 +194,21 @@ struct WatchDashboardView: View {
                 }
             }
         }
+    }
+
+    private func rowAccessibilityLabel(for shared: SharedMemo) -> String {
+        let title = shared.memoTitle.isEmpty
+            ? String(localized: "タイトルなし")
+            : shared.memoTitle
+        let statusText: String = {
+            switch shared.status {
+            case .active:    return String(localized: "監視中")
+            case .fired:     return String(localized: "到着済み")
+            case .completed: return String(localized: "完了")
+            case .cancelled: return String(localized: "キャンセル済み")
+            }
+        }()
+        return "\(title)、\(statusText)"
     }
 
     @ViewBuilder
@@ -212,7 +268,12 @@ struct WatchDashboardView: View {
     private func syncStatus() async {
         guard !isSyncing, myProfile != nil else { return }
         isSyncing = true
-        defer { isSyncing = false }
+        defer {
+            isSyncing = false
+            pendingCount = PendingEventQueue.shared.all.count
+        }
+        // pull-to-refresh / 手動更新も兼ねるので、未処理の再送イベントもここで掃く
+        await PendingEventQueue.shared.drain()
         do {
             let sentData = try await CKShareService.shared.fetchSentSharedMemos()
             var didChange = false
@@ -224,7 +285,11 @@ struct WatchDashboardView: View {
                 }
             }
             if didChange { try? modelContext.save() }
-        } catch { /* ネットワーク不可時は静かに無視 */ }
+        } catch {
+            ToastCenter.shared.show(.warning(
+                String(localized: "最新の状態を取得できませんでした。通信状況を確認してください。")
+            ))
+        }
     }
 
     // MARK: - Cancel
@@ -235,9 +300,15 @@ struct WatchDashboardView: View {
             shared.status = .cancelled
             try? modelContext.save()
         } catch {
+            // オフライン等で書き込み失敗 → 再送キューに積み、次回 drain で送り直す。
+            // 楽観的にローカル状態も cancelled にしてしまうとサーバとズレるので残す。
             PendingEventQueue.shared.enqueue(
                 .cancelled(ckRecordName: shared.ckRecordName, zoneOwnerName: shared.zoneOwnerName)
             )
+            ToastCenter.shared.show(.warning(
+                String(localized: "キャンセルを送信できませんでした。通信が戻ったとき自動で再送します。")
+            ))
+            pendingCount = PendingEventQueue.shared.all.count
         }
     }
 }

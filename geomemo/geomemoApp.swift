@@ -34,7 +34,9 @@ final class GeoMemoAppDelegate: NSObject, UIApplicationDelegate {
                     )
                 )
             } catch {
-                print("[CKShare] Failed to accept: \(error)")
+                ToastCenter.shared.show(.error(
+                    String(localized: "共有メモの受諾に失敗しました。通信状況を確認して再度お試しください。")
+                ))
             }
         }
     }
@@ -128,6 +130,7 @@ struct geomemoApp: App {
     var body: some Scene {
         WindowGroup {
             SplashView()
+                .toastOverlay()
                 .preferredColorScheme(AppearanceMode(rawValue: appearanceMode)?.colorScheme)
                 .onOpenURL { url in
                     handleDeepLink(url)

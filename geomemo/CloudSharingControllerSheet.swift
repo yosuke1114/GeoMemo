@@ -31,7 +31,11 @@ struct CloudSharingControllerSheet: UIViewControllerRepresentable {
 
         func cloudSharingController(_ csc: UICloudSharingController,
                                      failedToSaveShareWithError error: Error) {
-            print("[CKShare] failed to save share: \(error)")
+            Task { @MainActor in
+                ToastCenter.shared.show(.error(
+                    String(localized: "共有の作成に失敗しました。通信状況を確認してください。")
+                ))
+            }
             onComplete?(false)
         }
 
