@@ -23,10 +23,19 @@ enum FriendStatus: String, Codable {
         set { statusRaw = newValue.rawValue }
     }
 
-    init(friendRecordID: String, friendDisplayName: String, status: FriendStatus = .accepted, inviteCode: String = "") {
+    init(
+        friendRecordID: String,
+        friendDisplayName: String,
+        status: FriendStatus = .accepted,
+        inviteCode: String = "",
+        id: UUID = UUID(),
+        createdAt: Date = Date()
+    ) {
+        self.id = id
         self.friendRecordID = friendRecordID
         self.friendDisplayName = friendDisplayName
         self.statusRaw = status.rawValue
         self.inviteCode = inviteCode
+        self.createdAt = createdAt
     }
 }

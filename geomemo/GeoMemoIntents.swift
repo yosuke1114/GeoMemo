@@ -51,23 +51,23 @@ struct ListNearbyMemosIntent: AppIntent {
     static var description: IntentDescription = "Lists GeoMemo memos near your current location"
 
     func perform() async throws -> some IntentResult & ProvidesDialog {
-        let allMemos: [GeoMemo]
+        let allEntities: [GeoMemoEntity]
         do {
-            allMemos = try GeoMemoStore.fetchAll()
+            allEntities = try GeoMemoStore.fetchAllEntities()
         } catch {
             return .result(dialog: "Failed to fetch memos.")
         }
 
-        let locationManager = CLLocationManager()
-        guard let currentLocation = locationManager.location else {
+        guard let currentLocation = await AddGeoMemoIntent.currentLocation() else {
             return .result(dialog: "Could not get your current location.")
         }
 
-        let nearbyMemos = allMemos
-            .map { memo -> (GeoMemo, Double) in
-                let memoLocation = CLLocation(latitude: memo.latitude, longitude: memo.longitude)
+        let nearbyMemos = allEntities
+            .filter { !$0.isDone }  // GetNearbyMemosIntent と挙動を揃え、完了済みは除外する
+            .map { entity -> (GeoMemoEntity, Double) in
+                let memoLocation = CLLocation(latitude: entity.latitude, longitude: entity.longitude)
                 let distance = currentLocation.distance(from: memoLocation)
-                return (memo, distance)
+                return (entity, distance)
             }
             .filter { $0.1 <= 5000 }
             .sorted { $0.1 < $1.1 }
@@ -149,7 +149,7 @@ struct AddGeoMemoIntent: AppIntent {
 
     /// CLLocationManager().location は監視開始前は常に nil なので、
     /// CLLocationUpdate.liveUpdates で実際の 1 件目を待つ。タイムアウトは 5 秒。
-    private static func currentLocation() async -> CLLocation? {
+    fileprivate static func currentLocation() async -> CLLocation? {
         await withTaskGroup(of: CLLocation?.self) { group in
             group.addTask {
                 do {
@@ -182,29 +182,28 @@ struct GetNearbyMemosIntent: AppIntent {
     var radiusMeters: Int
 
     func perform() async throws -> some IntentResult & ReturnsValue<[GeoMemoEntity]> & ProvidesDialog {
-        let allMemos: [GeoMemo]
+        let allEntities: [GeoMemoEntity]
         do {
-            allMemos = try GeoMemoStore.fetchAll()
+            allEntities = try GeoMemoStore.fetchAllEntities()
         } catch {
             return .result(value: [], dialog: "Failed to fetch memos.")
         }
 
-        let locationManager = CLLocationManager()
-        guard let currentLocation = locationManager.location else {
+        guard let currentLocation = await AddGeoMemoIntent.currentLocation() else {
             return .result(value: [], dialog: "Could not get your current location.")
         }
 
         let radius = Double(max(1, radiusMeters))
-        let nearby = allMemos
+        let nearby = allEntities
             .filter { !$0.isDone }
-            .map { memo -> (GeoMemo, Double) in
-                let memoLocation = CLLocation(latitude: memo.latitude, longitude: memo.longitude)
-                return (memo, currentLocation.distance(from: memoLocation))
+            .map { entity -> (GeoMemoEntity, Double) in
+                let memoLocation = CLLocation(latitude: entity.latitude, longitude: entity.longitude)
+                return (entity, currentLocation.distance(from: memoLocation))
             }
             .filter { $0.1 <= radius }
             .sorted { $0.1 < $1.1 }
 
-        let entities = nearby.map { GeoMemoEntity(from: $0.0) }
+        let entities = nearby.map { $0.0 }
 
         let dialogText = nearby.isEmpty
             ? "No memos within \(radiusMeters)m."

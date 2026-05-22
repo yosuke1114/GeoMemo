@@ -58,12 +58,12 @@ struct OnboardingView: View {
                 .padding(.bottom, 16)
 
             Text("GEOMEMO")
-                .font(.system(size: 28, weight: .bold))
+                .font(.largeTitle.weight(.bold))
                 .foregroundColor(Brand.primaryText)
                 .padding(.bottom, 8)
 
             Text("Leave memos at places")
-                .font(.system(size: 16))
+                .font(.callout)
                 .foregroundColor(Brand.secondaryText)
 
             Spacer()
@@ -76,7 +76,7 @@ struct OnboardingView: View {
         VStack(spacing: 0) {
             HStack {
                 Text("GeoMemo")
-                    .font(.system(size: 20, weight: .bold))
+                    .font(.title3.weight(.bold))
                     .foregroundColor(Brand.primaryText)
                 Spacer()
             }
@@ -92,12 +92,12 @@ struct OnboardingView: View {
                 .padding(.bottom, 24)
 
             Text("Allow Location")
-                .font(.system(size: 24, weight: .bold))
+                .font(.title2.weight(.bold))
                 .foregroundColor(Brand.primaryText)
                 .padding(.bottom, 12)
 
             Text("Used to notify you when\nyou approach a memo area")
-                .font(.system(size: 15))
+                .font(.subheadline)
                 .foregroundColor(Brand.secondaryText)
                 .multilineTextAlignment(.center)
 
@@ -111,7 +111,7 @@ struct OnboardingView: View {
         VStack(spacing: 0) {
             HStack {
                 Text("GeoMemo")
-                    .font(.system(size: 20, weight: .bold))
+                    .font(.title3.weight(.bold))
                     .foregroundColor(Brand.primaryText)
                 Spacer()
             }
@@ -127,12 +127,12 @@ struct OnboardingView: View {
                 .padding(.bottom, 24)
 
             Text("Allow Notifications")
-                .font(.system(size: 24, weight: .bold))
+                .font(.title2.weight(.bold))
                 .foregroundColor(Brand.primaryText)
                 .padding(.bottom, 12)
 
             Text("Get notified when you enter\nor leave a saved location")
-                .font(.system(size: 15))
+                .font(.subheadline)
                 .foregroundColor(Brand.secondaryText)
                 .multilineTextAlignment(.center)
 
@@ -145,7 +145,7 @@ struct OnboardingView: View {
     private func primaryButton(title: String, action: @escaping () -> Void) -> some View {
         Button(action: action) {
             Text(title)
-                .font(.system(size: 16, weight: .semibold))
+                .font(.callout.weight(.semibold))
                 .foregroundColor(.white)
                 .frame(maxWidth: .infinity)
                 .frame(height: 52)

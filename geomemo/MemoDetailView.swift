@@ -130,7 +130,7 @@ struct MemoDetailView: View {
                                 .foregroundColor(Color(hex: "E5484D"))
                         }
                         Text(memo.displayTitle)
-                            .font(.system(size: 24, weight: memo.isUntitled ? .regular : .bold))
+                            .font(.title2.weight(memo.isUntitled ? .regular : .bold))
                             .foregroundColor(memo.isUntitled ? Brand.tertiaryText : Brand.primaryText)
                             .italic(memo.isUntitled)
                         Spacer()

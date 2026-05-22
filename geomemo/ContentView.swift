@@ -435,7 +435,7 @@ private struct CalloutView: View {
             HStack(spacing: 8) {
                 VStack(alignment: .leading, spacing: 2) {
                     Text(memo.displayTitle)
-                        .font(.system(size: 14, weight: memo.isUntitled ? .regular : .bold))
+                        .font(.subheadline.weight(memo.isUntitled ? .regular : .bold))
                         .foregroundColor(memo.isUntitled ? Brand.tertiaryText : Brand.primaryText)
                         .italic(memo.isUntitled)
                         .lineLimit(1)
@@ -530,7 +530,7 @@ private struct ClusterListSheet: View {
 
                                 VStack(alignment: .leading, spacing: 2) {
                                     Text(memo.displayTitle)
-                                        .font(.system(size: 14, weight: memo.isUntitled ? .regular : .semibold))
+                                        .font(.subheadline.weight(memo.isUntitled ? .regular : .semibold))
                                         .foregroundColor(memo.isUntitled ? Brand.tertiaryText : Brand.primaryText)
                                         .italic(memo.isUntitled)
                                         .lineLimit(1)
@@ -670,6 +670,9 @@ struct MapTabView: View {
                 cameraPosition = .region(streetLevelRegion(userLocation))
             }
             reRegisterAllGeofences()
+            // Pass-through 通知の対象を LocationManager に同期（接近時 Dynamic Island 表示）。
+            // フォアグラウンド中のみ動作（バックグラウンド対応は別途審査が必要）。
+            locationManager.updatePassMemos(memos)
 
             // Start Live Activity for Dynamic Island
             LiveActivityManager.shared.startMonitoring(count: memos.count)
@@ -688,6 +691,8 @@ struct MapTabView: View {
         }
         .onChange(of: memos.count) { _, _ in
             scheduleCluster()
+            // メモ追加/削除で pass-through 監視対象も更新する。
+            locationManager.updatePassMemos(memos)
         }
         .onChange(of: deepLinkMemoID) { _, newID in
             guard let id = newID else { return }
@@ -1786,7 +1791,7 @@ struct MemoListRow: View {
                             .accessibilityLabel("Favorite")
                     }
                     Text(memo.displayTitle)
-                        .font(.system(size: 17, weight: memo.isUntitled ? .regular : .bold))
+                        .font(.body.weight(memo.isUntitled ? .regular : .bold))
                         .foregroundColor(memo.isUntitled ? Brand.tertiaryText : (memo.isDone ? Brand.primaryText.opacity(0.4) : Brand.primaryText))
                         .italic(memo.isUntitled)
                         .strikethrough(memo.isDone, color: Brand.primaryText.opacity(0.4))
@@ -1938,7 +1943,7 @@ private struct MemoResultRow: View {
             }
             VStack(alignment: .leading, spacing: 2) {
                 Text(memo.displayTitle)
-                    .font(.system(size: 14, weight: memo.isUntitled ? .regular : .semibold))
+                    .font(.subheadline.weight(memo.isUntitled ? .regular : .semibold))
                     .foregroundColor(memo.isUntitled ? Brand.tertiaryText : Brand.primaryText)
                     .italic(memo.isUntitled)
                 Text(memo.locationName)

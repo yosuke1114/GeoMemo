@@ -59,8 +59,14 @@ enum ShareStatus: String, Codable {
         recipientRecordID: String,
         recipientName: String,
         autoComplete: Bool,
-        isMyRequest: Bool
+        isMyRequest: Bool,
+        id: UUID = UUID(),
+        createdAt: Date = Date(),
+        status: ShareStatus = .active,
+        firedAt: Date? = nil,
+        completedAt: Date? = nil
     ) {
+        self.id = id
         self.ckRecordName = ckRecordName
         self.memoTitle = memoTitle
         self.memoLocationName = memoLocationName
@@ -76,6 +82,10 @@ enum ShareStatus: String, Codable {
         self.recipientName = recipientName
         self.autoComplete = autoComplete
         self.isMyRequest = isMyRequest
+        self.createdAt = createdAt
+        self.statusRaw = status.rawValue
+        self.firedAt = firedAt
+        self.completedAt = completedAt
     }
 
     // MARK: - Computed

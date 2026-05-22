@@ -9,8 +9,15 @@ import SwiftData
     var iCloudRecordID: String = ""  // CKRecord.ID.recordName
     var createdAt: Date = Date()
 
-    init(displayName: String, iCloudRecordID: String) {
+    init(
+        displayName: String,
+        iCloudRecordID: String,
+        id: UUID = UUID(),
+        createdAt: Date = Date()
+    ) {
+        self.id = id
         self.displayName = displayName
         self.iCloudRecordID = iCloudRecordID
+        self.createdAt = createdAt
     }
 }

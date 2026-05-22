@@ -128,9 +128,8 @@ struct MemoEditorView: View {
             _deadline = State(initialValue: memo.deadline ?? Date())
             if let start = memo.timeWindowStart, let end = memo.timeWindowEnd {
                 _hasTimeWindow = State(initialValue: true)
-                let cal = Calendar.current
-                _timeStart = State(initialValue: cal.date(bySettingHour: start / 60, minute: start % 60, second: 0, of: Date())!)
-                _timeEnd = State(initialValue: cal.date(bySettingHour: end / 60, minute: end % 60, second: 0, of: Date())!)
+                _timeStart = State(initialValue: Self.makeTime(fromMinutes: start) ?? Date())
+                _timeEnd   = State(initialValue: Self.makeTime(fromMinutes: end)   ?? Date())
             }
             if let days = memo.activeDays {
                 _hasDayFilter = State(initialValue: true)
@@ -1256,6 +1255,18 @@ struct MemoEditorView: View {
         if let city = repr?.cityName, !city.isEmpty { return city }
         if let region = repr?.regionName, !region.isEmpty { return region }
         return item.name ?? String(localized: "Unknown Location")
+    }
+
+    /// 永続化された "分単位" (0..1439) を当日の Date に変換する。
+    /// 不正値（負値や 1440 以上）でも nil を返すだけで crash しない。
+    fileprivate static func makeTime(fromMinutes total: Int) -> Date? {
+        let clamped = min(max(total, 0), 1439)
+        return Calendar.current.date(
+            bySettingHour: clamped / 60,
+            minute: clamped % 60,
+            second: 0,
+            of: Date()
+        )
     }
 }
 

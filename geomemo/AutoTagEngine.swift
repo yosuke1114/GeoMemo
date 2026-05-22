@@ -27,12 +27,22 @@ struct AutoTagEngine {
         }
 
         // 2. NLTagger で名詞抽出して補助スコアリング
+        // 短い noun（"家" "店" など 1 文字）は多くの keyword と部分一致して
+        // スコアを汚すので 2 文字以上に絞り、さらに exact / substring を分ける。
         let combined = [title, locationName].joined(separator: " ")
         if !combined.trimmingCharacters(in: .whitespaces).isEmpty {
-            let nouns = extractNouns(from: combined)
+            let nouns = extractNouns(from: combined).filter { $0.count >= 2 }
             for noun in nouns {
                 for tag in PresetTag.allCases {
-                    if tag.keywords.contains(where: {
+                    let hasExact = tag.keywords.contains {
+                        $0.caseInsensitiveCompare(noun) == .orderedSame
+                    }
+                    if hasExact {
+                        scores[tag, default: 0] += 2
+                        continue
+                    }
+                    // 3 文字以上の noun のみ部分一致を許容（短い token の誤マッチ抑制）。
+                    if noun.count >= 3 && tag.keywords.contains(where: {
                         $0.localizedCaseInsensitiveContains(noun) ||
                         noun.localizedCaseInsensitiveContains($0)
                     }) {

@@ -1,5 +1,5 @@
 import AppIntents
-@preconcurrency import SwiftData
+import SwiftData
 import Foundation
 import CoreSpotlight
 
@@ -7,8 +7,8 @@ import CoreSpotlight
 
 /// Standalone SwiftData container for use outside SwiftUI (App Intents, Spotlight).
 enum GeoMemoStore {
-    static let appGroupID          = "group.com.yokuro.geomemo"
-    static let cloudKitContainerID = "iCloud.com.yokuro.geomemo"
+    nonisolated static let appGroupID          = "group.com.yokuro.geomemo"
+    nonisolated static let cloudKitContainerID = "iCloud.com.yokuro.geomemo"
 
     /// アプリ本体と Spotlight/App Intents で同じスキーマを共有する。
     /// ここを App 側 (geomemoApp.sharedModelContainer) と揃えないと、
@@ -47,12 +47,15 @@ enum GeoMemoStore {
         )
     }
 
-    nonisolated static func fetchAll() throws -> [GeoMemo] {
+    /// nonisolated context（App Intents / Spotlight）から呼ばれるため、Sendable な
+    /// `GeoMemoEntity` で返す。@Model は Sendable ではないのでクロスアクター漏出を防ぐ。
+    nonisolated static func fetchAllEntities() throws -> [GeoMemoEntity] {
         let container = try makeContainer()
         let context = ModelContext(container)
-        return try context.fetch(
+        let models = try context.fetch(
             FetchDescriptor<GeoMemo>(sortBy: [SortDescriptor(\.createdAt, order: .reverse)])
         )
+        return models.map { GeoMemoEntity(from: $0) }
     }
 
     /// 指定 ID のメモを完了済みにする
@@ -103,6 +106,7 @@ struct GeoMemoEntity: AppEntity, IndexedEntity {
     var longitude: Double
     var tags: [Int]
     var customTags: [String]
+    var createdAt: Date
 
     var displayRepresentation: DisplayRepresentation {
         DisplayRepresentation(
@@ -142,6 +146,7 @@ struct GeoMemoEntity: AppEntity, IndexedEntity {
         self.longitude = memo.longitude
         self.tags = memo.tags
         self.customTags = memo.customTags
+        self.createdAt = memo.createdAt
     }
 }
 
@@ -150,32 +155,26 @@ struct GeoMemoEntity: AppEntity, IndexedEntity {
 struct GeoMemoEntityQuery: EntityQuery, EntityStringQuery {
 
     func entities(for identifiers: [UUID]) async throws -> [GeoMemoEntity] {
-        let allMemos = try GeoMemoStore.fetchAll()
         let idSet = Set(identifiers)
-        return allMemos
-            .filter { idSet.contains($0.id) }
-            .map { GeoMemoEntity(from: $0) }
+        return try GeoMemoStore.fetchAllEntities().filter { idSet.contains($0.id) }
     }
 
     func suggestedEntities() async throws -> [GeoMemoEntity] {
-        let allMemos = try GeoMemoStore.fetchAll()
-        let sorted = allMemos
+        let entities = try GeoMemoStore.fetchAllEntities()
+        let sorted = entities
             .filter { !$0.isDone }
             .sorted { lhs, rhs in
                 if lhs.isFavorite != rhs.isFavorite { return lhs.isFavorite }
                 return lhs.createdAt > rhs.createdAt
             }
-        return Array(sorted.prefix(8)).map { GeoMemoEntity(from: $0) }
+        return Array(sorted.prefix(8))
     }
 
     func entities(matching string: String) async throws -> [GeoMemoEntity] {
-        let allMemos = try GeoMemoStore.fetchAll()
-        return allMemos
-            .filter {
-                $0.title.localizedCaseInsensitiveContains(string) ||
-                $0.locationName.localizedCaseInsensitiveContains(string) ||
-                $0.note.localizedCaseInsensitiveContains(string)
-            }
-            .map { GeoMemoEntity(from: $0) }
+        try GeoMemoStore.fetchAllEntities().filter {
+            $0.title.localizedCaseInsensitiveContains(string) ||
+            $0.locationName.localizedCaseInsensitiveContains(string) ||
+            $0.note.localizedCaseInsensitiveContains(string)
+        }
     }
 }

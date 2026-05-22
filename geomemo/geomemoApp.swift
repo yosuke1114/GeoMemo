@@ -160,8 +160,7 @@ struct geomemoApp: App {
     static func indexAllMemosInSpotlight() {
         Task {
             do {
-                let memos = try GeoMemoStore.fetchAll()
-                let entities = memos.map { GeoMemoEntity(from: $0) }
+                let entities = try GeoMemoStore.fetchAllEntities()
                 try await CSSearchableIndex.default().indexAppEntities(entities)
             } catch {
                 print("Spotlight indexing failed: \(error)")
