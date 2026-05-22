@@ -35,10 +35,12 @@ struct SplashView: View {
             guard !isAnyTesting else { return }
             let granted = await checkPermissionsGranted()
 
+            // 既に onboarding 完了済みなら拒否されていても再度オンボーディングへ戻さない
+            // （旧実装は hasCompletedOnboarding=false に戻していたが、これが
+            //  オンボーディング後に Settings で拒否したユーザを無限ループに陥らせていた。
+            //  権限不足は SettingsView の Permissions 行から誘導する）。
             if granted && hasCompletedOnboarding {
                 LocationManager.shared.requestAuthorization()
-            } else if !granted {
-                hasCompletedOnboarding = false
             }
         }
     }

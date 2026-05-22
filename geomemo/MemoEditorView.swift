@@ -1192,6 +1192,8 @@ struct MemoEditorView: View {
             }
         }
 
+        // SwiftData autosave 任せだとバックグラウンド遷移直後に取り逃がすケースがあるため explicit に save。
+        try? modelContext.save()
         geomemoApp.indexAllMemosInSpotlight()
         dismiss()
     }
@@ -1204,7 +1206,10 @@ struct MemoEditorView: View {
         locationManager.stopMonitoring(memoID: memo.id.uuidString)
 
         // Delete from SwiftData
+        let removedID = memo.id
         modelContext.delete(memo)
+        try? modelContext.save()
+        geomemoApp.removeFromSpotlight(memoID: removedID)
         geomemoApp.indexAllMemosInSpotlight()
 
         // Dismiss editor, then tell detail view to dismiss too

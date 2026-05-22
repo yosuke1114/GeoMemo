@@ -3,10 +3,13 @@ import CoreLocation
 import Combine
 
 extension Notification.Name {
-    static let didEnterGeoMemoRegion = Notification.Name("didEnterGeoMemoRegion")
-    static let didExitGeoMemoRegion  = Notification.Name("didExitGeoMemoRegion")
+    // SWIFT_DEFAULT_ACTOR_ISOLATION=MainActor のため明示しないと MainActor 隔離になり、
+    // CLLocationManagerDelegate の nonisolated コールバックから参照できない。
+    nonisolated static let didEnterGeoMemoRegion = Notification.Name("didEnterGeoMemoRegion")
+    nonisolated static let didExitGeoMemoRegion  = Notification.Name("didExitGeoMemoRegion")
 }
 
+@MainActor
 class LocationManager: NSObject, ObservableObject {
     static let shared = LocationManager()
 
@@ -282,52 +285,68 @@ class LocationManager: NSObject, ObservableObject {
 }
 
 extension LocationManager: CLLocationManagerDelegate {
-    func locationManager(_ manager: CLLocationManager, didUpdateLocations locations: [CLLocation]) {
-        guard let latest = locations.last else { return }
-        location = latest
-        evaluateProximity(to: latest)
+    // CLLocationManagerDelegate のコールバックは CL が用意したキューで呼ばれるため、
+    // @MainActor 隔離の本クラスの state を直接触れない。各メソッドを nonisolated
+    // で受けて MainActor.assumeIsolated（実際には main で呼ばれる）経由で本体へ渡す。
+    nonisolated func locationManager(_ manager: CLLocationManager, didUpdateLocations locations: [CLLocation]) {
+        MainActor.assumeIsolated {
+            guard let latest = locations.last else { return }
+            location = latest
+            evaluateProximity(to: latest)
+        }
     }
 
-    func locationManager(_ manager: CLLocationManager, didFailWithError error: Error) {
+    nonisolated func locationManager(_ manager: CLLocationManager, didFailWithError error: Error) {
         print("Location request failed: \(error.localizedDescription)")
     }
 
-    func locationManagerDidChangeAuthorization(_ manager: CLLocationManager) {
-        authorizationStatus = manager.authorizationStatus
-        switch manager.authorizationStatus {
-        case .authorizedWhenInUse, .authorizedAlways:
-            manager.requestLocation()
-            manager.startUpdatingHeading() // 許可取得直後にウォームアップ開始
-        default:
-            break
+    nonisolated func locationManagerDidChangeAuthorization(_ manager: CLLocationManager) {
+        MainActor.assumeIsolated {
+            authorizationStatus = manager.authorizationStatus
+            switch manager.authorizationStatus {
+            case .authorizedWhenInUse, .authorizedAlways:
+                manager.requestLocation()
+                manager.startUpdatingHeading() // 許可取得直後にウォームアップ開始
+            default:
+                break
+            }
         }
     }
 
-    func locationManager(_ manager: CLLocationManager, didUpdateHeading newHeading: CLHeading) {
+    nonisolated func locationManager(_ manager: CLLocationManager, didUpdateHeading newHeading: CLHeading) {
         guard newHeading.headingAccuracy >= 0 else { return }
-        heading = newHeading
+        MainActor.assumeIsolated {
+            heading = newHeading
 
-        let raw = newHeading.trueHeading >= 0 ? newHeading.trueHeading : newHeading.magneticHeading
+            let raw = newHeading.trueHeading >= 0 ? newHeading.trueHeading : newHeading.magneticHeading
 
-        // 初回は即セット
-        if smoothedHeadingDegrees < 0 {
-            _smoothed = raw
-            smoothedHeadingDegrees = raw
-            return
+            // 初回は即セット
+            if smoothedHeadingDegrees < 0 {
+                _smoothed = raw
+                smoothedHeadingDegrees = raw
+                return
+            }
+
+            // 0/360 の折り返しを考慮した最短経路で EMA を適用
+            var delta = raw - _smoothed
+            if delta > 180  { delta -= 360 }
+            if delta < -180 { delta += 360 }
+            _smoothed += headingSmoothingAlpha * delta
+            if _smoothed < 0   { _smoothed += 360 }
+            if _smoothed >= 360 { _smoothed -= 360 }
+
+            smoothedHeadingDegrees = _smoothed
         }
-
-        // 0/360 の折り返しを考慮した最短経路で EMA を適用
-        var delta = raw - _smoothed
-        if delta > 180  { delta -= 360 }
-        if delta < -180 { delta += 360 }
-        _smoothed += headingSmoothingAlpha * delta
-        if _smoothed < 0   { _smoothed += 360 }
-        if _smoothed >= 360 { _smoothed -= 360 }
-
-        smoothedHeadingDegrees = _smoothed
     }
 
-    func locationManager(_ manager: CLLocationManager, didEnterRegion region: CLRegion) {
+    nonisolated func locationManager(_ manager: CLLocationManager, didEnterRegion region: CLRegion) {
+        MainActor.assumeIsolated {
+            didEnterRegionMainActor(region)
+        }
+    }
+
+    @MainActor
+    private func didEnterRegionMainActor(_ region: CLRegion) {
         guard let circularRegion = region as? CLCircularRegion else { return }
         let identifier = circularRegion.identifier
 
@@ -376,7 +395,7 @@ extension LocationManager: CLLocationManagerDelegate {
         }
     }
 
-    func locationManager(_ manager: CLLocationManager, didExitRegion region: CLRegion) {
+    nonisolated func locationManager(_ manager: CLLocationManager, didExitRegion region: CLRegion) {
         guard let circularRegion = region as? CLCircularRegion else { return }
         let identifier = circularRegion.identifier
         // ルートウェイポイントと共有メモの退出は無視
@@ -384,7 +403,7 @@ extension LocationManager: CLLocationManagerDelegate {
         NotificationCenter.default.post(name: .didExitGeoMemoRegion, object: identifier)
     }
 
-    func locationManager(_ manager: CLLocationManager, monitoringDidFailFor region: CLRegion?, withError error: Error) {
+    nonisolated func locationManager(_ manager: CLLocationManager, monitoringDidFailFor region: CLRegion?, withError error: Error) {
         print("Monitoring failed for region: \(region?.identifier ?? "unknown") with error: \(error.localizedDescription)")
     }
 }

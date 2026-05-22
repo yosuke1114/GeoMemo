@@ -8,16 +8,22 @@ import SwiftData
 struct MemoDetailView: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(\.colorScheme) private var colorScheme
+    @Environment(\.modelContext) private var modelContext
     let memo: GeoMemo
     
     @AppStorage("mapStyle") private var mapStyleRaw: String = GeoMapStyle.mono.rawValue
-    @State private var showingEditSheet = false
-    @State private var showShareSheet = false
+    // edit / share / paywall は同時に開かないので enum + .sheet(item:) に集約する。
+    // 3 個の Bool だと同一 runloop で複数が true になると片方が phantom 化する。
+    @State private var activeSheet: DetailSheet?
     @State private var cameraPosition: MapCameraPosition
     @State private var suggestedTags: [PresetTag] = []
     @State private var listItems: [ListItem] = []
     @ObservedObject private var store = StoreKitManager.shared
-    @State private var showProPaywall = false
+
+    private enum DetailSheet: String, Identifiable {
+        case edit, share, paywall
+        var id: String { rawValue }
+    }
 
     private var currentMapStyle: GeoMapStyle {
         GeoMapStyle(rawValue: mapStyleRaw) ?? .mono
@@ -444,6 +450,8 @@ struct MemoDetailView: View {
                         withAnimation(.spring(response: 0.3, dampingFraction: 0.5)) {
                             memo.isFavorite.toggle()
                         }
+                        // バックグラウンド遷移直後の autosave 抜けを防ぐ。
+                        try? modelContext.save()
                     }) {
                         Image(systemName: memo.isFavorite ? "heart.fill" : "heart")
                             .font(.body)
@@ -462,18 +470,14 @@ struct MemoDetailView: View {
                     // 依頼するボタン（Pro限定）
                     Button {
                         HapticManager.impact(.light)
-                        if store.isPro {
-                            showShareSheet = true
-                        } else {
-                            showProPaywall = true
-                        }
+                        activeSheet = store.isPro ? .share : .paywall
                     } label: {
                         Image(systemName: store.isPro ? "person.wave.2" : "person.wave.2")
                             .font(.body)
                             .foregroundColor(store.isPro ? Brand.primaryText : Brand.secondaryText.opacity(0.5))
                     }
 
-                    Button(action: { showingEditSheet = true }) {
+                    Button(action: { activeSheet = .edit }) {
                         Text("EDIT")
                             .font(.body.weight(.semibold))
                             .foregroundColor(Brand.blue)
@@ -481,16 +485,17 @@ struct MemoDetailView: View {
                 }
             }
         }
-        .sheet(isPresented: $showShareSheet) {
-            ShareMemoSheet(memo: memo)
-        }
-        .sheet(isPresented: $showProPaywall) {
-            PaywallView()
-        }
-        .sheet(isPresented: $showingEditSheet) {
-            MemoEditorView(mode: MemoEditorMode.edit(memo), onDelete: {
-                dismiss()
-            })
+        .sheet(item: $activeSheet) { sheet in
+            switch sheet {
+            case .share:
+                ShareMemoSheet(memo: memo)
+            case .paywall:
+                PaywallView()
+            case .edit:
+                MemoEditorView(mode: MemoEditorMode.edit(memo), onDelete: {
+                    dismiss()
+                })
+            }
         }
         .onAppear {
             refreshSuggestions()
@@ -519,6 +524,7 @@ struct MemoDetailView: View {
                             listItems[i].isChecked = false
                         }
                         memo.listItems = listItems
+                        try? modelContext.save()
                     }) {
                         Text(String(localized: "RESET"))
                             .font(.caption.weight(.semibold))
@@ -533,6 +539,7 @@ struct MemoDetailView: View {
                     HapticManager.selection()
                     item.isChecked.toggle()
                     memo.listItems = listItems
+                    try? modelContext.save()
                 }) {
                     HStack(spacing: 12) {
                         Image(systemName: item.isChecked ? "checkmark.circle.fill" : "circle")

@@ -99,13 +99,18 @@ final class CKShareService {
     // MARK: - ステータス更新
 
     /// 依頼者・受信者どちらからでも呼べる（CKShare の writePermission 次第）。
-    /// レコードがどちらのDBに居るかわからないので、両方を試す。
+    /// zoneID.ownerName から先に DB を確定し、`.unknownItem` の時だけもう一方へ
+    /// フォールバックする。permission error など他のエラーは呼び出し元へ伝播。
     func updateStatus(recordID: CKRecord.ID, status: ShareStatus, date: Date? = nil) async throws {
+        let isMyZone = recordID.zoneID.ownerName == CKCurrentUserDefaultName
+        let primaryDB:  CKDatabase = isMyZone ? privateDB : sharedDB
+        let fallbackDB: CKDatabase = isMyZone ? sharedDB  : privateDB
+
         let record: CKRecord
         do {
-            record = try await privateDB.record(for: recordID)
-        } catch {
-            record = try await sharedDB.record(for: recordID)
+            record = try await primaryDB.record(for: recordID)
+        } catch let error as CKError where error.code == .unknownItem {
+            record = try await fallbackDB.record(for: recordID)
         }
         record["status"] = status.rawValue
         switch status {
@@ -113,10 +118,10 @@ final class CKShareService {
         case .completed: record["completedAt"] = date
         default: break
         }
-        // どちらのDBから来たかで保存先も決まる
-        let scope = record.recordID.zoneID.ownerName == CKCurrentUserDefaultName
+        // 取得した CKRecord の zoneID から書き戻し先を決定する。
+        let saveDB: CKDatabase = record.recordID.zoneID.ownerName == CKCurrentUserDefaultName
             ? privateDB : sharedDB
-        _ = try await scope.save(record)
+        _ = try await saveDB.save(record)
     }
 
     func cancelSharedMemo(recordID: CKRecord.ID) async throws {
@@ -138,18 +143,26 @@ final class CKShareService {
 
     /// Shared DB から、自分が受諾済みの SharedMemo を取得する。
     /// 他人のゾーンは見えないので、まずゾーン一覧を取得して各ゾーンを並列に走査する。
+    /// 1 ゾーンの認可剥奪 (`.zoneNotFound` 等) で全体が止まらないよう、
+    /// 子タスクは個別 catch して失敗ゾーンを空配列で返す。
     func fetchReceivedSharedMemos() async throws -> [SharedMemoCKData] {
         let zones = try await sharedDB.allRecordZones()
         let predicate = NSPredicate(format: "status != %@", ShareStatus.cancelled.rawValue)
-        return try await withThrowingTaskGroup(of: [SharedMemoCKData].self) { group in
+        return await withTaskGroup(of: [SharedMemoCKData].self) { group in
             for zone in zones {
                 group.addTask {
-                    let query = CKQuery(recordType: Self.recordType, predicate: predicate)
-                    return try await self.fetchAll(database: self.sharedDB, query: query, zoneID: zone.zoneID, isMyRequest: false)
+                    do {
+                        let query = CKQuery(recordType: Self.recordType, predicate: predicate)
+                        return try await self.fetchAll(database: self.sharedDB, query: query, zoneID: zone.zoneID, isMyRequest: false)
+                    } catch {
+                        // 個別ゾーンの失敗は無視して継続。デバッグ目的のみログ。
+                        print("[CKShareService] zone \(zone.zoneID) fetch failed: \(error)")
+                        return []
+                    }
                 }
             }
             var all: [SharedMemoCKData] = []
-            for try await batch in group { all.append(contentsOf: batch) }
+            for await batch in group { all.append(contentsOf: batch) }
             return all
         }
     }

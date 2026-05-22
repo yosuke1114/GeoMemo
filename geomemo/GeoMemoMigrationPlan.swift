@@ -182,8 +182,21 @@ enum GeoMemoSchemaV5: VersionedSchema {
 
 enum GeoMemoSchemaV6: VersionedSchema {
     static var versionIdentifier = Schema.Version(6, 0, 0)
-    static var models: [any PersistentModel.Type] { [GeoMemo.self, FavoritePlace.self] }
-    // V6: GeoMemo は V5 から変更なし。FavoritePlace テーブルを新規追加
+    static var models: [any PersistentModel.Type] {
+        [GeoMemoSchemaV5.GeoMemoV5.self, FavoritePlaceV6.self]
+    }
+    // V6: GeoMemo は V5 から変更なし（GeoMemoV5 を流用）。FavoritePlace テーブルを新規追加。
+
+    @Model final class FavoritePlaceV6 {
+        var id: UUID = UUID()
+        var name: String = ""
+        var subtitle: String = ""
+        var latitude: Double = 0.0
+        var longitude: Double = 0.0
+        var iconName: String = "mappin.fill"
+        var createdAt: Date = Date()
+        init() {}
+    }
 }
 
 // MARK: - Schema V7（UserProfile / FriendConnection 追加）
@@ -191,9 +204,30 @@ enum GeoMemoSchemaV6: VersionedSchema {
 enum GeoMemoSchemaV7: VersionedSchema {
     static var versionIdentifier = Schema.Version(7, 0, 0)
     static var models: [any PersistentModel.Type] {
-        [GeoMemo.self, FavoritePlace.self, UserProfile.self, FriendConnection.self]
+        [GeoMemoSchemaV5.GeoMemoV5.self,
+         GeoMemoSchemaV6.FavoritePlaceV6.self,
+         UserProfileV7.self,
+         FriendConnectionV7.self]
     }
-    // V7: GeoMemo / FavoritePlace は変更なし。UserProfile / FriendConnection を新規追加
+    // V7: GeoMemo / FavoritePlace は変更なし。UserProfile / FriendConnection を新規追加。
+
+    @Model final class UserProfileV7 {
+        var id: UUID = UUID()
+        var displayName: String = ""
+        var iCloudRecordID: String = ""
+        var createdAt: Date = Date()
+        init() {}
+    }
+
+    @Model final class FriendConnectionV7 {
+        var id: UUID = UUID()
+        var friendRecordID: String = ""
+        var friendDisplayName: String = ""
+        var statusRaw: String = "pending"
+        var inviteCode: String = ""
+        var createdAt: Date = Date()
+        init() {}
+    }
 }
 
 // MARK: - Schema V8（SharedMemo 追加）
@@ -201,9 +235,40 @@ enum GeoMemoSchemaV7: VersionedSchema {
 enum GeoMemoSchemaV8: VersionedSchema {
     static var versionIdentifier = Schema.Version(8, 0, 0)
     static var models: [any PersistentModel.Type] {
-        [GeoMemo.self, FavoritePlace.self, UserProfile.self, FriendConnection.self, SharedMemo.self]
+        [GeoMemoSchemaV5.GeoMemoV5.self,
+         GeoMemoSchemaV6.FavoritePlaceV6.self,
+         GeoMemoSchemaV7.UserProfileV7.self,
+         GeoMemoSchemaV7.FriendConnectionV7.self,
+         SharedMemoV8.self]
     }
-    // V8: SharedMemo テーブルを新規追加
+    // V8: SharedMemo テーブルを新規追加。
+    // ※ live `GeoMemo` / `FavoritePlace` / `UserProfile` / `FriendConnection` /
+    //   `SharedMemo` の schema を変更したら、`SchemaV9` を新設して該当 model の
+    //   スナップショットを作成し、migration stage を追加すること。
+
+    @Model final class SharedMemoV8 {
+        var id: UUID = UUID()
+        var ckRecordName: String = ""
+        var memoTitle: String = ""
+        var memoLocationName: String = ""
+        var memoLatitude: Double = 0.0
+        var memoLongitude: Double = 0.0
+        var memoRadius: Double = 100.0
+        var memoDeadline: Date? = nil
+        var memoTimeWindowStart: Int? = nil
+        var memoTimeWindowEnd: Int? = nil
+        var requesterRecordID: String = ""
+        var requesterName: String = ""
+        var recipientRecordID: String = ""
+        var recipientName: String = ""
+        var autoComplete: Bool = false
+        var statusRaw: String = "active"
+        var firedAt: Date? = nil
+        var completedAt: Date? = nil
+        var createdAt: Date = Date()
+        var isMyRequest: Bool = false
+        init() {}
+    }
 }
 
 // MARK: - Migration Plan

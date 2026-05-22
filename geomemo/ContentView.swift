@@ -184,10 +184,17 @@ struct ContentView: View {
 
     // MARK: - Friend Auto-Registration
 
-    /// CKShare 受諾時に、share 所有者を FriendConnection として登録（既存ならスキップ）
+    /// CKShare 受諾時に、share 所有者を FriendConnection として登録（既存ならスキップ）。
+    /// `@Query` snapshot ではなく FetchDescriptor で直近の永続状態を見ることで、
+    /// 連続 .didAcceptSharedMemo 受信時の二重挿入レースを防ぐ。
     private func registerFriendIfNeeded(info: AcceptedShareInfo) {
         guard !info.ownerRecordID.isEmpty else { return }
-        if friends.contains(where: { $0.friendRecordID == info.ownerRecordID }) { return }
+        let targetID = info.ownerRecordID
+        let predicate = #Predicate<FriendConnection> { $0.friendRecordID == targetID }
+        var descriptor = FetchDescriptor<FriendConnection>(predicate: predicate)
+        descriptor.fetchLimit = 1
+        if let existing = try? modelContext.fetch(descriptor), !existing.isEmpty { return }
+
         let friend = FriendConnection(
             friendRecordID:    info.ownerRecordID,
             friendDisplayName: info.ownerName.isEmpty ? String(localized: "フレンド") : info.ownerName,
