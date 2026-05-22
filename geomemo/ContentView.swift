@@ -632,6 +632,8 @@ struct MapTabView: View {
     @State private var activeSheet: ActiveSheet?
     @State private var activeDetailMemo: GeoMemo?
     @State private var pendingDetailMemo: GeoMemo?
+    /// 遅延して `activeDetailMemo` をセットする Task。新しい遅延が始まる前に cancel する。
+    @State private var deferredDetailTask: Task<Void, Never>?
     
     @State private var searchText = ""
     @State private var memoResults: [GeoMemo] = []
@@ -701,7 +703,10 @@ struct MapTabView: View {
                         )
                     )
                 }
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                deferredDetailTask?.cancel()
+                deferredDetailTask = Task {
+                    try? await Task.sleep(for: .seconds(0.5))
+                    guard !Task.isCancelled else { return }
                     activeDetailMemo = memo
                 }
             }
@@ -954,7 +959,10 @@ struct MapTabView: View {
     private func handleSheetDismiss() {
         if let memo = pendingDetailMemo {
             pendingDetailMemo = nil
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+            deferredDetailTask?.cancel()
+            deferredDetailTask = Task {
+                try? await Task.sleep(for: .seconds(0.3))
+                guard !Task.isCancelled else { return }
                 activeDetailMemo = memo
             }
         }

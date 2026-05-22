@@ -106,8 +106,9 @@ private struct SplashContent: View {
                 .opacity(textOpacity)
             }
         }
-        .onAppear {
-            // Pin drops from top with bounce
+        // .task は view 寿命に紐付くので、splash がバックグラウンド遷移などで
+        // 早期に消えた場合に sleep もキャンセルされる（旧 asyncAfter は cancel 不可だった）。
+        .task {
             withAnimation(
                 .spring(
                     response: 0.6,
@@ -119,11 +120,6 @@ private struct SplashContent: View {
                 pinOpacity = 1
             }
 
-            // Haptic when pin lands
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) {
-                HapticManager.impact(.medium)
-            }
-
             // Text fades in with delay
             withAnimation(
                 .easeIn(duration: 0.4)
@@ -132,10 +128,13 @@ private struct SplashContent: View {
                 textOpacity = 1
             }
 
-            // Transition to main content
-            DispatchQueue.main.asyncAfter(deadline: .now() + 2.2) {
-                showSplash = false
-            }
+            // Haptic when pin lands (0.6s 後)
+            try? await Task.sleep(for: .seconds(0.6))
+            HapticManager.impact(.medium)
+
+            // Transition to main content (0.6s + 1.6s = 2.2s after start)
+            try? await Task.sleep(for: .seconds(1.6))
+            showSplash = false
         }
     }
 }

@@ -304,9 +304,15 @@ extension LocationManager: CLLocationManagerDelegate {
         MainActor.assumeIsolated {
             authorizationStatus = manager.authorizationStatus
             switch manager.authorizationStatus {
-            case .authorizedWhenInUse, .authorizedAlways:
+            case .authorizedWhenInUse:
                 manager.requestLocation()
-                manager.startUpdatingHeading() // 許可取得直後にウォームアップ開始
+                manager.startUpdatingHeading()
+                // ユーザが WhenInUse を許可した直後に Always への昇格ダイアログを出す。
+                // 既に Always なら iOS 側で no-op。
+                manager.requestAlwaysAuthorization()
+            case .authorizedAlways:
+                manager.requestLocation()
+                manager.startUpdatingHeading()
             default:
                 break
             }

@@ -10,6 +10,11 @@ class LiveActivityManager {
 
     nonisolated private static let appGroupID = "group.com.yokuro.geomemo"
 
+    /// 監視中の Activity に設定する staleDate（8 時間）。Apple の 12 時間制限の手前で
+    /// stale に倒して force-kill による UX 劣化を防ぐ。アプリ起動時に startMonitoring が
+    /// 再度呼ばれて延長される想定。
+    private var monitoringStaleDate: Date { Date().addingTimeInterval(8 * 60 * 60) }
+
     // MARK: - Start Monitoring
 
     /// Start a Live Activity showing that GeoMemo is monitoring nearby memos.
@@ -27,7 +32,8 @@ class LiveActivityManager {
             let state = GeoMemoActivityAttributes.ContentState(
                 isTriggered: false,
                 memoTitle: "",
-                memoLocation: String(localized: "Monitoring \(count) memos"),
+                // memoLocation は idle 時には未使用（view 側は monitoredCount から組み立てる）。
+            memoLocation: "",
                 memoColorIndex: 0,
                 triggeredAt: nil,
                 routeCurrentWaypoint: nil,
@@ -38,7 +44,7 @@ class LiveActivityManager {
                 monitoredCount: count
             )
             Task {
-                await activity.update(ActivityContent(state: state, staleDate: nil))
+                await activity.update(ActivityContent(state: state, staleDate: monitoringStaleDate))
             }
             return
         }
@@ -47,7 +53,8 @@ class LiveActivityManager {
         let state = GeoMemoActivityAttributes.ContentState(
             isTriggered: false,
             memoTitle: "",
-            memoLocation: String(localized: "Monitoring \(count) memos"),
+            // memoLocation は idle 時には未使用（view 側は monitoredCount から組み立てる）。
+            memoLocation: "",
             memoColorIndex: 0,
             triggeredAt: nil,
             routeCurrentWaypoint: nil,
@@ -61,7 +68,7 @@ class LiveActivityManager {
         do {
             let activity = try Activity.request(
                 attributes: attributes,
-                content: ActivityContent(state: state, staleDate: nil)
+                content: ActivityContent(state: state, staleDate: monitoringStaleDate)
             )
             currentActivity = activity
         } catch {
@@ -118,7 +125,8 @@ class LiveActivityManager {
             let state = GeoMemoActivityAttributes.ContentState(
                 isTriggered: false,
                 memoTitle: "",
-                memoLocation: String(localized: "Monitoring \(count) memos"),
+                // memoLocation は idle 時には未使用（view 側は monitoredCount から組み立てる）。
+            memoLocation: "",
                 memoColorIndex: 0,
                 triggeredAt: nil,
                 routeCurrentWaypoint: nil,
@@ -129,14 +137,15 @@ class LiveActivityManager {
                 monitoredCount: count
             )
             Task {
-                await activity.update(ActivityContent(state: state, staleDate: nil))
+                await activity.update(ActivityContent(state: state, staleDate: monitoringStaleDate))
             }
         } else {
             // 接近解除 → 通常のモニタリング表示に戻す
             let state = GeoMemoActivityAttributes.ContentState(
                 isTriggered: false,
                 memoTitle: "",
-                memoLocation: String(localized: "Monitoring \(count) memos"),
+                // memoLocation は idle 時には未使用（view 側は monitoredCount から組み立てる）。
+            memoLocation: "",
                 memoColorIndex: 0,
                 triggeredAt: nil,
                 routeCurrentWaypoint: nil,
@@ -147,7 +156,7 @@ class LiveActivityManager {
                 monitoredCount: count
             )
             Task {
-                await activity.update(ActivityContent(state: state, staleDate: nil))
+                await activity.update(ActivityContent(state: state, staleDate: monitoringStaleDate))
             }
         }
     }
@@ -180,7 +189,7 @@ class LiveActivityManager {
                 monitoredCount: activity.content.state.monitoredCount
             )
 
-            await activity.update(ActivityContent(state: state, staleDate: nil))
+            await activity.update(ActivityContent(state: state, staleDate: monitoringStaleDate))
         }
     }
 

@@ -117,18 +117,25 @@ struct GeoMemoProvider: TimelineProvider {
     }
 
     func getTimeline(in context: Context, completion: @escaping (Timeline<MemoEntry>) -> Void) {
-        let entry = fetchEntry()
-
-        // 期限の 24h/72h 閾値通過タイミングで更新。それ以外は30分ごと
+        let base = fetchEntry()
         let now = Date.now
-        let thresholds: [TimeInterval] = [86400, 259200]  // 24h, 72h
-        let checkpoints = entry.memos.compactMap { $0.deadline }.flatMap { deadline in
-            thresholds.map { deadline.addingTimeInterval(-$0) }.filter { $0 > now }
-        }
-        let default30min = Calendar.current.date(byAdding: .minute, value: 30, to: now)!
-        let nextUpdate = ([default30min] + checkpoints).min()!
 
-        completion(Timeline(entries: [entry], policy: .after(nextUpdate)))
+        // 30 分刻みで複数 entry を emit する。各 entry の date は将来時刻で、Widget
+        // はそのタイミングで view を再評価するので deadlineBadgeText の "Xm/Xh" 表記が
+        // 自動的に最新化される（1 entry 固定だと 30 分以上ステイルになっていた）。
+        // 期限 24h/72h の閾値通過時刻も明示的に追加して、しきい値前後の表示崩れを抑える。
+        let stride: TimeInterval = 30 * 60
+        var dates: [Date] = (0...6).map { now.addingTimeInterval(stride * Double($0)) }
+        let thresholds: [TimeInterval] = [3600, 86400, 259200]  // 1h / 24h / 72h
+        let checkpoints = base.memos.compactMap { $0.deadline }.flatMap { deadline in
+            thresholds.map { deadline.addingTimeInterval(-$0) }.filter { $0 > now && $0 < dates.last! }
+        }
+        dates.append(contentsOf: checkpoints)
+        dates.sort()
+
+        let entries = dates.map { MemoEntry(date: $0, memos: base.memos) }
+        // 最後の entry 時刻で再フェッチを依頼（メモ追加/削除を反映）。
+        completion(Timeline(entries: entries, policy: .after(dates.last ?? now.addingTimeInterval(1800))))
     }
 
     private func fetchEntry() -> MemoEntry {
@@ -311,68 +318,71 @@ struct MediumWidgetView: View {
                     .padding(.bottom, 6)
 
                 ForEach(Array(entry.memos.prefix(3).enumerated()), id: \.offset) { index, memo in
-                    HStack(spacing: 6) {
-                        Circle()
-                            .fill(MemoColor(rawValue: memo.colorIndex)?.color ?? Brand.blue)
-                            .frame(width: 8, height: 8)
+                    // 各行を Link で wrap して個別の memo へディープリンクする。
+                    Link(destination: memo.deepLinkURL ?? URL(string: "geomemo://")!) {
+                        HStack(spacing: 6) {
+                            Circle()
+                                .fill(MemoColor(rawValue: memo.colorIndex)?.color ?? Brand.blue)
+                                .frame(width: 8, height: 8)
 
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text(memo.title)
-                                .font(.system(size: 14, weight: .semibold))
-                                .foregroundStyle(Brand.primaryText)
-                                .lineLimit(1)
-                            // ルート進行中 > 期限バッジ > タグ の優先順
-                            if let cur = memo.routeCurrentWaypoint, let tot = memo.routeTotalWaypoints {
-                                HStack(spacing: 3) {
-                                    Image(systemName: "arrow.triangle.turn.up.right.circle")
-                                        .font(.system(size: 8))
-                                    Text("WP \(cur)/\(tot)")
-                                        .font(.system(size: 9, weight: .semibold, design: .monospaced))
-                                }
-                                .foregroundStyle(Brand.blue)
-                            } else if let badge = memo.deadlineBadgeText {
-                                HStack(spacing: 2) {
-                                    Image(systemName: "clock.fill")
-                                        .font(.system(size: 8))
-                                    Text(badge)
-                                        .font(.system(size: 9, weight: .semibold, design: .monospaced))
-                                }
-                                .foregroundStyle(memo.hasUrgentDeadline ? Color(hex: "E5484D") : Color.orange)
-                            } else if let tagLabel = memo.firstTagLabel {
-                                Text(tagLabel)
-                                    .font(.system(size: 10, weight: .medium))
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(memo.title)
+                                    .font(.system(size: 14, weight: .semibold))
+                                    .foregroundStyle(Brand.primaryText)
+                                    .lineLimit(1)
+                                // ルート進行中 > 期限バッジ > タグ の優先順
+                                if let cur = memo.routeCurrentWaypoint, let tot = memo.routeTotalWaypoints {
+                                    HStack(spacing: 3) {
+                                        Image(systemName: "arrow.triangle.turn.up.right.circle")
+                                            .font(.system(size: 8))
+                                        Text("WP \(cur)/\(tot)")
+                                            .font(.system(size: 9, weight: .semibold, design: .monospaced))
+                                    }
                                     .foregroundStyle(Brand.blue)
+                                } else if let badge = memo.deadlineBadgeText {
+                                    HStack(spacing: 2) {
+                                        Image(systemName: "clock.fill")
+                                            .font(.system(size: 8))
+                                        Text(badge)
+                                            .font(.system(size: 9, weight: .semibold, design: .monospaced))
+                                    }
+                                    .foregroundStyle(memo.hasUrgentDeadline ? Color(hex: "E5484D") : Color.orange)
+                                } else if let tagLabel = memo.firstTagLabel {
+                                    Text(tagLabel)
+                                        .font(.system(size: 10, weight: .medium))
+                                        .foregroundStyle(Brand.blue)
+                                }
+                            }
+
+                            if memo.isRouteInProgress {
+                                Image(systemName: "arrow.triangle.turn.up.right.circle.fill")
+                                    .font(.system(size: 10))
+                                    .foregroundStyle(Brand.blue)
+                            } else if memo.hasUrgentDeadline {
+                                Image(systemName: "clock.fill")
+                                    .font(.system(size: 10))
+                                    .foregroundStyle(Color(hex: "E5484D"))
+                            } else if memo.isFavorite {
+                                Image(systemName: "heart.fill")
+                                    .font(.system(size: 9))
+                                    .foregroundStyle(Color(hex: "E5484D"))
+                            }
+
+                            Spacer()
+
+                            if !memo.locationName.isEmpty {
+                                Text(memo.locationName)
+                                    .font(.system(size: 11, weight: .medium))
+                                    .foregroundStyle(Brand.secondaryText)
+                                    .lineLimit(1)
                             }
                         }
-
-                        if memo.isRouteInProgress {
-                            Image(systemName: "arrow.triangle.turn.up.right.circle.fill")
-                                .font(.system(size: 10))
-                                .foregroundStyle(Brand.blue)
-                        } else if memo.hasUrgentDeadline {
-                            Image(systemName: "clock.fill")
-                                .font(.system(size: 10))
-                                .foregroundStyle(Color(hex: "E5484D"))
-                        } else if memo.isFavorite {
-                            Image(systemName: "heart.fill")
-                                .font(.system(size: 9))
-                                .foregroundStyle(Color(hex: "E5484D"))
-                        }
-
-                        Spacer()
-
-                        if !memo.locationName.isEmpty {
-                            Text(memo.locationName)
-                                .font(.system(size: 11, weight: .medium))
-                                .foregroundStyle(Brand.secondaryText)
-                                .lineLimit(1)
-                        }
+                        .padding(.vertical, 5)
+                        .background(
+                            memo.hasUrgentDeadline ? Color(hex: "E5484D").opacity(0.05) :
+                            memo.isRouteInProgress ? Brand.blue.opacity(0.05) : Color.clear
+                        )
                     }
-                    .padding(.vertical, 5)
-                    .background(
-                        memo.hasUrgentDeadline ? Color(hex: "E5484D").opacity(0.05) :
-                        memo.isRouteInProgress ? Brand.blue.opacity(0.05) : Color.clear
-                    )
 
                     if index < entry.memos.prefix(3).count - 1 {
                         Divider()
@@ -410,82 +420,85 @@ struct LargeWidgetView: View {
                     .padding(.bottom, 8)
 
                 ForEach(Array(entry.memos.prefix(5).enumerated()), id: \.offset) { index, memo in
-                    HStack(alignment: .top, spacing: 10) {
-                        // カラードット
-                        Circle()
-                            .fill(MemoColor(rawValue: memo.colorIndex)?.color ?? Brand.blue)
-                            .frame(width: 9, height: 9)
-                            .padding(.top, 4)
+                    // 各行を Link で wrap して個別の memo へディープリンクする。
+                    Link(destination: memo.deepLinkURL ?? URL(string: "geomemo://")!) {
+                        HStack(alignment: .top, spacing: 10) {
+                            // カラードット
+                            Circle()
+                                .fill(MemoColor(rawValue: memo.colorIndex)?.color ?? Brand.blue)
+                                .frame(width: 9, height: 9)
+                                .padding(.top, 4)
 
-                        VStack(alignment: .leading, spacing: 3) {
-                            // タイトル行
-                            HStack(spacing: 4) {
-                                Text(memo.title)
-                                    .font(.system(size: 14, weight: .semibold))
-                                    .foregroundStyle(Brand.primaryText)
-                                    .lineLimit(1)
+                            VStack(alignment: .leading, spacing: 3) {
+                                // タイトル行
+                                HStack(spacing: 4) {
+                                    Text(memo.title)
+                                        .font(.system(size: 14, weight: .semibold))
+                                        .foregroundStyle(Brand.primaryText)
+                                        .lineLimit(1)
 
-                                Spacer()
+                                    Spacer()
 
-                                if memo.isRouteInProgress {
-                                    Image(systemName: "arrow.triangle.turn.up.right.circle.fill")
-                                        .font(.system(size: 11))
-                                        .foregroundStyle(Brand.blue)
-                                } else if memo.hasUrgentDeadline {
-                                    Image(systemName: "clock.fill")
-                                        .font(.system(size: 11))
-                                        .foregroundStyle(Color(hex: "E5484D"))
-                                } else if memo.isFavorite {
-                                    Image(systemName: "heart.fill")
-                                        .font(.system(size: 10))
-                                        .foregroundStyle(Color(hex: "E5484D"))
+                                    if memo.isRouteInProgress {
+                                        Image(systemName: "arrow.triangle.turn.up.right.circle.fill")
+                                            .font(.system(size: 11))
+                                            .foregroundStyle(Brand.blue)
+                                    } else if memo.hasUrgentDeadline {
+                                        Image(systemName: "clock.fill")
+                                            .font(.system(size: 11))
+                                            .foregroundStyle(Color(hex: "E5484D"))
+                                    } else if memo.isFavorite {
+                                        Image(systemName: "heart.fill")
+                                            .font(.system(size: 10))
+                                            .foregroundStyle(Color(hex: "E5484D"))
+                                    }
+
+                                    if !memo.locationName.isEmpty {
+                                        Text(memo.locationName)
+                                            .font(.system(size: 10, weight: .medium))
+                                            .foregroundStyle(Brand.secondaryText)
+                                            .lineLimit(1)
+                                    }
                                 }
 
-                                if !memo.locationName.isEmpty {
-                                    Text(memo.locationName)
-                                        .font(.system(size: 10, weight: .medium))
+                                // ノートプレビュー
+                                if !memo.note.isEmpty {
+                                    Text(memo.note)
+                                        .font(.system(size: 12, weight: .regular))
                                         .foregroundStyle(Brand.secondaryText)
                                         .lineLimit(1)
                                 }
-                            }
 
-                            // ノートプレビュー
-                            if !memo.note.isEmpty {
-                                Text(memo.note)
-                                    .font(.system(size: 12, weight: .regular))
-                                    .foregroundStyle(Brand.secondaryText)
-                                    .lineLimit(1)
-                            }
-
-                            // ルート進行中 > 期限バッジ > タグ の優先順
-                            if let cur = memo.routeCurrentWaypoint, let tot = memo.routeTotalWaypoints {
-                                HStack(spacing: 3) {
-                                    Image(systemName: "arrow.triangle.turn.up.right.circle")
-                                        .font(.system(size: 8))
-                                    Text("WP \(cur)/\(tot)")
-                                        .font(.system(size: 9, weight: .semibold, design: .monospaced))
-                                }
-                                .foregroundStyle(Brand.blue)
-                            } else if let badge = memo.deadlineBadgeText {
-                                HStack(spacing: 2) {
-                                    Image(systemName: "clock.fill")
-                                        .font(.system(size: 8))
-                                    Text(badge)
-                                        .font(.system(size: 9, weight: .semibold, design: .monospaced))
-                                }
-                                .foregroundStyle(memo.hasUrgentDeadline ? Color(hex: "E5484D") : Color.orange)
-                            } else if let tagLabel = memo.firstTagLabel {
-                                Text(tagLabel)
-                                    .font(.system(size: 9, weight: .medium))
+                                // ルート進行中 > 期限バッジ > タグ の優先順
+                                if let cur = memo.routeCurrentWaypoint, let tot = memo.routeTotalWaypoints {
+                                    HStack(spacing: 3) {
+                                        Image(systemName: "arrow.triangle.turn.up.right.circle")
+                                            .font(.system(size: 8))
+                                        Text("WP \(cur)/\(tot)")
+                                            .font(.system(size: 9, weight: .semibold, design: .monospaced))
+                                    }
                                     .foregroundStyle(Brand.blue)
+                                } else if let badge = memo.deadlineBadgeText {
+                                    HStack(spacing: 2) {
+                                        Image(systemName: "clock.fill")
+                                            .font(.system(size: 8))
+                                        Text(badge)
+                                            .font(.system(size: 9, weight: .semibold, design: .monospaced))
+                                    }
+                                    .foregroundStyle(memo.hasUrgentDeadline ? Color(hex: "E5484D") : Color.orange)
+                                } else if let tagLabel = memo.firstTagLabel {
+                                    Text(tagLabel)
+                                        .font(.system(size: 9, weight: .medium))
+                                        .foregroundStyle(Brand.blue)
+                                }
                             }
                         }
+                        .padding(.vertical, 6)
+                        .background(
+                            memo.hasUrgentDeadline ? Color(hex: "E5484D").opacity(0.05) :
+                            memo.isRouteInProgress  ? Brand.blue.opacity(0.05) : Color.clear
+                        )
                     }
-                    .padding(.vertical, 6)
-                    .background(
-                        memo.hasUrgentDeadline ? Color(hex: "E5484D").opacity(0.05) :
-                        memo.isRouteInProgress  ? Brand.blue.opacity(0.05) : Color.clear
-                    )
 
                     if index < entry.memos.prefix(5).count - 1 {
                         Divider()
@@ -506,22 +519,32 @@ struct geomemoWidget: Widget {
 
     var body: some WidgetConfiguration {
         StaticConfiguration(kind: kind, provider: GeoMemoProvider()) { entry in
-            GeometryReader { geo in
-                if geo.size.width > 200 && geo.size.height > 200 {
-                    LargeWidgetView(entry: entry)
-                } else if geo.size.width > 200 {
-                    MediumWidgetView(entry: entry)
-                } else {
-                    SmallWidgetView(entry: entry)
-                }
-            }
-            .containerBackground(Brand.background, for: .widget)
-            // Widget タップでトップメモへディープリンク。memos が空ならアプリ既定画面が開く。
-            .widgetURL(entry.memos.first?.deepLinkURL)
+            GeoMemoWidgetEntryView(entry: entry)
         }
         .configurationDisplayName("GeoMemo")
         .description("Shows your most important memos")
         .supportedFamilies([.systemSmall, .systemMedium, .systemLarge])
+    }
+}
+
+/// Widget の root view。`@Environment(\.widgetFamily)` で正確な family を判定する。
+/// GeometryReader の width 推定は端末サイズで誤判定するため使わない。
+private struct GeoMemoWidgetEntryView: View {
+    @Environment(\.widgetFamily) private var family
+    let entry: MemoEntry
+
+    var body: some View {
+        Group {
+            switch family {
+            case .systemLarge:  LargeWidgetView(entry: entry)
+            case .systemMedium: MediumWidgetView(entry: entry)
+            default:            SmallWidgetView(entry: entry)
+            }
+        }
+        .containerBackground(Brand.background, for: .widget)
+        // Widget タップでトップメモへディープリンク。memos が空ならアプリ既定画面が開く。
+        // Medium/Large は個別 row の Link が優先され、それ以外の余白タップでこちらが効く。
+        .widgetURL(entry.memos.first?.deepLinkURL)
     }
 }
 

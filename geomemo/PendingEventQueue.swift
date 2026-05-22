@@ -39,11 +39,37 @@ final class PendingEventQueue {
 
     func enqueue(_ event: PendingShareEvent) {
         var current = events
+        // 優先度コアレッシング: cancelled は fired/completed を吸収、completed は fired を吸収。
+        // ドレイン順序によらず最終的に最も新しい状態だけが書き込まれるようにする。
+        let recordName = Self.recordName(of: event)
+        let incomingPriority = Self.priority(of: event)
+        current.removeAll { existing in
+            Self.recordName(of: existing) == recordName
+                && Self.priority(of: existing) < incomingPriority
+        }
         current.append(event)
         if current.count > Self.maxEvents {
             current.removeFirst(current.count - Self.maxEvents)
         }
         events = current
+    }
+
+    private static func recordName(of event: PendingShareEvent) -> String {
+        switch event {
+        case .fired(let n, _, _),
+             .completed(let n, _, _),
+             .cancelled(let n, _):
+            return n
+        }
+    }
+
+    /// 優先度。cancelled > completed > fired。
+    private static func priority(of event: PendingShareEvent) -> Int {
+        switch event {
+        case .fired:     return 0
+        case .completed: return 1
+        case .cancelled: return 2
+        }
     }
 
     func dequeue(ckRecordName: String) {
