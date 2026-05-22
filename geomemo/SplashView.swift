@@ -138,34 +138,6 @@ private struct SplashContent: View {
     }
 }
 
-// MARK: - Map Pin Shape
-
-private struct MapPinShape: View {
-    var body: some View {
-        ZStack {
-            Circle()
-                .frame(width: 56, height: 56)
-                .offset(y: -20)
-
-            Triangle()
-                .frame(width: 28, height: 32)
-                .offset(y: 18)
-        }
-        .foregroundColor(.white)
-    }
-}
-
-private struct Triangle: Shape {
-    func path(in rect: CGRect) -> Path {
-        var path = Path()
-        path.move(to: CGPoint(x: rect.midX, y: rect.maxY))
-        path.addLine(to: CGPoint(x: rect.minX, y: rect.minY))
-        path.addLine(to: CGPoint(x: rect.maxX, y: rect.minY))
-        path.closeSubpath()
-        return path
-    }
-}
-
 // Brand colors and Color(hex:) are defined in Theme.swift
 
 // MARK: - Preview

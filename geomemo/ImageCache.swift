@@ -20,10 +20,6 @@ final class ImageCache {
         cache.setObject(image, forKey: key, cost: cost)
     }
 
-    func remove(forKey key: NSString) {
-        cache.removeObject(forKey: key)
-    }
-
     func removeAll() {
         cache.removeAllObjects()
     }

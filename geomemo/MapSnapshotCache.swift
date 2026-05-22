@@ -31,6 +31,10 @@ actor MapSnapshotCache {
             return await existing.value
         }
 
+        // UITraitCollection.current は main-thread only。Task 内で読むと
+        // displayScale が 1.0 で返って blurry になりうるため事前に main で取得する。
+        let scale = await MainActor.run { UITraitCollection.current.displayScale }
+
         let task = Task<UIImage?, Never> {
             let options = MKMapSnapshotter.Options()
             options.region = MKCoordinateRegion(
@@ -39,7 +43,7 @@ actor MapSnapshotCache {
                 longitudinalMeters: 300
             )
             options.size = size
-            options.scale = UITraitCollection.current.displayScale
+            options.scale = scale
 
             do {
                 let snapshotter = MKMapSnapshotter(options: options)
@@ -91,9 +95,5 @@ actor MapSnapshotCache {
     private func store(_ image: UIImage, forKey key: NSString) {
         let cost = Int(image.size.width * image.size.height * image.scale * image.scale * 4)
         cache.setObject(image, forKey: key, cost: cost)
-    }
-
-    func invalidate() {
-        cache.removeAllObjects()
     }
 }

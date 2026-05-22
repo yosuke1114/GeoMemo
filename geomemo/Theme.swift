@@ -139,11 +139,11 @@ enum GeoMapStyle: String, CaseIterable {
 
     var displayName: String {
         switch self {
-        case .mono:      return "MONO"
-        case .standard:  return "COLOR"
-        case .detail:    return "DETAIL"
-        case .transit:   return "TRANSIT"
-        case .satellite: return "SATELLITE"
+        case .mono:      return String(localized: "MONO")
+        case .standard:  return String(localized: "COLOR")
+        case .detail:    return String(localized: "DETAIL")
+        case .transit:   return String(localized: "TRANSIT")
+        case .satellite: return String(localized: "SATELLITE")
         }
     }
 }

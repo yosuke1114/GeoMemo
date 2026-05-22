@@ -98,11 +98,6 @@ private func clusterMemos(_ memos: [GeoMemo], in region: MKCoordinateRegion) -> 
     }
 }
 
-// String を Identifiable に準拠させてシートの item として使えるようにする
-extension String: @retroactive Identifiable {
-    public var id: String { self }
-}
-
 // MARK: - Main Content View
 struct ContentView: View {
     @Query(sort: \GeoMemo.createdAt, order: .reverse) private var memos: [GeoMemo]
@@ -216,7 +211,12 @@ struct ContentView: View {
             var didChange = false
             for data in received {
                 let recordName = data.ckRecordID.recordName
+                let zoneOwner = data.ckRecordID.zoneID.ownerName
                 if let existing = allSharedMemos.first(where: { $0.ckRecordName == recordName }) {
+                    if existing.requesterRecordID.isEmpty && !zoneOwner.isEmpty {
+                        existing.requesterRecordID = zoneOwner
+                        didChange = true
+                    }
                     if existing.apply(data) { didChange = true }
                 } else {
                     let shared = SharedMemo(
@@ -229,7 +229,9 @@ struct ContentView: View {
                         memoDeadline:        data.memoDeadline,
                         memoTimeWindowStart: data.memoTimeWindowStart,
                         memoTimeWindowEnd:   data.memoTimeWindowEnd,
-                        requesterRecordID:   "",  // CKShareでは依頼者IDは share の owner なので不要
+                        // CKShare の sharedDB ゾーンオーナー名 = 依頼者の userRecordID。
+                        // sharedDB への書き戻し時に CKRecord.ID(zoneID:) の ownerName で必要なため永続化する。
+                        requesterRecordID:   zoneOwner,
                         requesterName:       data.requesterName,
                         recipientRecordID:   data.recipientRecordID,
                         recipientName:       data.recipientName,
@@ -700,6 +702,7 @@ struct MapTabView: View {
         .onReceive(NotificationCenter.default.publisher(for: Notification.Name.didEnterGeoMemoRegion)) { notification in
             if let id = notification.object as? String,
                let memo = memos.first(where: { $0.id.uuidString == id }) {
+                guard memo.notifyOnEntry && !memo.isDone else { return }
                 guard locationManager.shouldNotify(for: memo) else { return }
                 Task {
                     if let dwell = memo.dwellMinutes {
@@ -1103,18 +1106,25 @@ struct MapTabView: View {
     /// Re-register geofences for all memos on app launch
     private func reRegisterAllGeofences() {
         locationManager.stopAllMonitoring()
-        for memo in memos {
-            let region = CLCircularRegion(
-                center: CLLocationCoordinate2D(latitude: memo.latitude, longitude: memo.longitude),
-                radius: memo.radius,
-                identifier: memo.id.uuidString
-            )
-            region.notifyOnEntry = memo.notifyOnEntry
-            region.notifyOnExit = memo.notifyOnExit
-            locationManager.startMonitoring(region: region)
+        var registeredRegionCount = 0
+        for memo in memos where !memo.isDone {
+            if memo.isRouteTrigger {
+                locationManager.startMonitoringRoute(for: memo)
+                registeredRegionCount += memo.routeWaypoints.count
+            } else {
+                let region = CLCircularRegion(
+                    center: CLLocationCoordinate2D(latitude: memo.latitude, longitude: memo.longitude),
+                    radius: memo.radius,
+                    identifier: memo.id.uuidString
+                )
+                region.notifyOnEntry = memo.notifyOnEntry
+                region.notifyOnExit = memo.notifyOnExit
+                locationManager.startMonitoring(region: region)
+                registeredRegionCount += 1
+            }
         }
-        if memos.count > 20 {
-            print("⚠️ Geofencing limit warning: \(memos.count) memos registered (iOS limit is 20)")
+        if registeredRegionCount > 20 {
+            print("⚠️ Geofencing limit warning: \(registeredRegionCount) regions registered (iOS limit is 20)")
         }
     }
 }
@@ -1711,7 +1721,9 @@ struct ListTabView: View {
 
     private func delete(_ memo: GeoMemo) {
         locationManager.stopMonitoring(memoID: memo.id.uuidString)
+        let removedID = memo.id
         modelContext.delete(memo)
+        geomemoApp.removeFromSpotlight(memoID: removedID)
         geomemoApp.indexAllMemosInSpotlight()
     }
 }

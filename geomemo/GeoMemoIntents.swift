@@ -122,31 +122,53 @@ struct AddGeoMemoIntent: AppIntent {
     var note: String
 
     func perform() async throws -> some IntentResult & ProvidesDialog {
-        // 現在地を取得
-        let locationManager = CLLocationManager()
-        let location = locationManager.location
-        let latitude  = location?.coordinate.latitude  ?? 35.6812
-        let longitude = location?.coordinate.longitude ?? 139.7671
+        // 現在地が取れない時に Tokyo へフォールバックするとゴーストメモになるため、
+        // 位置取得に失敗した場合は中止してダイアログで通知する。
+        guard let location = await Self.currentLocation() else {
+            return .result(dialog: "Could not get your current location.")
+        }
 
         // 逆ジオコーディング
         var locationName = ""
-        if let loc = location {
-            if let request = MKReverseGeocodingRequest(location: loc),
-               let item = try? await request.mapItems.first {
-                let repr = item.addressRepresentations
-                locationName = repr?.cityWithContext ?? repr?.cityName ?? item.name ?? ""
-            }
+        if let request = MKReverseGeocodingRequest(location: location),
+           let item = try? await request.mapItems.first {
+            let repr = item.addressRepresentations
+            locationName = repr?.cityWithContext ?? repr?.cityName ?? item.name ?? ""
         }
 
         try GeoMemoStore.insert(
             title: title,
             note: note,
-            latitude: latitude,
-            longitude: longitude,
+            latitude: location.coordinate.latitude,
+            longitude: location.coordinate.longitude,
             locationName: locationName
         )
 
         return .result(dialog: "Memo \"\(title)\" added\(locationName.isEmpty ? "" : " at \(locationName)")")
+    }
+
+    /// CLLocationManager().location は監視開始前は常に nil なので、
+    /// CLLocationUpdate.liveUpdates で実際の 1 件目を待つ。タイムアウトは 5 秒。
+    private static func currentLocation() async -> CLLocation? {
+        await withTaskGroup(of: CLLocation?.self) { group in
+            group.addTask {
+                do {
+                    for try await update in CLLocationUpdate.liveUpdates() {
+                        if let loc = update.location { return loc }
+                    }
+                } catch {
+                    return nil
+                }
+                return nil
+            }
+            group.addTask {
+                try? await Task.sleep(nanoseconds: 5_000_000_000)
+                return nil
+            }
+            let first = await group.next() ?? nil
+            group.cancelAll()
+            return first ?? nil
+        }
     }
 }
 

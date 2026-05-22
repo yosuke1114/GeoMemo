@@ -2,7 +2,8 @@ import ActivityKit
 import Foundation
 
 struct GeoMemoActivityAttributes: ActivityAttributes {
-    /// Number of memos being monitored
+    /// 後方互換のため残置（activity の attributes は不変なので最新値の参照には使えない）。
+    /// 表示には ContentState.monitoredCount を使うこと。
     var monitoredCount: Int
 
     struct ContentState: Codable, Hashable {
@@ -23,5 +24,10 @@ struct GeoMemoActivityAttributes: ActivityAttributes {
         var approachingDistance: Int?
         /// 接近中メモのカラーインデックス
         var approachingColorIndex: Int = 0
+
+        // MARK: - Monitored count (v2.0+)
+        /// 監視中メモ数。ContentState に置くことで activity が起動済みでも update 可能。
+        /// 旧 activity（v1.x）からの decode 互換のため default を持たせる。
+        var monitoredCount: Int = 0
     }
 }

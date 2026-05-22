@@ -185,7 +185,8 @@ struct WatchDashboardView: View {
         .padding(.vertical, 14)
         .accessibilityElement(children: .combine)
         .accessibilityLabel(rowAccessibilityLabel(for: shared))
-        .swipeActions(edge: .trailing, allowsFullSwipe: false) {
+        // ScrollView/VStack 内では .swipeActions が動かないため長押しメニューで代替。
+        .contextMenu {
             if shared.status == .active {
                 Button(role: .destructive) {
                     Task { await cancelSharedMemo(shared) }

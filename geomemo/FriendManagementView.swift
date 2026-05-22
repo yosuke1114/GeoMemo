@@ -202,7 +202,8 @@ struct FriendManagementView: View {
         .contentShape(Rectangle())
         .accessibilityElement(children: .combine)
         .accessibilityLabel(friend.friendDisplayName)
-        .swipeActions(edge: .trailing, allowsFullSwipe: true) {
+        // ScrollView/VStack 内では .swipeActions が動かないため長押しメニューで代替。
+        .contextMenu {
             Button(role: .destructive) {
                 deleteFriend(friend)
             } label: {
@@ -257,13 +258,3 @@ struct FriendManagementView: View {
     }
 }
 
-// MARK: - ShareSheet Wrapper
-
-private struct ShareSheet: UIViewControllerRepresentable {
-    let items: [Any]
-
-    func makeUIViewController(context: Context) -> UIActivityViewController {
-        UIActivityViewController(activityItems: items, applicationActivities: nil)
-    }
-    func updateUIViewController(_ uiViewController: UIActivityViewController, context: Context) {}
-}

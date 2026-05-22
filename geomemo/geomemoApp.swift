@@ -169,6 +169,14 @@ struct geomemoApp: App {
         }
     }
 
+    /// 削除されたメモを Spotlight からも除去する。再インデックスでは消えるが、
+    /// Apple のインデックスは "なくなった項目を残す" 動作なので明示的に削除が必要。
+    static func removeFromSpotlight(memoID: UUID) {
+        CSSearchableIndex.default().deleteSearchableItems(withIdentifiers: [memoID.uuidString]) { error in
+            if let error { print("Spotlight delete failed: \(error)") }
+        }
+    }
+
     // MARK: - Deep Linking
 
     private func handleDeepLink(_ url: URL) {

@@ -252,11 +252,6 @@ class LocationManager: NSObject, ObservableObject {
         }
     }
 
-    /// Number of currently monitored regions.
-    var monitoredRegionCount: Int {
-        manager.monitoredRegions.count
-    }
-
     /// Check whether a memo's trigger conditions are currently satisfied.
     func shouldNotify(for memo: GeoMemo) -> Bool {
         let now = Date()

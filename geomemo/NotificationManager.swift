@@ -113,6 +113,8 @@ class NotificationManager: NSObject, ObservableObject {
 
     /// 共有メモ発火時に受信者へ表示するローカル通知
     func scheduleSharedMemoFiredNotification(memoTitle: String, requesterName: String, sharedID: String) async {
+        let enabled = UserDefaults.standard.object(forKey: "notificationsEnabled") as? Bool ?? true
+        guard enabled else { return }
         let title = memoTitle.isEmpty ? String(localized: "到着しました") : memoTitle
         let body  = requesterName + String(localized: "への到着を通知しました")
         let content = makeContent(title: title, body: body, memoID: sharedID,
@@ -143,12 +145,16 @@ class NotificationManager: NSObject, ObservableObject {
     }
 
     private func scheduleSnooze(title: String, body: String, memoID: String, minutes: Int) async {
+        let enabled = UserDefaults.standard.object(forKey: "notificationsEnabled") as? Bool ?? true
+        guard enabled else { return }
         let content = makeContent(title: title, body: body, memoID: memoID,
                                   defaultBody: String(localized: "You entered the area"))
         let trigger = UNTimeIntervalNotificationTrigger(
             timeInterval: TimeInterval(minutes * 60), repeats: false)
+        // identifier を memoID で固定して、連打スヌーズが N 個積み上がるのを防ぐ。
+        // UNUserNotificationCenter.add は同一 identifier の既存リクエストを置換する。
         await addRequest(UNNotificationRequest(
-            identifier: "geomemo-snooze-\(memoID)-\(UUID().uuidString)", content: content, trigger: trigger))
+            identifier: "geomemo-snooze-\(memoID)", content: content, trigger: trigger))
     }
 
     // MARK: - Private Helpers

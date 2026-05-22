@@ -27,6 +27,7 @@ struct MemoEntry: TimelineEntry {
     let memos: [MemoSnapshot]
 
     struct MemoSnapshot {
+        let id: UUID
         let title: String
         let note: String
         let locationName: String
@@ -37,6 +38,11 @@ struct MemoEntry: TimelineEntry {
         let deadline: Date?
         let routeCurrentWaypoint: Int?
         let routeTotalWaypoints: Int?
+
+        /// Widget タップ時のディープリンク URL（geomemoApp.swift の handleDeepLink と対応）
+        var deepLinkURL: URL? {
+            URL(string: "geomemo://memo/\(id.uuidString)")
+        }
 
         var isRouteInProgress: Bool { routeCurrentWaypoint != nil }
 
@@ -64,12 +70,18 @@ struct MemoEntry: TimelineEntry {
             } else if secs <= 86400 {
                 return "\(Int(secs / 3600))h"
             } else if secs <= 259200 {
-                let f = DateFormatter()
-                f.dateFormat = "E h a"
-                return f.string(from: deadline)
+                return Self.weekdayHourFormatter.string(from: deadline)
             }
             return nil
         }
+
+        /// 毎回 DateFormatter を生成すると widget の per-row レンダリングで GC 負荷が高いため
+        /// ファイルスコープで一度だけ生成して再利用する。
+        private static let weekdayHourFormatter: DateFormatter = {
+            let f = DateFormatter()
+            f.dateFormat = "E h a"
+            return f
+        }()
 
         var firstTagLabel: String? {
             if let tagId = tags.first, let tag = PresetTag(rawValue: tagId) {
@@ -82,11 +94,11 @@ struct MemoEntry: TimelineEntry {
     static let placeholder = MemoEntry(
         date: .now,
         memos: [
-            MemoSnapshot(title: "Corner Coffee", note: "The espresso here is perfect", locationName: "SHIBUYA, TOKYO", colorIndex: 0, isFavorite: false, tags: [2], customTags: [], deadline: Date().addingTimeInterval(7200), routeCurrentWaypoint: nil, routeTotalWaypoints: nil),
-            MemoSnapshot(title: "Bookstore Find", note: "Check the second floor shelves", locationName: "SHIMOKITAZAWA", colorIndex: 1, isFavorite: true, tags: [8], customTags: [], deadline: nil, routeCurrentWaypoint: nil, routeTotalWaypoints: nil),
-            MemoSnapshot(title: "Park Bench Note", note: "Great spot to read on weekends", locationName: "YOYOGI PARK", colorIndex: 3, isFavorite: false, tags: [], customTags: [], deadline: nil, routeCurrentWaypoint: nil, routeTotalWaypoints: nil),
-            MemoSnapshot(title: "Train Station", note: "Exit B2 for the shortcut", locationName: "SHINJUKU", colorIndex: 2, isFavorite: false, tags: [7], customTags: [], deadline: nil, routeCurrentWaypoint: nil, routeTotalWaypoints: nil),
-            MemoSnapshot(title: "Lunch Spot", note: "Set meal is best value here", locationName: "HARAJUKU", colorIndex: 4, isFavorite: true, tags: [3], customTags: [], deadline: nil, routeCurrentWaypoint: nil, routeTotalWaypoints: nil),
+            MemoSnapshot(id: UUID(), title: "Corner Coffee", note: "The espresso here is perfect", locationName: "SHIBUYA, TOKYO", colorIndex: 0, isFavorite: false, tags: [2], customTags: [], deadline: Date().addingTimeInterval(7200), routeCurrentWaypoint: nil, routeTotalWaypoints: nil),
+            MemoSnapshot(id: UUID(), title: "Bookstore Find", note: "Check the second floor shelves", locationName: "SHIMOKITAZAWA", colorIndex: 1, isFavorite: true, tags: [8], customTags: [], deadline: nil, routeCurrentWaypoint: nil, routeTotalWaypoints: nil),
+            MemoSnapshot(id: UUID(), title: "Park Bench Note", note: "Great spot to read on weekends", locationName: "YOYOGI PARK", colorIndex: 3, isFavorite: false, tags: [], customTags: [], deadline: nil, routeCurrentWaypoint: nil, routeTotalWaypoints: nil),
+            MemoSnapshot(id: UUID(), title: "Train Station", note: "Exit B2 for the shortcut", locationName: "SHINJUKU", colorIndex: 2, isFavorite: false, tags: [7], customTags: [], deadline: nil, routeCurrentWaypoint: nil, routeTotalWaypoints: nil),
+            MemoSnapshot(id: UUID(), title: "Lunch Spot", note: "Set meal is best value here", locationName: "HARAJUKU", colorIndex: 4, isFavorite: true, tags: [3], customTags: [], deadline: nil, routeCurrentWaypoint: nil, routeTotalWaypoints: nil),
         ]
     )
 
@@ -140,6 +152,7 @@ struct GeoMemoProvider: TimelineProvider {
             let nextWP = routeProgressDict[memoID]
             let total  = routeCountsDict[memoID]
             return MemoEntry.MemoSnapshot(
+                id: memo.id,
                 title: memo.title,
                 note: memo.note,
                 locationName: memo.locationName,
@@ -503,6 +516,8 @@ struct geomemoWidget: Widget {
                 }
             }
             .containerBackground(Brand.background, for: .widget)
+            // Widget タップでトップメモへディープリンク。memos が空ならアプリ既定画面が開く。
+            .widgetURL(entry.memos.first?.deepLinkURL)
         }
         .configurationDisplayName("GeoMemo")
         .description("Shows your most important memos")

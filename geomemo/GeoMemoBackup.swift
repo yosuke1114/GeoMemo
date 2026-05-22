@@ -28,6 +28,10 @@ struct BackupMemo: Codable {
     var waypointData: Data?
     var tags: [Int]
     var customTags: [String]
+    // v2 で追加（旧版 backup JSON との互換のため Optional）。
+    var notifyOnPass: Bool?
+    var isListMode: Bool?
+    var listItemsData: Data?
 
     init(from memo: GeoMemo) {
         id               = memo.id
@@ -54,6 +58,9 @@ struct BackupMemo: Codable {
         waypointData     = memo.waypointData
         tags             = memo.tags
         customTags       = memo.customTags
+        notifyOnPass     = memo.notifyOnPass
+        isListMode       = memo.isListMode
+        listItemsData    = memo.listItemsData
     }
 
     /// BackupMemo → GeoMemo（id を保持）
@@ -81,9 +88,12 @@ struct BackupMemo: Codable {
             tags:             tags,
             customTags:       customTags
         )
-        memo.id           = id
-        memo.isDone       = isDone
-        memo.dwellMinutes = dwellMinutes
+        memo.id            = id
+        memo.isDone        = isDone
+        memo.dwellMinutes  = dwellMinutes
+        memo.notifyOnPass  = notifyOnPass ?? false
+        memo.isListMode    = isListMode ?? false
+        memo.listItemsData = listItemsData
         return memo
     }
 }
@@ -91,7 +101,8 @@ struct BackupMemo: Codable {
 // MARK: - Backup File Container
 
 struct GeoMemoBackupFile: Codable {
-    var version:    Int    = 1
+    // v1 = 初期形式 / v2 = notifyOnPass・isListMode・listItemsData を含む
+    var version:    Int    = 2
     var exportedAt: Date   = Date()
     var memos:      [BackupMemo]
 }

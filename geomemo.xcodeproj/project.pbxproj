@@ -997,6 +997,7 @@
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_CFBundleDisplayName = geomemoWatch;
+				INFOPLIST_KEY_NSLocationWhenInUseUsageDescription = "GeoMemo uses your location to show nearby memos and let you quick-add memos at your current spot.";
 				INFOPLIST_KEY_UISupportedInterfaceOrientations = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown";
 				INFOPLIST_KEY_WKCompanionAppBundleIdentifier = com.yokuro.geomemo;
 				LD_RUNPATH_SEARCH_PATHS = (
@@ -1031,6 +1032,7 @@
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_CFBundleDisplayName = geomemoWatch;
+				INFOPLIST_KEY_NSLocationWhenInUseUsageDescription = "GeoMemo uses your location to show nearby memos and let you quick-add memos at your current spot.";
 				INFOPLIST_KEY_UISupportedInterfaceOrientations = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown";
 				INFOPLIST_KEY_WKCompanionAppBundleIdentifier = com.yokuro.geomemo;
 				LD_RUNPATH_SEARCH_PATHS = (

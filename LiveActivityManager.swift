@@ -34,7 +34,8 @@ class LiveActivityManager {
                 routeTotalWaypoints: nil,
                 approachingTitle: nil,
                 approachingDistance: nil,
-                approachingColorIndex: 0
+                approachingColorIndex: 0,
+                monitoredCount: count
             )
             Task {
                 await activity.update(ActivityContent(state: state, staleDate: nil))
@@ -53,7 +54,8 @@ class LiveActivityManager {
             routeTotalWaypoints: nil,
             approachingTitle: nil,
             approachingDistance: nil,
-            approachingColorIndex: 0
+            approachingColorIndex: 0,
+            monitoredCount: count
         )
 
         do {
@@ -87,7 +89,8 @@ class LiveActivityManager {
                 routeTotalWaypoints: nil,
                 approachingTitle: nil,
                 approachingDistance: nil,
-                approachingColorIndex: 0
+                approachingColorIndex: 0,
+                monitoredCount: activity.content.state.monitoredCount
             )
 
             await activity.update(
@@ -110,18 +113,20 @@ class LiveActivityManager {
     func updateApproaching(memoID: String?, distance: Int = 0) {
         guard let activity = currentActivity else { return }
 
+        let count = activity.content.state.monitoredCount
         if let memoID, let memo = lookupMemo(id: memoID) {
             let state = GeoMemoActivityAttributes.ContentState(
                 isTriggered: false,
                 memoTitle: "",
-                memoLocation: String(localized: "Monitoring \(activity.attributes.monitoredCount) memos"),
+                memoLocation: String(localized: "Monitoring \(count) memos"),
                 memoColorIndex: 0,
                 triggeredAt: nil,
                 routeCurrentWaypoint: nil,
                 routeTotalWaypoints: nil,
                 approachingTitle: memo.title,
                 approachingDistance: distance,
-                approachingColorIndex: memo.colorIndex
+                approachingColorIndex: memo.colorIndex,
+                monitoredCount: count
             )
             Task {
                 await activity.update(ActivityContent(state: state, staleDate: nil))
@@ -131,14 +136,15 @@ class LiveActivityManager {
             let state = GeoMemoActivityAttributes.ContentState(
                 isTriggered: false,
                 memoTitle: "",
-                memoLocation: String(localized: "Monitoring \(activity.attributes.monitoredCount) memos"),
+                memoLocation: String(localized: "Monitoring \(count) memos"),
                 memoColorIndex: 0,
                 triggeredAt: nil,
                 routeCurrentWaypoint: nil,
                 routeTotalWaypoints: nil,
                 approachingTitle: nil,
                 approachingDistance: nil,
-                approachingColorIndex: 0
+                approachingColorIndex: 0,
+                monitoredCount: count
             )
             Task {
                 await activity.update(ActivityContent(state: state, staleDate: nil))
@@ -170,7 +176,8 @@ class LiveActivityManager {
                 routeTotalWaypoints: total,
                 approachingTitle: nil,
                 approachingDistance: nil,
-                approachingColorIndex: 0
+                approachingColorIndex: 0,
+                monitoredCount: activity.content.state.monitoredCount
             )
 
             await activity.update(ActivityContent(state: state, staleDate: nil))
@@ -191,7 +198,8 @@ class LiveActivityManager {
             routeTotalWaypoints: nil,
             approachingTitle: nil,
             approachingDistance: nil,
-            approachingColorIndex: 0
+            approachingColorIndex: 0,
+            monitoredCount: 0
         )
         Task {
             await activity.end(ActivityContent(state: state, staleDate: nil), dismissalPolicy: .immediate)

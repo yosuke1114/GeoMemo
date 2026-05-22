@@ -377,6 +377,10 @@ struct SettingsView: View {
         .task {
             await updatePermissionStatuses()
         }
+        // memos が変化したら export ファイルキャッシュを破棄してステイル共有を防ぐ。
+        .onChange(of: memos) { _, _ in
+            exportURL = nil
+        }
     }
 
     // MARK: - Computed Properties

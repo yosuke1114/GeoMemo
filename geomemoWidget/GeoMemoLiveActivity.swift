@@ -50,9 +50,11 @@ struct GeoMemoLiveActivity: Widget {
                             Text(title)
                                 .font(.system(size: 14, weight: .bold))
                                 .lineLimit(1)
+                            // String(localized: "あと \(dist)m") は補間値がそのままキーに
+                                // 入ってしまい翻訳が引けないため format ベースに統一する。
                             Text(dist >= 1000
-                                 ? String(format: "あと %.1fkm", Double(dist) / 1000)
-                                 : String(localized: "あと \(dist)m"))
+                                 ? String(format: String(localized: "あと %.1fkm"), Double(dist) / 1000)
+                                 : String(format: String(localized: "あと %dm"), dist))
                                 .font(.system(size: 11, weight: .semibold, design: .monospaced))
                                 .foregroundStyle(memoColor(for: context.state.approachingColorIndex))
                         }
@@ -87,7 +89,7 @@ struct GeoMemoLiveActivity: Widget {
                             .foregroundStyle(.secondary)
                             .padding(.top, 4)
                     } else {
-                        Text("\(context.attributes.monitoredCount) memos active")
+                        Text("\(context.state.monitoredCount) memos active")
                             .font(.system(size: 12, weight: .medium))
                             .foregroundStyle(.secondary)
                     }
@@ -119,7 +121,7 @@ struct GeoMemoLiveActivity: Widget {
                         .font(.system(size: 11, weight: .semibold, design: .monospaced))
                         .foregroundStyle(Color(hex: "3D3BF3"))
                 } else {
-                    Text("\(context.attributes.monitoredCount)")
+                    Text("\(context.state.monitoredCount)")
                         .font(.system(size: 12, weight: .semibold, design: .monospaced))
                         .foregroundStyle(.secondary)
                 }
@@ -201,7 +203,7 @@ private struct LockScreenView: View {
                 } else {
                     Text(verbatim: "GEOMEMO")
                         .font(.system(size: 15, weight: .heavy))
-                    Text("Monitoring \(context.attributes.monitoredCount) memos")
+                    Text("Monitoring \(context.state.monitoredCount) memos")
                         .font(.system(size: 12, weight: .medium))
                         .foregroundStyle(.secondary)
                 }
@@ -225,7 +227,7 @@ private struct LockScreenView: View {
                         .foregroundStyle(Color(hex: "3D3BF3"))
                 }
             } else {
-                Text(String(format: "%02d", context.attributes.monitoredCount))
+                Text(String(format: "%02d", context.state.monitoredCount))
                     .font(.system(size: 20, weight: .bold, design: .monospaced))
                     .foregroundStyle(Color(hex: "3D3BF3"))
             }

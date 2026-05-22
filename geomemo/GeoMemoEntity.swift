@@ -7,16 +7,44 @@ import CoreSpotlight
 
 /// Standalone SwiftData container for use outside SwiftUI (App Intents, Spotlight).
 enum GeoMemoStore {
+    static let appGroupID          = "group.com.yokuro.geomemo"
+    static let cloudKitContainerID = "iCloud.com.yokuro.geomemo"
+
+    /// アプリ本体と Spotlight/App Intents で同じスキーマを共有する。
+    /// ここを App 側 (geomemoApp.sharedModelContainer) と揃えないと、
+    /// 同じ App Group の `geomemo.store` を別構成で開いてしまい migration が失敗する。
+    nonisolated static func makeSchema() -> Schema {
+        Schema([
+            GeoMemo.self,
+            FavoritePlace.self,
+            UserProfile.self,
+            FriendConnection.self,
+            SharedMemo.self
+        ])
+    }
+
     nonisolated static func makeContainer() throws -> ModelContainer {
-        let appGroupID = "group.com.yokuro.geomemo"
-        let schema = Schema([GeoMemo.self])
+        let schema = makeSchema()
         guard let url = FileManager.default
             .containerURL(forSecurityApplicationGroupIdentifier: appGroupID)?
             .appendingPathComponent("geomemo.store") else {
             throw StoreError.appGroupUnavailable
         }
+        #if targetEnvironment(simulator)
         let config = ModelConfiguration(schema: schema, url: url, cloudKitDatabase: .none)
-        return try ModelContainer(for: schema, configurations: [config])
+        #else
+        let useCloudKit = FileManager.default.ubiquityIdentityToken != nil
+        let config = ModelConfiguration(
+            schema: schema,
+            url: url,
+            cloudKitDatabase: useCloudKit ? .private(cloudKitContainerID) : .none
+        )
+        #endif
+        return try ModelContainer(
+            for: schema,
+            migrationPlan: GeoMemoMigrationPlan.self,
+            configurations: [config]
+        )
     }
 
     nonisolated static func fetchAll() throws -> [GeoMemo] {

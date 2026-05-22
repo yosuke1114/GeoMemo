@@ -83,23 +83,19 @@ struct FavoritePlacesView: View {
     // MARK: - Places List
 
     private var placesList: some View {
-        ScrollView {
-            VStack(spacing: 0) {
-                ForEach(places) { place in
-                    placeRow(place)
-                    if place.id != places.last?.id {
-                        Rectangle()
-                            .fill(Brand.primaryText.opacity(0.1))
-                            .frame(height: 1)
-                            .padding(.leading, 60)
-                    }
-                }
+        // List を使うことで .swipeActions が実際に機能する（ScrollView/VStack 上では no-op）。
+        List {
+            ForEach(places) { place in
+                placeRow(place)
+                    .listRowInsets(EdgeInsets())
+                    .listRowBackground(Brand.surface)
+                    .listRowSeparatorTint(Brand.primaryText.opacity(0.1))
             }
-            .background(Brand.surface)
-            .clipShape(RoundedRectangle(cornerRadius: 12))
-            .padding(.horizontal, 16)
-            .padding(.top, 20)
         }
+        .listStyle(.plain)
+        .scrollContentBackground(.hidden)
+        .background(Brand.background)
+        .padding(.top, 4)
     }
 
     private func placeRow(_ place: FavoritePlace) -> some View {

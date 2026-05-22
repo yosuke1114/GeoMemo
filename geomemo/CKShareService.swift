@@ -160,12 +160,10 @@ final class CKShareService {
     /// iOS が `CKShare.Metadata` を渡してくれるので、それを accept する。
     func acceptShare(metadata: CKShare.Metadata) async throws {
         let op = CKAcceptSharesOperation(shareMetadatas: [metadata])
+        // 1 件の share で perShareResultBlock と acceptSharesResultBlock の両方が
+        // 発火し、continuation を 2 回 resume すると fatal trap になる。
+        // acceptSharesResultBlock 側に集約する（per-share の失敗もここに伝わる）。
         try await withCheckedThrowingContinuation { (cont: CheckedContinuation<Void, Error>) in
-            op.perShareResultBlock = { _, result in
-                if case .failure(let error) = result {
-                    cont.resume(throwing: error)
-                }
-            }
             op.acceptSharesResultBlock = { result in
                 switch result {
                 case .success: cont.resume(returning: ())

@@ -131,12 +131,18 @@ class StoreKitManager: ObservableObject {
     // MARK: - Transaction Listener
 
     private func listenForTransactions() -> Task<Void, Error> {
-        Task.detached { [weak self] in
+        // @MainActor isolated な static を detached task 内で参照しないよう先に捕捉する。
+        let proID = Self.proProductID
+        return Task.detached { [weak self] in
             for await result in Transaction.updates {
                 guard let self else { return }
                 if case .verified(let transaction) = result {
                     await transaction.finish()
-                    await MainActor.run { self.isPro = true }
+                    guard transaction.productID == proID else { continue }
+                    // 返金・期限切れも反映する。盲目的に true にすると refund 後も Pro のまま残る。
+                    let stillActive = transaction.revocationDate == nil
+                        && (transaction.expirationDate.map { $0 > Date() } ?? true)
+                    await MainActor.run { self.isPro = stillActive }
                 }
             }
         }

@@ -5,7 +5,6 @@ import Foundation
 enum GeoMemoLimits {
     static let maxCustomTags = 5        // Free tier
     static let maxCustomTagLength = 15
-    // static let maxCustomTagsPro = 20 // Pro tier（将来）
 }
 
 // MARK: - PresetTag
