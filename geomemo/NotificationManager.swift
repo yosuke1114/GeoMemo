@@ -86,11 +86,15 @@ class NotificationManager: NSObject, ObservableObject {
         }
     }
 
+    /// ユーザがアプリ内で通知を有効にしているか。未設定は true（オプトアウト方式）。
+    private var isNotificationsEnabled: Bool {
+        UserDefaults.standard.object(forKey: "notificationsEnabled") as? Bool ?? true
+    }
+
     // MARK: - Schedule
 
     func scheduleImmediateNotification(title: String, body: String, memoID: String) async {
-        let enabled = UserDefaults.standard.object(forKey: "notificationsEnabled") as? Bool ?? true
-        guard enabled else { return }
+        guard isNotificationsEnabled else { return }
         let content = makeContent(title: title, body: body, memoID: memoID,
                                   defaultBody: String(localized: "You entered the area"))
         let trigger = UNTimeIntervalNotificationTrigger(timeInterval: 1, repeats: false)
@@ -100,8 +104,7 @@ class NotificationManager: NSObject, ObservableObject {
     // MARK: - Dwell Time Notification
 
     func scheduleDwellNotification(title: String, body: String, memoID: String, dwellMinutes: Int) async {
-        let enabled = UserDefaults.standard.object(forKey: "notificationsEnabled") as? Bool ?? true
-        guard enabled else { return }
+        guard isNotificationsEnabled else { return }
         let content = makeContent(title: title, body: body, memoID: memoID,
                                   defaultBody: String(localized: "You've been here for a while"))
         let trigger = UNTimeIntervalNotificationTrigger(
@@ -113,8 +116,7 @@ class NotificationManager: NSObject, ObservableObject {
 
     /// 共有メモ発火時に受信者へ表示するローカル通知
     func scheduleSharedMemoFiredNotification(memoTitle: String, requesterName: String, sharedID: String) async {
-        let enabled = UserDefaults.standard.object(forKey: "notificationsEnabled") as? Bool ?? true
-        guard enabled else { return }
+        guard isNotificationsEnabled else { return }
         let title = memoTitle.isEmpty ? String(localized: "到着しました") : memoTitle
         let body  = requesterName + String(localized: "への到着を通知しました")
         let content = makeContent(title: title, body: body, memoID: sharedID,
@@ -135,8 +137,7 @@ class NotificationManager: NSObject, ObservableObject {
     /// - Parameters:
     ///   - delayMinutes: nil または 0 = 即通知、正値 = 退出からN分後
     func scheduleExitNotification(title: String, body: String, memoID: String, delayMinutes: Int?) async {
-        let enabled = UserDefaults.standard.object(forKey: "notificationsEnabled") as? Bool ?? true
-        guard enabled else { return }
+        guard isNotificationsEnabled else { return }
         let content = makeContent(title: title, body: body, memoID: memoID,
                                   defaultBody: String(localized: "You left the area"))
         let delay = delayMinutes.map { max(1, $0 * 60) } ?? 1
@@ -145,8 +146,7 @@ class NotificationManager: NSObject, ObservableObject {
     }
 
     private func scheduleSnooze(title: String, body: String, memoID: String, minutes: Int) async {
-        let enabled = UserDefaults.standard.object(forKey: "notificationsEnabled") as? Bool ?? true
-        guard enabled else { return }
+        guard isNotificationsEnabled else { return }
         let content = makeContent(title: title, body: body, memoID: memoID,
                                   defaultBody: String(localized: "You entered the area"))
         let trigger = UNTimeIntervalNotificationTrigger(

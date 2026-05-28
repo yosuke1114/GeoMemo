@@ -62,10 +62,6 @@ struct LocationPickerSheetV2: View {
     /// Apple Maps 風 bottom sheet の現在の detent。初期は小さい高さで表示して
     /// マップを優先表示し、ユーザーが必要なときだけ引き上げて検索/お気に入りに到達する。
     @State private var sheetDetent: PresentationDetent = .height(160)
-    // Apple Maps 風 bottom sheet を常時表示するための保持フラグ。
-    // 旧実装は `.constant(true)` で渡していたが、OS が予期せず child sheet を
-    // dismiss した場合に復帰不能になるため state にする（onChange で復活させる）。
-    @State private var bottomSheetShown = true
 
     init(initialCoordinate: CLLocationCoordinate2D, radius: Double, showFavorites: Bool = true, onLocationSelected: @escaping (CLLocationCoordinate2D, String) -> Void) {
         self.initialCoordinate = initialCoordinate
@@ -91,7 +87,10 @@ struct LocationPickerSheetV2: View {
             reverseGeocode(coordinate: selectedCoordinate)
         }
         // 3. Apple Maps 風 bottom sheet (検索 + お気に入り)
-        .sheet(isPresented: $bottomSheetShown) {
+        // `.constant(true)` + `interactiveDismissDisabled()` で常時表示。
+        // 自前で flip する @State だと SwiftUI の diff サイクル中に glitch frame
+        // が出る可能性があるため使わない。
+        .sheet(isPresented: .constant(true)) {
             bottomSheet
                 .presentationDetents(
                     [.height(160), .medium, .large],
@@ -100,10 +99,6 @@ struct LocationPickerSheetV2: View {
                 .presentationBackgroundInteraction(.enabled(upThrough: .medium))
                 .presentationDragIndicator(.visible)
                 .interactiveDismissDisabled()
-        }
-        // OS が child sheet を dismiss した場合は即座に再表示して UI 破綻を防ぐ。
-        .onChange(of: bottomSheetShown) { _, newValue in
-            if !newValue { bottomSheetShown = true }
         }
         .sheet(isPresented: $showFavoritesManager) {
             FavoritePlacesView()

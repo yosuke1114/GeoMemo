@@ -56,63 +56,28 @@ extension Notification.Name {
 struct geomemoApp: App {
     @UIApplicationDelegateAdaptor(GeoMemoAppDelegate.self) private var appDelegate
 
-    static let appGroupID          = "group.com.yokuro.geomemo"
-    static let cloudKitContainerID = "iCloud.com.yokuro.geomemo"
-    static let isUITesting         = CommandLine.arguments.contains("-UITesting")
+    /// App Group / iCloud container ID は GeoMemoStore に集約されているので
+    /// そちらを single source of truth として参照する（旧 `geomemoApp.appGroupID` は廃止）。
+    static var appGroupID: String          { GeoMemoStore.appGroupID }
+    static var cloudKitContainerID: String { GeoMemoStore.cloudKitContainerID }
+    static let isUITesting = CommandLine.arguments.contains("-UITesting")
 
     var sharedModelContainer: ModelContainer = {
-        let schema = Schema([GeoMemo.self, FavoritePlace.self, UserProfile.self, FriendConnection.self, SharedMemo.self])
+        let schema = GeoMemoStore.makeSchema()
 
         // テスト時はインメモリストアを使用（CloudKit タイムアウト・データ汚染を防ぐ）
-        // Bundle.allBundles で xctest バンドルを検出（Unit/Swift Testing 対応）
-        // UIテストは別プロセスのため -UITesting 引数で検出
         let isTestEnvironment = Bundle.allBundles.contains { $0.bundlePath.hasSuffix(".xctest") }
-            || Self.isUITesting
+            || isUITesting
         if isTestEnvironment {
             let config = ModelConfiguration(schema: schema, isStoredInMemoryOnly: true)
             return try! ModelContainer(for: schema, configurations: [config])
         }
 
-        let groupContainer = FileManager.default
-            .containerURL(forSecurityApplicationGroupIdentifier: appGroupID)
-
-        // App Group が利用できない場合（テスト・シミュレータ等）はインメモリで安全に動作
-        guard let groupContainer else {
-            let config = ModelConfiguration(schema: schema, isStoredInMemoryOnly: true)
-            return try! ModelContainer(for: schema, configurations: [config])
-        }
-
-        try? FileManager.default.createDirectory(at: groupContainer, withIntermediateDirectories: true)
-        let groupURL = groupContainer.appendingPathComponent("geomemo.store")
-
-        #if targetEnvironment(simulator)
-        // シミュレーターでは CloudKit を使用しない（テスト実行時のハングを防ぐ）
-        let modelConfiguration = ModelConfiguration(
-            schema: schema,
-            url: groupURL,
-            cloudKitDatabase: .none
-        )
-        #else
-        let useCloudKit = FileManager.default.ubiquityIdentityToken != nil
-        let modelConfiguration = ModelConfiguration(
-            schema: schema,
-            url: groupURL,
-            cloudKitDatabase: useCloudKit
-                ? .private(cloudKitContainerID)
-                : .none
-        )
-        #endif
-
+        // 通常起動は GeoMemoStore.sharedContainer() に委譲。App Group が見えない、
+        // あるいは migration が失敗した場合のみインメモリにフォールバック。
         do {
-            // Migration plan で V1→V2 の軽量マイグレーションを明示指定
-            return try ModelContainer(
-                for: schema,
-                migrationPlan: GeoMemoMigrationPlan.self,
-                configurations: [modelConfiguration]
-            )
+            return try GeoMemoStore.sharedContainer()
         } catch {
-            // スキーマ不一致でストアが開けない場合はインメモリにフォールバック
-            // （テスト実行後のシミュレータ残留データなど）
             print("[GeoMemo] ModelContainer failed (\(error)), falling back to in-memory store.")
             let fallback = ModelConfiguration(schema: schema, isStoredInMemoryOnly: true)
             return try! ModelContainer(for: schema, configurations: [fallback])
@@ -176,20 +141,36 @@ struct geomemoApp: App {
         }
     }
 
+    /// メモ削除直後の Spotlight 反映を一括処理。removeFromSpotlight だけだと
+    /// 周辺メモの順序情報が古いままになるので reindex も走らせる。
+    static func handleMemoDeleted(id: UUID) {
+        removeFromSpotlight(memoID: id)
+        indexAllMemosInSpotlight()
+    }
+
     // MARK: - Deep Linking
 
+    /// Deep-link URL の scheme / host 定数。widget 側 (`geomemoWidget.swift`) で URL を
+    /// 組み立てる際にも同じ scheme を使うのでドリフトに注意。
+    static let deepLinkScheme = "geomemo"
+    enum DeepLinkHost {
+        static let memo = "memo"
+        static let favorites = "favorites"
+        static let search = "search"
+    }
+
     private func handleDeepLink(_ url: URL) {
-        guard url.scheme == "geomemo" else { return }
+        guard url.scheme == Self.deepLinkScheme else { return }
 
         switch url.host {
-        case "memo":
+        case DeepLinkHost.memo:
             if let idString = url.pathComponents.dropFirst().first,
                let uuid = UUID(uuidString: idString) {
                 NotificationCenter.default.post(name: .openGeoMemo, object: uuid)
             }
-        case "favorites":
+        case DeepLinkHost.favorites:
             NotificationCenter.default.post(name: .showGeoMemoFavorites, object: nil)
-        case "search":
+        case DeepLinkHost.search:
             if let query = URLComponents(url: url, resolvingAgainstBaseURL: false)?
                 .queryItems?.first(where: { $0.name == "q" })?.value {
                 NotificationCenter.default.post(name: .searchGeoMemos, object: query)

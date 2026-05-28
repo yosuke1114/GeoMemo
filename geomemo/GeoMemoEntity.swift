@@ -47,10 +47,29 @@ enum GeoMemoStore {
         )
     }
 
+    /// プロセス内で再利用するコンテナ。App Intent / Spotlight の各呼び出しごとに
+    /// `ModelContainer` を作り直すと SQLite + CloudKit の初期化で 100ms+ かかるため。
+    /// 初回失敗時は次回再試行できるよう Optional + lazy で持つ。
+    nonisolated private static let cachedContainerBox = ContainerBox()
+
+    nonisolated private final class ContainerBox: @unchecked Sendable {
+        let lock = NSLock()
+        var container: ModelContainer?
+    }
+
+    nonisolated static func sharedContainer() throws -> ModelContainer {
+        cachedContainerBox.lock.lock()
+        defer { cachedContainerBox.lock.unlock() }
+        if let c = cachedContainerBox.container { return c }
+        let c = try makeContainer()
+        cachedContainerBox.container = c
+        return c
+    }
+
     /// nonisolated context（App Intents / Spotlight）から呼ばれるため、Sendable な
     /// `GeoMemoEntity` で返す。@Model は Sendable ではないのでクロスアクター漏出を防ぐ。
     nonisolated static func fetchAllEntities() throws -> [GeoMemoEntity] {
-        let container = try makeContainer()
+        let container = try sharedContainer()
         let context = ModelContext(container)
         let models = try context.fetch(
             FetchDescriptor<GeoMemo>(sortBy: [SortDescriptor(\.createdAt, order: .reverse)])
@@ -60,7 +79,7 @@ enum GeoMemoStore {
 
     /// 指定 ID のメモを完了済みにする
     nonisolated static func markDone(id: UUID) throws {
-        let container = try makeContainer()
+        let container = try sharedContainer()
         let context = ModelContext(container)
         let memos = try context.fetch(FetchDescriptor<GeoMemo>())
         guard let memo = memos.first(where: { $0.id == id }) else { return }
@@ -70,7 +89,7 @@ enum GeoMemoStore {
 
     /// 新しいメモを挿入する（AppIntentsからの作成用）
     nonisolated static func insert(title: String, note: String, latitude: Double, longitude: Double, locationName: String) throws {
-        let container = try makeContainer()
+        let container = try sharedContainer()
         let context = ModelContext(container)
         let memo = GeoMemo(
             title: title,
@@ -155,26 +174,42 @@ struct GeoMemoEntity: AppEntity, IndexedEntity {
 struct GeoMemoEntityQuery: EntityQuery, EntityStringQuery {
 
     func entities(for identifiers: [UUID]) async throws -> [GeoMemoEntity] {
+        // Spotlight タップ / Shortcut 入力ごとに走る hot path。predicate を SQL 側に押し込んで
+        // 全件 fetch + 後フィルタを避ける。
         let idSet = Set(identifiers)
-        return try GeoMemoStore.fetchAllEntities().filter { idSet.contains($0.id) }
+        let descriptor = FetchDescriptor<GeoMemo>(
+            predicate: #Predicate { idSet.contains($0.id) }
+        )
+        let context = ModelContext(try GeoMemoStore.sharedContainer())
+        return try context.fetch(descriptor).map { GeoMemoEntity(from: $0) }
     }
 
     func suggestedEntities() async throws -> [GeoMemoEntity] {
-        let entities = try GeoMemoStore.fetchAllEntities()
-        let sorted = entities
-            .filter { !$0.isDone }
-            .sorted { lhs, rhs in
-                if lhs.isFavorite != rhs.isFavorite { return lhs.isFavorite }
-                return lhs.createdAt > rhs.createdAt
-            }
-        return Array(sorted.prefix(8))
+        // Bool は Swift 標準で Comparable ではないので SortDescriptor に直接渡せない。
+        // createdAt で SQL 側ソートし、isFavorite の優先付けは Swift 側で行う。
+        var descriptor = FetchDescriptor<GeoMemo>(
+            predicate: #Predicate { !$0.isDone },
+            sortBy: [SortDescriptor(\.createdAt, order: .reverse)]
+        )
+        descriptor.fetchLimit = 32
+        let context = ModelContext(try GeoMemoStore.sharedContainer())
+        let memos = try context.fetch(descriptor)
+        let sorted = memos.sorted { lhs, rhs in
+            if lhs.isFavorite != rhs.isFavorite { return lhs.isFavorite }
+            return lhs.createdAt > rhs.createdAt
+        }
+        return sorted.prefix(8).map { GeoMemoEntity(from: $0) }
     }
 
     func entities(matching string: String) async throws -> [GeoMemoEntity] {
-        try GeoMemoStore.fetchAllEntities().filter {
-            $0.title.localizedCaseInsensitiveContains(string) ||
-            $0.locationName.localizedCaseInsensitiveContains(string) ||
-            $0.note.localizedCaseInsensitiveContains(string)
-        }
+        let descriptor = FetchDescriptor<GeoMemo>(
+            predicate: #Predicate {
+                $0.title.localizedStandardContains(string) ||
+                $0.locationName.localizedStandardContains(string) ||
+                $0.note.localizedStandardContains(string)
+            }
+        )
+        let context = ModelContext(try GeoMemoStore.sharedContainer())
+        return try context.fetch(descriptor).map { GeoMemoEntity(from: $0) }
     }
 }

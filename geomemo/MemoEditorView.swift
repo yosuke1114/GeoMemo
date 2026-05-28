@@ -1208,8 +1208,7 @@ struct MemoEditorView: View {
         let removedID = memo.id
         modelContext.delete(memo)
         try? modelContext.save()
-        geomemoApp.removeFromSpotlight(memoID: removedID)
-        geomemoApp.indexAllMemosInSpotlight()
+        geomemoApp.handleMemoDeleted(id: removedID)
 
         // Dismiss editor, then tell detail view to dismiss too
         dismiss()

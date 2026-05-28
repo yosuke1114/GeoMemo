@@ -7,6 +7,8 @@ actor MapSnapshotCache {
     private let cache = NSCache<NSString, UIImage>()
     /// 同一キーの進行中リクエストを共有し、重複生成を防ぐ
     private var inFlight: [NSString: Task<UIImage?, Never>] = [:]
+    /// 初回 snapshot 時に main から取得して以降は再利用。display scale はセッション中に変わらない。
+    private var cachedDisplayScale: CGFloat?
 
     private init() {
         cache.countLimit = 50
@@ -31,9 +33,15 @@ actor MapSnapshotCache {
             return await existing.value
         }
 
-        // UITraitCollection.current は main-thread only。Task 内で読むと
-        // displayScale が 1.0 で返って blurry になりうるため事前に main で取得する。
-        let scale = await MainActor.run { UITraitCollection.current.displayScale }
+        // UITraitCollection.current は main-thread only。初回のみ main にホップして取得し
+        // 以降はキャッシュを再利用する（リスト/詳細でスナップショットを高頻度に要求するため）。
+        let scale: CGFloat
+        if let cached = cachedDisplayScale {
+            scale = cached
+        } else {
+            scale = await MainActor.run { UITraitCollection.current.displayScale }
+            cachedDisplayScale = scale
+        }
 
         let task = Task<UIImage?, Never> {
             let options = MKMapSnapshotter.Options()

@@ -20,6 +20,18 @@ private func makeSharedContainer() -> ModelContainer? {
     return try? ModelContainer(for: schema, configurations: [config])
 }
 
+// MARK: - Deep Link Constants
+
+/// `geomemoApp.deepLinkScheme` / `DeepLinkHost` と同期した widget 側の定数。
+/// （Widget 拡張は別ターゲットなのでアプリ側の static を直接参照できない）
+private enum WidgetDeepLink {
+    static let scheme = "geomemo"
+    static let memoHost = "memo"
+    /// memos が空の時の Link 用フォールバック URL。`URL(string:)!` の force-unwrap を
+    /// 1 箇所に閉じ込めるための定数（"geomemo://" は常に valid な URL）。
+    static let fallback = URL(string: "\(scheme)://")!
+}
+
 // MARK: - Timeline Entry
 
 struct MemoEntry: TimelineEntry {
@@ -39,9 +51,10 @@ struct MemoEntry: TimelineEntry {
         let routeCurrentWaypoint: Int?
         let routeTotalWaypoints: Int?
 
-        /// Widget タップ時のディープリンク URL（geomemoApp.swift の handleDeepLink と対応）
+        /// Widget タップ時のディープリンク URL。
+        /// scheme/host は geomemoApp.deepLinkScheme / DeepLinkHost.memo と一致させること。
         var deepLinkURL: URL? {
-            URL(string: "geomemo://memo/\(id.uuidString)")
+            URL(string: "\(WidgetDeepLink.scheme)://\(WidgetDeepLink.memoHost)/\(id.uuidString)")
         }
 
         var isRouteInProgress: Bool { routeCurrentWaypoint != nil }
@@ -185,6 +198,63 @@ struct GeoMemoProvider: TimelineProvider {
     }
 }
 
+// MARK: - Memo Row Badge
+
+/// Medium/Large widget の各行で出すサブ情報。route progress > deadline > tag の優先順。
+/// 両 widget で同一ロジックだったので 1 箇所にまとめる。
+private struct MemoRowBadge: View {
+    let memo: MemoEntry.MemoSnapshot
+    /// タグラベルだけ Medium/Large でフォントサイズが微妙に違う（10pt vs 9pt）。
+    var tagLabelSize: CGFloat = 10
+
+    var body: some View {
+        if let cur = memo.routeCurrentWaypoint, let tot = memo.routeTotalWaypoints {
+            HStack(spacing: 3) {
+                Image(systemName: "arrow.triangle.turn.up.right.circle")
+                    .font(.system(size: 8))
+                Text("WP \(cur)/\(tot)")
+                    .font(.system(size: 9, weight: .semibold, design: .monospaced))
+            }
+            .foregroundStyle(Brand.blue)
+        } else if let badge = memo.deadlineBadgeText {
+            HStack(spacing: 2) {
+                Image(systemName: "clock.fill")
+                    .font(.system(size: 8))
+                Text(badge)
+                    .font(.system(size: 9, weight: .semibold, design: .monospaced))
+            }
+            .foregroundStyle(memo.hasUrgentDeadline ? Color(hex: "E5484D") : Color.orange)
+        } else if let tagLabel = memo.firstTagLabel {
+            Text(tagLabel)
+                .font(.system(size: tagLabelSize, weight: .medium))
+                .foregroundStyle(Brand.blue)
+        }
+    }
+}
+
+/// Medium/Large widget の行末アイコン（ルート進行 > 期限 > お気に入り）。
+private struct MemoRowTrailingIcon: View {
+    let memo: MemoEntry.MemoSnapshot
+    var primarySize: CGFloat = 10
+    var favoriteSize: CGFloat = 9
+
+    var body: some View {
+        if memo.isRouteInProgress {
+            Image(systemName: "arrow.triangle.turn.up.right.circle.fill")
+                .font(.system(size: primarySize))
+                .foregroundStyle(Brand.blue)
+        } else if memo.hasUrgentDeadline {
+            Image(systemName: "clock.fill")
+                .font(.system(size: primarySize))
+                .foregroundStyle(Color(hex: "E5484D"))
+        } else if memo.isFavorite {
+            Image(systemName: "heart.fill")
+                .font(.system(size: favoriteSize))
+                .foregroundStyle(Color(hex: "E5484D"))
+        }
+    }
+}
+
 // MARK: - Deadline Badge View
 
 private struct DeadlineBadge: View {
@@ -319,7 +389,7 @@ struct MediumWidgetView: View {
 
                 ForEach(Array(entry.memos.prefix(3).enumerated()), id: \.offset) { index, memo in
                     // 各行を Link で wrap して個別の memo へディープリンクする。
-                    Link(destination: memo.deepLinkURL ?? URL(string: "geomemo://")!) {
+                    Link(destination: memo.deepLinkURL ?? WidgetDeepLink.fallback) {
                         HStack(spacing: 6) {
                             Circle()
                                 .fill(MemoColor(rawValue: memo.colorIndex)?.color ?? Brand.blue)
@@ -330,43 +400,10 @@ struct MediumWidgetView: View {
                                     .font(.system(size: 14, weight: .semibold))
                                     .foregroundStyle(Brand.primaryText)
                                     .lineLimit(1)
-                                // ルート進行中 > 期限バッジ > タグ の優先順
-                                if let cur = memo.routeCurrentWaypoint, let tot = memo.routeTotalWaypoints {
-                                    HStack(spacing: 3) {
-                                        Image(systemName: "arrow.triangle.turn.up.right.circle")
-                                            .font(.system(size: 8))
-                                        Text("WP \(cur)/\(tot)")
-                                            .font(.system(size: 9, weight: .semibold, design: .monospaced))
-                                    }
-                                    .foregroundStyle(Brand.blue)
-                                } else if let badge = memo.deadlineBadgeText {
-                                    HStack(spacing: 2) {
-                                        Image(systemName: "clock.fill")
-                                            .font(.system(size: 8))
-                                        Text(badge)
-                                            .font(.system(size: 9, weight: .semibold, design: .monospaced))
-                                    }
-                                    .foregroundStyle(memo.hasUrgentDeadline ? Color(hex: "E5484D") : Color.orange)
-                                } else if let tagLabel = memo.firstTagLabel {
-                                    Text(tagLabel)
-                                        .font(.system(size: 10, weight: .medium))
-                                        .foregroundStyle(Brand.blue)
-                                }
+                                MemoRowBadge(memo: memo, tagLabelSize: 10)
                             }
 
-                            if memo.isRouteInProgress {
-                                Image(systemName: "arrow.triangle.turn.up.right.circle.fill")
-                                    .font(.system(size: 10))
-                                    .foregroundStyle(Brand.blue)
-                            } else if memo.hasUrgentDeadline {
-                                Image(systemName: "clock.fill")
-                                    .font(.system(size: 10))
-                                    .foregroundStyle(Color(hex: "E5484D"))
-                            } else if memo.isFavorite {
-                                Image(systemName: "heart.fill")
-                                    .font(.system(size: 9))
-                                    .foregroundStyle(Color(hex: "E5484D"))
-                            }
+                            MemoRowTrailingIcon(memo: memo, primarySize: 10, favoriteSize: 9)
 
                             Spacer()
 
@@ -421,7 +458,7 @@ struct LargeWidgetView: View {
 
                 ForEach(Array(entry.memos.prefix(5).enumerated()), id: \.offset) { index, memo in
                     // 各行を Link で wrap して個別の memo へディープリンクする。
-                    Link(destination: memo.deepLinkURL ?? URL(string: "geomemo://")!) {
+                    Link(destination: memo.deepLinkURL ?? WidgetDeepLink.fallback) {
                         HStack(alignment: .top, spacing: 10) {
                             // カラードット
                             Circle()
@@ -439,19 +476,7 @@ struct LargeWidgetView: View {
 
                                     Spacer()
 
-                                    if memo.isRouteInProgress {
-                                        Image(systemName: "arrow.triangle.turn.up.right.circle.fill")
-                                            .font(.system(size: 11))
-                                            .foregroundStyle(Brand.blue)
-                                    } else if memo.hasUrgentDeadline {
-                                        Image(systemName: "clock.fill")
-                                            .font(.system(size: 11))
-                                            .foregroundStyle(Color(hex: "E5484D"))
-                                    } else if memo.isFavorite {
-                                        Image(systemName: "heart.fill")
-                                            .font(.system(size: 10))
-                                            .foregroundStyle(Color(hex: "E5484D"))
-                                    }
+                                    MemoRowTrailingIcon(memo: memo, primarySize: 11, favoriteSize: 10)
 
                                     if !memo.locationName.isEmpty {
                                         Text(memo.locationName)
@@ -469,28 +494,7 @@ struct LargeWidgetView: View {
                                         .lineLimit(1)
                                 }
 
-                                // ルート進行中 > 期限バッジ > タグ の優先順
-                                if let cur = memo.routeCurrentWaypoint, let tot = memo.routeTotalWaypoints {
-                                    HStack(spacing: 3) {
-                                        Image(systemName: "arrow.triangle.turn.up.right.circle")
-                                            .font(.system(size: 8))
-                                        Text("WP \(cur)/\(tot)")
-                                            .font(.system(size: 9, weight: .semibold, design: .monospaced))
-                                    }
-                                    .foregroundStyle(Brand.blue)
-                                } else if let badge = memo.deadlineBadgeText {
-                                    HStack(spacing: 2) {
-                                        Image(systemName: "clock.fill")
-                                            .font(.system(size: 8))
-                                        Text(badge)
-                                            .font(.system(size: 9, weight: .semibold, design: .monospaced))
-                                    }
-                                    .foregroundStyle(memo.hasUrgentDeadline ? Color(hex: "E5484D") : Color.orange)
-                                } else if let tagLabel = memo.firstTagLabel {
-                                    Text(tagLabel)
-                                        .font(.system(size: 9, weight: .medium))
-                                        .foregroundStyle(Brand.blue)
-                                }
+                                MemoRowBadge(memo: memo, tagLabelSize: 9)
                             }
                         }
                         .padding(.vertical, 6)

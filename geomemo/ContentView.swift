@@ -1743,8 +1743,7 @@ struct ListTabView: View {
         locationManager.stopMonitoring(memoID: memo.id.uuidString)
         let removedID = memo.id
         modelContext.delete(memo)
-        geomemoApp.removeFromSpotlight(memoID: removedID)
-        geomemoApp.indexAllMemosInSpotlight()
+        geomemoApp.handleMemoDeleted(id: removedID)
     }
 }
 
