@@ -1,5 +1,6 @@
 import Foundation
 import UserNotifications
+import CloudKit
 import Combine
 
 extension Notification.Name {
@@ -184,29 +185,46 @@ class NotificationManager: NSObject, ObservableObject {
 // MARK: - UNUserNotificationCenterDelegate
 
 extension NotificationManager: UNUserNotificationCenterDelegate {
-    // UNUserNotificationCenter はデリゲートを main 以外のキューから呼ぶことがある。
-    // 完了ハンドラ版を MainActor 隔離で実装すると Swift 6 の実行時チェックで落ちるため、
-    // async 版を使い、MainActor への移動はランタイムに任せる。
+    // 完了ハンドラ版を `nonisolated` で実装する。
+    // - UNUserNotificationCenter はデリゲートを main 以外のキューから呼ぶことがある。MainActor 隔離の
+    //   メソッドとして実装すると、Swift 6 の実行時の隔離チェックで落ちる。
+    // - async 版は過去に "Call must be made on main thread" で落ちた報告があるため使わない。
+    // 完了ハンドラは SDK 上 @Sendable なので、MainActor へ移ってから呼べる。
 
     /// フォアグラウンド中も通知バナーを表示
     nonisolated func userNotificationCenter(
         _ center: UNUserNotificationCenter,
-        willPresent notification: UNNotification
-    ) async -> UNNotificationPresentationOptions {
-        [.banner, .sound]
+        willPresent notification: UNNotification,
+        withCompletionHandler completionHandler: @escaping @Sendable (UNNotificationPresentationOptions) -> Void
+    ) {
+        // 旧版の購読（-v1）の通知は出さない。同じ Apple ID の旧版の端末が作り直した購読で、
+        // -v2 と二重に届き、通知文に相手が書いた名前が入る。受けたら -v1 を消す。
+        let ckNotification = CKNotification(fromRemoteNotificationDictionary: notification.request.content.userInfo)
+        if RequesterSubscriptionPolicy.isLegacy(ckNotification?.subscriptionID) {
+            completionHandler([])
+            Task { @MainActor in
+                try? await CKShareService.shared.ensureRequesterSubscriptions()
+            }
+            return
+        }
+        completionHandler([.banner, .sound])
     }
 
     /// 通知アクションのハンドリング
     nonisolated func userNotificationCenter(
         _ center: UNUserNotificationCenter,
-        didReceive response: UNNotificationResponse
-    ) async {
+        didReceive response: UNNotificationResponse,
+        withCompletionHandler completionHandler: @escaping @Sendable () -> Void
+    ) {
         let userInfo = response.notification.request.content.userInfo
         let memoID   = userInfo["memoID"]  as? String ?? ""
         let title    = userInfo["title"]   as? String ?? ""
         let body     = userInfo["body"]    as? String ?? ""
         let action   = response.actionIdentifier
-        await handleNotificationAction(action, memoID: memoID, title: title, body: body)
+        Task { @MainActor in
+            await self.handleNotificationAction(action, memoID: memoID, title: title, body: body)
+            completionHandler()
+        }
     }
 
     private func handleNotificationAction(_ action: String, memoID: String, title: String, body: String) async {

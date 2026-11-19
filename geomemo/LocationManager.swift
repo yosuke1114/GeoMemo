@@ -1,6 +1,7 @@
 import Foundation
 import CoreLocation
 import Combine
+import os
 
 extension Notification.Name {
     // SWIFT_DEFAULT_ACTOR_ISOLATION=MainActor のため明示しないと MainActor 隔離になり、
@@ -185,6 +186,9 @@ class LocationManager: NSObject, ObservableObject {
     /// iOS は同時に最大 20 個のジオフェンスしか監視できない
     static let maxMonitoredRegions = 20
 
+    /// 領域の識別子（共有メモの ID を含む）は `.private` で出す。
+    nonisolated static let logger = Logger(subsystem: "com.yokuro.geomemo", category: "location")
+
     func startMonitoring(region: CLCircularRegion) {
         guard CLLocationManager.isMonitoringAvailable(for: CLCircularRegion.self) else {
             print("Geofencing is not available on this device")
@@ -192,7 +196,7 @@ class LocationManager: NSObject, ObservableObject {
         }
         guard !manager.monitoredRegions.contains(where: { $0.identifier == region.identifier }) else { return }
         guard manager.monitoredRegions.count < Self.maxMonitoredRegions else {
-            print("[LocationManager] 20-region limit reached; cannot monitor \(region.identifier)")
+            Self.logger.warning("20-region limit reached; cannot monitor \(region.identifier, privacy: .private)")
             return
         }
         manager.startMonitoring(for: region)
@@ -409,6 +413,6 @@ extension LocationManager: @MainActor CLLocationManagerDelegate {
     }
 
     func locationManager(_ manager: CLLocationManager, monitoringDidFailFor region: CLRegion?, withError error: Error) {
-        print("Monitoring failed for region: \(region?.identifier ?? "unknown") with error: \(error.localizedDescription)")
+        Self.logger.error("Monitoring failed for region \(region?.identifier ?? "unknown", privacy: .private): \(error.localizedDescription, privacy: .public)")
     }
 }

@@ -12,10 +12,16 @@ struct FriendManagementView: View {
 
     private var myProfile: UserProfile? { profiles.first }
     private var acceptedFriends: [FriendConnection] {
-        connections.filter { $0.status == .accepted }
+        FriendConnection.deduplicated(connections.filter { $0.status == .accepted })
     }
 
     @State private var showProfileSetup = false
+    /// CloudKit の情報で本人を確かめたフレンド（それ以外は「未確認」と表示する）
+    @State private var verifiedFriendIDs: Set<String> = []
+
+    private func isUnverified(_ friend: FriendConnection) -> Bool {
+        !verifiedFriendIDs.contains(friend.friendRecordID)
+    }
 
     private var iCloudAvailable: Bool {
         FileManager.default.ubiquityIdentityToken != nil
@@ -44,6 +50,13 @@ struct FriendManagementView: View {
         }
         .sheet(isPresented: $showProfileSetup) {
             UserProfileSetupView()
+        }
+        .onAppear {
+            verifiedFriendIDs = VerifiedFriendStore.shared.all
+            // 複数端末の CloudKit ミラーリングで同じ相手が重複登録されていたら片付ける
+            if FriendConnection.removeDuplicates(in: modelContext) {
+                try? modelContext.save()
+            }
         }
     }
 
@@ -127,6 +140,13 @@ struct FriendManagementView: View {
                 // フレンド一覧
                 if !acceptedFriends.isEmpty {
                     friendsListSection
+                    if acceptedFriends.contains(where: isUnverified) {
+                        Text(String(localized: "「未確認」のフレンドは以前のバージョンで登録されたため、名前が本人のものか確認できていません。相手から依頼を受け取ると確認済みになります。"))
+                            .font(.footnote)
+                            .foregroundStyle(Brand.secondaryText)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .padding(.horizontal, 4)
+                    }
                 } else {
                     emptyFriendsView
                 }
@@ -194,6 +214,9 @@ struct FriendManagementView: View {
             Text(friend.friendDisplayName)
                 .font(.body.weight(.semibold))
                 .foregroundStyle(Brand.primaryText)
+            if isUnverified(friend) {
+                UnverifiedFriendBadge()
+            }
 
             Spacer(minLength: 0)
         }
@@ -201,7 +224,9 @@ struct FriendManagementView: View {
         .padding(.vertical, 14)
         .contentShape(Rectangle())
         .accessibilityElement(children: .combine)
-        .accessibilityLabel(friend.friendDisplayName)
+        .accessibilityLabel(isUnverified(friend)
+            ? String(localized: "\(friend.friendDisplayName)、未確認")
+            : friend.friendDisplayName)
         // ScrollView/VStack 内では .swipeActions が動かないため長押しメニューで代替。
         .contextMenu {
             Button(role: .destructive) {
@@ -251,9 +276,11 @@ struct FriendManagementView: View {
 
     // MARK: - フレンド削除
 
+    /// 重複分も含めて削除し、削除の記録を残す（依頼の同期による自動登録で戻らないように）。
     private func deleteFriend(_ friend: FriendConnection) {
         HapticManager.notification(.warning)
-        modelContext.delete(friend)
+        FriendConnection.delete(recordID: friend.friendRecordID, fallback: friend,
+                                in: modelContext, tombstones: .shared)
         try? modelContext.save()
     }
 }

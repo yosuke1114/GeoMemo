@@ -447,7 +447,7 @@ struct LocationPickerSheetV2: View {
     LocationPickerSheetV2(
         initialCoordinate: CLLocationCoordinate2D(latitude: 35.6762, longitude: 139.6503),
         radius: 100
-    ) { coordinate, name in
-        print("Selected: \(coordinate), \(name)")
+    ) { _, _ in
+        // プレビューでは選択結果（座標・地名）を出力しない
     }
 }

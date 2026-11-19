@@ -22,6 +22,27 @@ final class GeoMemoAppDelegate: NSObject, UIApplicationDelegate {
         return true
     }
 
+    /// 旧版の購読（-v1）の通知を受けたら、その購読を消す。同じ Apple ID の旧版の端末が起動のたびに
+    /// 作り直すため、起動時の確認だけでは消えている時間が短い（docs/sharing.md の制限事項）。
+    /// -v1 は `shouldSendContentAvailable` 付きなので、バックグラウンドでもここが呼ばれる。
+    func application(_ application: UIApplication,
+                     didReceiveRemoteNotification userInfo: [AnyHashable: Any],
+                     fetchCompletionHandler completionHandler: @escaping (UIBackgroundFetchResult) -> Void) {
+        let ckNotification = CKNotification(fromRemoteNotificationDictionary: userInfo)
+        guard RequesterSubscriptionPolicy.isLegacy(ckNotification?.subscriptionID) else {
+            completionHandler(.noData)
+            return
+        }
+        Task {
+            do {
+                try await CKShareService.shared.ensureRequesterSubscriptions()
+                completionHandler(.newData)
+            } catch {
+                completionHandler(.failed)
+            }
+        }
+    }
+
     /// `application(_:userDidAcceptCloudKitShareWith:)` は iOS 26 で deprecated（UIScene ライフサイクルへ移行）。
     /// SwiftUI の WindowGroup に scene delegate を差し込み、共有受諾を scene 側で受け取る。
     func application(_ application: UIApplication,
