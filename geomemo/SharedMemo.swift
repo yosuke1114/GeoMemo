@@ -121,8 +121,15 @@ enum ShareStatus: String, Codable {
     /// 変更がなかった場合は `false` を返してデータストアの不要な dirty 化を防ぐ。
     @discardableResult
     func apply(_ data: SharedMemoCKData) -> Bool {
+        // 受信者が後から決まる「リンクで送る」の依頼では、受信者名・ID も追従させる
+        let recipientChanged = !data.recipientRecordID.isEmpty
+            && (recipientRecordID != data.recipientRecordID || recipientName != data.recipientName)
+        if recipientChanged {
+            recipientRecordID = data.recipientRecordID
+            recipientName = data.recipientName
+        }
         guard status != data.status || firedAt != data.firedAt || completedAt != data.completedAt else {
-            return false
+            return recipientChanged
         }
         status      = data.status
         firedAt     = data.firedAt

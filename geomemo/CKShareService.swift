@@ -177,6 +177,56 @@ final class CKShareService {
         }
     }
 
+    // MARK: - 依頼者への通知（CloudKit の購読）
+
+    nonisolated static let arrivedSubscriptionID   = "requester-arrived-v1"
+    nonisolated static let completedSubscriptionID = "requester-completed-v1"
+
+    /// 受信者が依頼の状態を「到着」「完了」に変えたとき、依頼者の端末へ通知が届くよう
+    /// 依頼者の Private DB（共有ゾーン）にクエリ購読を登録する。登録済みなら何もしない。
+    /// 本文は暗号化フィールドなので通知には含められない。受信者名だけを差し込む。
+    func ensureRequesterSubscriptions() async throws {
+        try await ensureSharingZone()
+        let zoneID = CKRecordZone.ID(zoneName: Self.sharingZoneName, ownerName: CKCurrentUserDefaultName)
+        let existing = Set(try await privateDB.allSubscriptions().map(\.subscriptionID))
+        let specs: [(id: String, status: ShareStatus, key: String)] = [
+            (Self.arrivedSubscriptionID, .fired, "SHARED_MEMO_ARRIVED"),
+            (Self.completedSubscriptionID, .completed, "SHARED_MEMO_COMPLETED"),
+        ]
+        let toSave: [CKSubscription] = specs.filter { !existing.contains($0.id) }.map { spec in
+            let subscription = CKQuerySubscription(
+                recordType: Self.recordType,
+                predicate: NSPredicate(format: "status == %@", spec.status.rawValue),
+                subscriptionID: spec.id,
+                options: [.firesOnRecordUpdate]
+            )
+            subscription.zoneID = zoneID
+            let info = CKSubscription.NotificationInfo()
+            info.titleLocalizationKey = "SHARED_MEMO_UPDATE_TITLE"
+            info.alertLocalizationKey = spec.key
+            info.alertLocalizationArgs = ["recipientName"]
+            info.soundName = "default"
+            info.shouldSendContentAvailable = true
+            subscription.notificationInfo = info
+            return subscription
+        }
+        guard !toSave.isEmpty else { return }
+        _ = try await privateDB.modifySubscriptions(saving: toSave, deleting: [])
+    }
+
+    // MARK: - 受信者名の書き込み（「リンクで送る」の相手名）
+
+    /// 「リンクで送る」で作られた依頼は受信者が未定のまま保存される。受信者が受け取ったら、
+    /// 自分の表示名と userRecordID を書き込み、依頼者の一覧や通知に名前が出るようにする。
+    /// 既に受信者が決まっていれば何もしない。
+    func claimRecipient(recordID: CKRecord.ID, name: String, userRecordName: String) async throws {
+        let record = try await sharedDB.record(for: recordID)
+        guard ((record["recipientRecordID"] as? String) ?? "").isEmpty else { return }
+        record["recipientRecordID"] = userRecordName
+        record["recipientName"] = name
+        _ = try await sharedDB.save(record)
+    }
+
     // MARK: - 受信した依頼から抜ける（受信者）
 
     /// 受信者が依頼の共有から抜ける。共有ゾーンごと sharedDB から消えるため、

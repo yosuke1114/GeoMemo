@@ -1920,6 +1920,28 @@ struct SharedMemoModelTests {
         #expect(shared.isActive == false)
     }
 
+    @Test("リンクで送った依頼は、受信者が決まると apply(_:) で受信者名・ID が反映される")
+    func applyUpdatesRecipientForLinkShare() {
+        let shared = makeShared()
+        shared.recipientRecordID = ""
+        shared.recipientName = "リンクで共有"
+        let zoneID = CKRecordZone.ID(zoneName: CKShareService.sharingZoneName, ownerName: CKCurrentUserDefaultName)
+        let recordID = CKRecord.ID(recordName: shared.ckRecordName, zoneID: zoneID)
+        let data = SharedMemoCKData(
+            ckRecordID: recordID, memoTitle: "", memoLocationName: "",
+            memoLatitude: 0, memoLongitude: 0, memoRadius: 0,
+            memoDeadline: nil, memoTimeWindowStart: nil, memoTimeWindowEnd: nil,
+            requesterName: "", recipientRecordID: "_abc123", recipientName: "花子",
+            autoComplete: false, status: shared.status,
+            firedAt: shared.firedAt, completedAt: shared.completedAt, createdAt: Date(), isMyRequest: true
+        )
+        #expect(shared.apply(data) == true)
+        #expect(shared.recipientName == "花子")
+        #expect(shared.recipientRecordID == "_abc123")
+        // 同じ内容なら変更なし
+        #expect(shared.apply(data) == false)
+    }
+
     private func makeShared() -> SharedMemo {
         SharedMemo(
             ckRecordName: UUID().uuidString, memoTitle: "T", memoLocationName: "L",

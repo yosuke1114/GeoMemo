@@ -198,7 +198,8 @@ struct ContentView: View {
                 Task {
                     async let drain: () = PendingEventQueue.shared.drain()
                     async let sync:  () = syncSharedMemos()
-                    _ = await (drain, sync)
+                    async let subs:  () = ensureRequesterSubscriptionsOnce()
+                    _ = await (drain, sync, subs)
                 }
             }
         }
@@ -242,6 +243,19 @@ struct ContentView: View {
 
     @State private var isSyncing = false
 
+    /// 依頼者向け通知の購読を、起動ごとに 1 回だけ確認・登録する。
+    @MainActor private static var didEnsureSubscriptions = false
+    private func ensureRequesterSubscriptionsOnce() async {
+        guard !Self.didEnsureSubscriptions, profiles.first != nil else { return }
+        do {
+            try await CKShareService.shared.ensureRequesterSubscriptions()
+            Self.didEnsureSubscriptions = true
+        } catch {
+            // iCloud 未サインインや通信不可。次回のアクティブ化で再試行する。
+            print("[GeoMemo] requester subscription failed: \(error)")
+        }
+    }
+
     private func syncSharedMemos() async {
         guard !isSyncing, profiles.first != nil else { return }
         isSyncing = true
@@ -263,6 +277,17 @@ struct ContentView: View {
                         // 取り消し・完了になった依頼は位置の監視をやめる
                         if !existing.isActive {
                             LocationManager.shared.stopMonitoring(memoID: existing.geofenceIdentifier)
+                        }
+                    }
+                    // 「リンクで送る」の依頼は受信者が未定。自分の名前を書き込み、依頼者側に表示させる
+                    if data.recipientRecordID.isEmpty, let me = profiles.first, !me.iCloudRecordID.isEmpty {
+                        existing.recipientRecordID = me.iCloudRecordID
+                        existing.recipientName = me.displayName
+                        didChange = true
+                        let recordID = data.ckRecordID
+                        Task {
+                            try? await CKShareService.shared.claimRecipient(
+                                recordID: recordID, name: me.displayName, userRecordName: me.iCloudRecordID)
                         }
                     }
                 } else if data.status == .cancelled {
