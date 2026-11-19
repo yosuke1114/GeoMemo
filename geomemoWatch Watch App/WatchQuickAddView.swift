@@ -1,6 +1,7 @@
 import SwiftUI
 import SwiftData
 import CoreLocation
+import MapKit
 
 struct WatchQuickAddView: View {
     @Environment(\.modelContext) private var modelContext
@@ -145,16 +146,16 @@ class QuickAddLocationHelper: NSObject, CLLocationManagerDelegate {
         guard let location = locations.last else { return }
         coordinate = location.coordinate
 
-        CLGeocoder().reverseGeocodeLocation(location) { [weak self] placemarks, _ in
-            guard let placemark = placemarks?.first else { return }
-            let name = placemark.subLocality
-                ?? placemark.locality
-                ?? placemark.administrativeArea
-                ?? placemark.name
-                ?? ""
-            DispatchQueue.main.async {
-                self?.locationName = name
-            }
+        // CLGeocoder は watchOS 26 で deprecated。iOS 側（MemoEditorView 等）と同じく
+        // MapKit の MKReverseGeocodingRequest に統一する。
+        guard let request = MKReverseGeocodingRequest(location: location) else { return }
+        Task { [weak self] in
+            guard let item = try? await request.mapItems.first else { return }
+            let repr = item.addressRepresentations
+            let name = [repr?.cityWithContext, repr?.cityName, repr?.regionName, item.name]
+                .compactMap { $0 }
+                .first { !$0.isEmpty } ?? ""
+            self?.locationName = name
         }
     }
 

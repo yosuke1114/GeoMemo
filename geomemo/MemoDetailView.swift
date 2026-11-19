@@ -9,6 +9,7 @@ struct MemoDetailView: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(\.colorScheme) private var colorScheme
     @Environment(\.modelContext) private var modelContext
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     let memo: GeoMemo
     
     @AppStorage("mapStyle") private var mapStyleRaw: String = GeoMapStyle.mono.rawValue
@@ -429,6 +430,10 @@ struct MemoDetailView: View {
                 
                 Spacer(minLength: 40)
             }
+            // 展開した折りたたみ iPhone / iPad など regular 幅では、本文が横に間延びしないよう
+            // 可読幅に制限して中央寄せする（compact では従来どおり全幅）。
+            .frame(maxWidth: horizontalSizeClass == .regular ? 720 : .infinity)
+            .frame(maxWidth: .infinity)
         }
         .frame(maxHeight: .infinity, alignment: .top)
         .navigationBarTitleDisplayMode(.inline)

@@ -15,8 +15,18 @@ import CloudKit
 // MARK: - CKShare Acceptance Delegate
 
 final class GeoMemoAppDelegate: NSObject, UIApplicationDelegate {
+    /// `application(_:userDidAcceptCloudKitShareWith:)` は iOS 26 で deprecated（UIScene ライフサイクルへ移行）。
+    /// SwiftUI の WindowGroup に scene delegate を差し込み、共有受諾を scene 側で受け取る。
     func application(_ application: UIApplication,
-                     userDidAcceptCloudKitShareWith metadata: CKShare.Metadata) {
+                     configurationForConnecting connectingSceneSession: UISceneSession,
+                     options: UIScene.ConnectionOptions) -> UISceneConfiguration {
+        let configuration = UISceneConfiguration(name: nil, sessionRole: connectingSceneSession.role)
+        configuration.delegateClass = GeoMemoSceneDelegate.self
+        return configuration
+    }
+
+    /// CKShare 受諾の共通処理（起動中 / コールドスタートの両経路から呼ばれる）。
+    static func acceptCloudKitShare(_ metadata: CKShare.Metadata) {
         Task { @MainActor in
             do {
                 try await CKShareService.shared.acceptShare(metadata: metadata)
@@ -39,6 +49,25 @@ final class GeoMemoAppDelegate: NSObject, UIApplicationDelegate {
                 ))
             }
         }
+    }
+}
+
+/// SwiftUI の WindowGroup 用 scene delegate。CKShare の受諾のみを扱う
+/// （ウインドウ生成やサイズ変化は SwiftUI 側に任せる）。
+final class GeoMemoSceneDelegate: NSObject, UIWindowSceneDelegate {
+    /// アプリ未起動時に共有リンクから起動されたケース。
+    func scene(_ scene: UIScene,
+               willConnectTo session: UISceneSession,
+               options connectionOptions: UIScene.ConnectionOptions) {
+        if let metadata = connectionOptions.cloudKitShareMetadata {
+            GeoMemoAppDelegate.acceptCloudKitShare(metadata)
+        }
+    }
+
+    /// 起動中に共有リンクを受諾したケース。
+    func windowScene(_ windowScene: UIWindowScene,
+                     userDidAcceptCloudKitShareWith cloudKitShareMetadata: CKShare.Metadata) {
+        GeoMemoAppDelegate.acceptCloudKitShare(cloudKitShareMetadata)
     }
 }
 

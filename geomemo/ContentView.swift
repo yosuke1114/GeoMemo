@@ -107,6 +107,9 @@ struct ContentView: View {
 
     @Environment(\.modelContext) private var modelContext
     @Environment(\.scenePhase) private var scenePhase
+    /// 折りたたみ iPhone の展開時 / iPad / 横向き大画面では `.regular` になる。
+    /// 端末種別ではなくサイズクラスで判定し、ウインドウサイズ変化にライブ追従させる。
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
 
     @State private var showList = false
     @State private var showSettings = false
@@ -115,9 +118,26 @@ struct ContentView: View {
     @State private var intentShowFavorites = false
     @State private var showWatchDashboard = false
 
+    /// ルートの現在幅。折りたたみ/展開やウインドウリサイズのたびに更新される。
+    @State private var containerWidth: CGFloat = 0
+
+    /// regular 幅（展開時）はマップとリストを左右 2 ペインで並べる。
+    private var isSideBySide: Bool { horizontalSizeClass == .regular }
+
+    /// 2 ペイン時のリスト幅（ウインドウ幅の 40% を 320〜440pt にクランプ）。
+    private var listPaneWidth: CGFloat {
+        min(max(containerWidth * 0.4, 320), 440)
+    }
+
+    /// ZStack ⇄ HStack を `AnyLayout` で切り替えることで、サイズクラスが変わっても
+    /// 子ビュー（MapTabView / ListTabView）の identity と @State（カメラ位置・検索・シート等）を保つ。
+    private var rootLayout: AnyLayout {
+        isSideBySide ? AnyLayout(HStackLayout(spacing: 0)) : AnyLayout(ZStackLayout())
+    }
+
     var body: some View {
-        ZStack {
-            // マップは常に背景に描画しておく
+        rootLayout {
+            // マップは常に描画しておく（compact: 背景 / regular: 左ペイン）
             VStack(spacing: 0) {
                 CustomNavigationBar(memoCount: memos.count, showSettings: $showSettings, isSearching: $isSearching, showWatchDashboard: $showWatchDashboard)
                 MapTabView(memos: memos, isSearching: $isSearching, deepLinkMemoID: $deepLinkMemoID, showList: $showList)
@@ -125,7 +145,7 @@ struct ContentView: View {
             .background(Brand.background)
             .ignoresSafeArea(edges: .bottom)
 
-            // リスト画面（右からスライドイン）
+            // リスト画面（compact: 右からスライドインして全面を覆う / regular: 右ペイン）
             if showList {
                 ListTabView(
                     memos: memos,
@@ -133,11 +153,23 @@ struct ContentView: View {
                     showList: $showList,
                     showSettings: $showSettings
                 )
+                // regular 幅ではウインドウ幅に応じた可変ペイン幅、compact では nil（従来どおり全面）。
+                .frame(width: isSideBySide ? listPaneWidth : nil)
+                .overlay(alignment: .leading) {
+                    if isSideBySide {
+                        Rectangle().fill(Brand.border).frame(width: 1).ignoresSafeArea()
+                    }
+                }
                 .transition(.move(edge: .trailing))
                 .zIndex(1)
             }
         }
         .animation(.easeInOut(duration: 0.3), value: showList)
+        .onGeometryChange(for: CGFloat.self) { proxy in
+            proxy.size.width
+        } action: { newWidth in
+            containerWidth = newWidth
+        }
         .fullScreenCover(isPresented: $showSettings) {
             NavigationStack {
                 SettingsView()
@@ -145,7 +177,8 @@ struct ContentView: View {
         }
         .onReceive(NotificationCenter.default.publisher(for: .openGeoMemo)) { notification in
             if let id = notification.object as? UUID {
-                showList = false
+                // 2 ペイン時はマップが常に見えているのでリストは閉じない。
+                if !isSideBySide { showList = false }
                 deepLinkMemoID = id
             }
         }
@@ -154,7 +187,7 @@ struct ContentView: View {
             intentShowFavorites = true
         }
         .onReceive(NotificationCenter.default.publisher(for: .searchGeoMemos)) { _ in
-            showList = false
+            if !isSideBySide { showList = false }
             isSearching = true
         }
         .sheet(isPresented: $showWatchDashboard) {
@@ -896,7 +929,9 @@ struct MapTabView: View {
                     // リスト画面へ遷移するボタン
                     Button(action: {
                         HapticManager.impact(.light)
-                        withAnimation(.easeInOut(duration: 0.3)) { showList = true }
+                        // compact ではリストがこのボタンを覆うので常に「開く」。
+                        // regular（2 ペイン）ではリストペインの開閉トグルとして働く。
+                        withAnimation(.easeInOut(duration: 0.3)) { showList.toggle() }
                     }) {
                         Image("ph-list-bullets")
                             .resizable()
