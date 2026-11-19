@@ -55,6 +55,9 @@ struct ShareMemoSheet: View {
                         // フレンド選択
                         friendPickerSection
 
+                        // 相手に見える内容 / あなたに届く内容 / 開ける人
+                        explanationSection
+
                         // オプション
                         optionSection
 
@@ -232,7 +235,7 @@ struct ShareMemoSheet: View {
                     Text(String(localized: "リンクで送る"))
                         .font(.body.weight(.semibold))
                         .foregroundStyle(Brand.primaryText)
-                    Text(String(localized: "共有シートで選んだ相手だけが受け取れます"))
+                    Text(String(localized: "共有シートで選んだ相手だけが受け取れます。メッセージやメールでの送信をおすすめします。LINE など、宛先の相手を特定できないアプリでは受け取れないことがあります。"))
                         .font(.caption)
                         .foregroundStyle(Brand.secondaryText)
                 }
@@ -251,6 +254,53 @@ struct ShareMemoSheet: View {
         .accessibilityAddTraits(sendViaLink ? .isSelected : [])
     }
 
+    // MARK: - 説明
+
+    private var explanationSection: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            sectionHeader(String(localized: "送る前に"))
+
+            VStack(alignment: .leading, spacing: 14) {
+                explanationRow(
+                    icon: "eye",
+                    title: String(localized: "相手に見える内容"),
+                    body: String(localized: "メモのタイトル・メモ・場所・範囲・期限と、あなたの表示名が見えます。"))
+                explanationRow(
+                    icon: "bell",
+                    title: String(localized: "あなたに届く内容"),
+                    body: String(localized: "相手が場所に着いたときと、完了にしたときに通知が届きます。相手の現在地は共有されません。"))
+                explanationRow(
+                    icon: "lock",
+                    title: String(localized: "開ける人"),
+                    body: String(localized: "送った相手だけが開けます。リンクを転送された別の人は開けません。"))
+            }
+            .padding(16)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(Brand.surface)
+            .clipShape(RoundedRectangle(cornerRadius: 12))
+            .padding(.horizontal, 16)
+        }
+    }
+
+    private func explanationRow(icon: String, title: String, body: String) -> some View {
+        HStack(alignment: .top, spacing: 12) {
+            Image(systemName: icon)
+                .font(.subheadline)
+                .foregroundStyle(Brand.blue)
+                .frame(width: 24)
+                .accessibilityHidden(true)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title)
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(Brand.primaryText)
+                Text(body)
+                    .font(.footnote)
+                    .foregroundStyle(Brand.secondaryText)
+            }
+        }
+        .accessibilityElement(children: .combine)
+    }
+
     // MARK: - オプション
 
     private var optionSection: some View {
@@ -262,7 +312,7 @@ struct ShareMemoSheet: View {
                     Text(String(localized: "現地到着で自動完了"))
                         .font(.body.weight(.semibold))
                         .foregroundStyle(Brand.primaryText)
-                    Text(String(localized: "ONにすると発火と同時に完了通知を送ります"))
+                    Text(String(localized: "ONにすると、相手が着いた時点で自動的に完了にします"))
                         .font(.caption)
                         .foregroundStyle(Brand.secondaryText)
                 }
