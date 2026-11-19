@@ -1,7 +1,9 @@
 import ActivityKit
 import Foundation
 
-struct GeoMemoActivityAttributes: ActivityAttributes {
+/// アプリ target は default actor isolation = MainActor のため、明示的に nonisolated にして
+/// ActivityKit（@concurrent コンテキスト）から ActivityAttributes 準拠を使えるようにする。
+nonisolated struct GeoMemoActivityAttributes: ActivityAttributes {
     /// 後方互換のため残置（activity の attributes は不変なので最新値の参照には使えない）。
     /// 表示には ContentState.monitoredCount を使うこと。
     var monitoredCount: Int

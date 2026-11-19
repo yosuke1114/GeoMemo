@@ -117,6 +117,8 @@ final class geomemoUITests: XCTestCase {
         app.terminate()
         app.launchArguments = [
             "-UITesting",
+            // DEBUG ビルドの Pro 自動解放を無効化して Free 状態で検証する
+            "-noProOverride",
             "-hasCompletedOnboarding", "YES",
             "-seedDemoData"
         ]
@@ -140,6 +142,8 @@ final class geomemoUITests: XCTestCase {
         app.terminate()
         app.launchArguments = [
             "-UITesting",
+            // DEBUG ビルドの Pro 自動解放を無効化して Free 状態で検証する
+            "-noProOverride",
             "-hasCompletedOnboarding", "YES",
             "-seedDemoData"
         ]
@@ -170,6 +174,8 @@ final class geomemoUITests: XCTestCase {
         app.terminate()
         app.launchArguments = [
             "-UITesting",
+            // DEBUG ビルドの Pro 自動解放を無効化して Free 状態で検証する
+            "-noProOverride",
             "-hasCompletedOnboarding", "YES",
             "-seedDemoData"
         ]
@@ -202,6 +208,8 @@ final class geomemoUITests: XCTestCase {
         app.terminate()
         app.launchArguments = [
             "-UITesting",
+            // DEBUG ビルドの Pro 自動解放を無効化して Free 状態で検証する
+            "-noProOverride",
             "-hasCompletedOnboarding", "YES",
             "-seedDemoData"
         ]
@@ -238,6 +246,8 @@ final class geomemoUITests: XCTestCase {
         app.terminate()
         app.launchArguments = [
             "-UITesting",
+            // DEBUG ビルドの Pro 自動解放を無効化して Free 状態で検証する
+            "-noProOverride",
             "-hasCompletedOnboarding", "YES",
             "-seedDemoData"
         ]
@@ -267,6 +277,8 @@ final class geomemoUITests: XCTestCase {
         app.terminate()
         app.launchArguments = [
             "-UITesting",
+            // DEBUG ビルドの Pro 自動解放を無効化して Free 状態で検証する
+            "-noProOverride",
             "-hasCompletedOnboarding", "YES",
             "-seedDemoData",
             "-UITestEmptyProducts"

@@ -60,6 +60,7 @@ final class CKShareService {
 
         // 機密フィールドのみ encryptedValues に入れる（CK Dashboard でも復号できない）
         record.encryptedValues["memoTitle"]        = memo.title
+        record.encryptedValues["memoNote"]         = memo.note
         record.encryptedValues["memoLocationName"] = memo.locationName
         record.encryptedValues["memoLatitude"]     = memo.latitude
         record.encryptedValues["memoLongitude"]    = memo.longitude
@@ -90,10 +91,15 @@ final class CKShareService {
         let (results, _) = try await privateDB.modifyRecords(
             saving: [record, share], deleting: []
         )
+        var savedRecord = record
+        var savedShare = share
         for (_, result) in results {
-            _ = try result.get()
+            switch try result.get() {
+            case let saved as CKShare: savedShare = saved   // サーバ確定後の share (url 付き)
+            case let saved: savedRecord = saved
+            }
         }
-        return (record, share)
+        return (savedRecord, savedShare)
     }
 
     // MARK: - ステータス更新
@@ -167,6 +173,16 @@ final class CKShareService {
         }
     }
 
+    // MARK: - 受信した依頼から抜ける（受信者）
+
+    /// 受信者が依頼の共有から抜ける。共有ゾーンごと sharedDB から消えるため、
+    /// 次回の同期で再び取り込まれない。依頼者側のレコードは残る。
+    func leaveReceivedShare(recordID: CKRecord.ID) async throws {
+        let record = try await sharedDB.record(for: recordID)
+        guard let shareID = record.share?.recordID else { return }
+        _ = try await sharedDB.modifyRecords(saving: [], deleting: [shareID])
+    }
+
     // MARK: - Share 受諾（受信者）
 
     /// `userDidAcceptCloudKitShareWith` から呼び出す。
@@ -215,6 +231,7 @@ final class CKShareService {
 struct SharedMemoCKData: Sendable {
     let ckRecordID: CKRecord.ID
     let memoTitle: String
+    let memoNote: String
     let memoLocationName: String
     let memoLatitude: Double
     let memoLongitude: Double
@@ -238,10 +255,12 @@ struct SharedMemoCKData: Sendable {
         memoDeadline: Date?, memoTimeWindowStart: Int?, memoTimeWindowEnd: Int?,
         requesterName: String, recipientRecordID: String, recipientName: String,
         autoComplete: Bool, status: ShareStatus,
-        firedAt: Date?, completedAt: Date?, createdAt: Date, isMyRequest: Bool
+        firedAt: Date?, completedAt: Date?, createdAt: Date, isMyRequest: Bool,
+        memoNote: String = ""
     ) {
         self.ckRecordID = ckRecordID
         self.memoTitle = memoTitle
+        self.memoNote = memoNote
         self.memoLocationName = memoLocationName
         self.memoLatitude = memoLatitude
         self.memoLongitude = memoLongitude
@@ -277,6 +296,8 @@ struct SharedMemoCKData: Sendable {
 
         self.ckRecordID          = record.recordID
         self.memoTitle           = title
+        // 本文は後から追加した項目。古い依頼レコードには無いので空文字にする。
+        self.memoNote            = record.encryptedValues["memoNote"] as? String ?? ""
         self.memoLocationName    = locName
         self.memoLatitude        = lat
         self.memoLongitude       = lon

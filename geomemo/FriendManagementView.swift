@@ -224,7 +224,7 @@ struct FriendManagementView: View {
             Text(String(localized: "まだフレンドがいません"))
                 .font(.subheadline.weight(.semibold))
                 .foregroundStyle(Brand.primaryText)
-            Text(String(localized: "招待リンクを送ってフレンドを追加しましょう。\n下に引いて更新すると新しいフレンドが表示されます。"))
+            Text(String(localized: "メモの詳細から「依頼する」→「リンクで送る」で共有すると、\n受け取った相手とフレンドになります。"))
                 .font(.footnote)
                 .foregroundStyle(Brand.secondaryText)
                 .multilineTextAlignment(.center)

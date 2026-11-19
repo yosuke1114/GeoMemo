@@ -16,6 +16,7 @@ import CloudKit
 
 // MARK: - LocationManager.shouldNotify テスト
 
+@MainActor
 @Suite("LocationManager.shouldNotify")
 struct ShouldNotifyTests {
 
@@ -1599,6 +1600,8 @@ struct FavoritePlaceEditorViewModeTests {
 
 @Suite("GeoMemoMigrationPlan")
 struct GeoMemoMigrationPlanTests {
+    // 各 VersionedSchema は live モデルではなく凍結スナップショット型を参照する
+    // （0f7a536 "schema snapshots"）。V7 は V5/V6 のスナップショットを再利用している。
 
     @Test("schemas 配列は8バージョン含む")
     func schemaCountIsEight() {
@@ -1620,25 +1623,25 @@ struct GeoMemoMigrationPlanTests {
     @Test("V7 のモデルに FavoritePlace が含まれる")
     func v7ModelsIncludeFavoritePlace() {
         let modelTypes = GeoMemoSchemaV7.models.map { ObjectIdentifier($0) }
-        #expect(modelTypes.contains(ObjectIdentifier(FavoritePlace.self)))
+        #expect(modelTypes.contains(ObjectIdentifier(GeoMemoSchemaV6.FavoritePlaceV6.self)))
     }
 
     @Test("V7 のモデルに GeoMemo が含まれる")
     func v7ModelsIncludeGeoMemo() {
         let modelTypes = GeoMemoSchemaV7.models.map { ObjectIdentifier($0) }
-        #expect(modelTypes.contains(ObjectIdentifier(GeoMemo.self)))
+        #expect(modelTypes.contains(ObjectIdentifier(GeoMemoSchemaV5.GeoMemoV5.self)))
     }
 
     @Test("V7 のモデルに UserProfile が含まれる")
     func v7ModelsIncludeUserProfile() {
         let modelTypes = GeoMemoSchemaV7.models.map { ObjectIdentifier($0) }
-        #expect(modelTypes.contains(ObjectIdentifier(UserProfile.self)))
+        #expect(modelTypes.contains(ObjectIdentifier(GeoMemoSchemaV7.UserProfileV7.self)))
     }
 
     @Test("V7 のモデルに FriendConnection が含まれる")
     func v7ModelsIncludeFriendConnection() {
         let modelTypes = GeoMemoSchemaV7.models.map { ObjectIdentifier($0) }
-        #expect(modelTypes.contains(ObjectIdentifier(FriendConnection.self)))
+        #expect(modelTypes.contains(ObjectIdentifier(GeoMemoSchemaV7.FriendConnectionV7.self)))
     }
 }
 

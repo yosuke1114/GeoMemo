@@ -107,6 +107,9 @@ struct ContentView: View {
 
     @Environment(\.modelContext) private var modelContext
     @Environment(\.scenePhase) private var scenePhase
+    /// 折りたたみ iPhone の展開時 / iPad / 横向き大画面では `.regular` になる。
+    /// 端末種別ではなくサイズクラスで判定し、ウインドウサイズ変化にライブ追従させる。
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
 
     @State private var showList = false
     @State private var showSettings = false
@@ -115,9 +118,26 @@ struct ContentView: View {
     @State private var intentShowFavorites = false
     @State private var showWatchDashboard = false
 
+    /// ルートの現在幅。折りたたみ/展開やウインドウリサイズのたびに更新される。
+    @State private var containerWidth: CGFloat = 0
+
+    /// regular 幅（展開時）はマップとリストを左右 2 ペインで並べる。
+    private var isSideBySide: Bool { horizontalSizeClass == .regular }
+
+    /// 2 ペイン時のリスト幅（ウインドウ幅の 40% を 320〜440pt にクランプ）。
+    private var listPaneWidth: CGFloat {
+        min(max(containerWidth * 0.4, 320), 440)
+    }
+
+    /// ZStack ⇄ HStack を `AnyLayout` で切り替えることで、サイズクラスが変わっても
+    /// 子ビュー（MapTabView / ListTabView）の identity と @State（カメラ位置・検索・シート等）を保つ。
+    private var rootLayout: AnyLayout {
+        isSideBySide ? AnyLayout(HStackLayout(spacing: 0)) : AnyLayout(ZStackLayout())
+    }
+
     var body: some View {
-        ZStack {
-            // マップは常に背景に描画しておく
+        rootLayout {
+            // マップは常に描画しておく（compact: 背景 / regular: 左ペイン）
             VStack(spacing: 0) {
                 CustomNavigationBar(memoCount: memos.count, showSettings: $showSettings, isSearching: $isSearching, showWatchDashboard: $showWatchDashboard)
                 MapTabView(memos: memos, isSearching: $isSearching, deepLinkMemoID: $deepLinkMemoID, showList: $showList)
@@ -125,7 +145,7 @@ struct ContentView: View {
             .background(Brand.background)
             .ignoresSafeArea(edges: .bottom)
 
-            // リスト画面（右からスライドイン）
+            // リスト画面（compact: 右からスライドインして全面を覆う / regular: 右ペイン）
             if showList {
                 ListTabView(
                     memos: memos,
@@ -133,11 +153,23 @@ struct ContentView: View {
                     showList: $showList,
                     showSettings: $showSettings
                 )
+                // regular 幅ではウインドウ幅に応じた可変ペイン幅、compact では nil（従来どおり全面）。
+                .frame(width: isSideBySide ? listPaneWidth : nil)
+                .overlay(alignment: .leading) {
+                    if isSideBySide {
+                        Rectangle().fill(Brand.border).frame(width: 1).ignoresSafeArea()
+                    }
+                }
                 .transition(.move(edge: .trailing))
                 .zIndex(1)
             }
         }
         .animation(.easeInOut(duration: 0.3), value: showList)
+        .onGeometryChange(for: CGFloat.self) { proxy in
+            proxy.size.width
+        } action: { newWidth in
+            containerWidth = newWidth
+        }
         .fullScreenCover(isPresented: $showSettings) {
             NavigationStack {
                 SettingsView()
@@ -145,7 +177,8 @@ struct ContentView: View {
         }
         .onReceive(NotificationCenter.default.publisher(for: .openGeoMemo)) { notification in
             if let id = notification.object as? UUID {
-                showList = false
+                // 2 ペイン時はマップが常に見えているのでリストは閉じない。
+                if !isSideBySide { showList = false }
                 deepLinkMemoID = id
             }
         }
@@ -154,7 +187,7 @@ struct ContentView: View {
             intentShowFavorites = true
         }
         .onReceive(NotificationCenter.default.publisher(for: .searchGeoMemos)) { _ in
-            showList = false
+            if !isSideBySide { showList = false }
             isSearching = true
         }
         .sheet(isPresented: $showWatchDashboard) {
@@ -218,6 +251,7 @@ struct ContentView: View {
             var didChange = false
             for data in received {
                 let recordName = data.ckRecordID.recordName
+                SharedMemoNoteStore.setNote(data.memoNote, for: recordName)
                 let zoneOwner = data.ckRecordID.zoneID.ownerName
                 if let existing = allSharedMemos.first(where: { $0.ckRecordName == recordName }) {
                     if existing.requesterRecordID.isEmpty && !zoneOwner.isEmpty {
@@ -317,7 +351,11 @@ struct CustomNavigationBar: View {
             Text(verbatim: "GEOMEMO")
                 .font(.title2.weight(.heavy))
                 .foregroundColor(Brand.primaryText)
-            
+                // 狭い幅（折りたたみ端末のカバー画面・大きな文字サイズ）でロゴが
+                // 「GEOMEM / O」と折り返さないよう 1 行に固定して縮小で収める
+                .lineLimit(1)
+                .minimumScaleFactor(0.6)
+
             Spacer()
             
             // Memo Count Badge (only show if count > 0)
@@ -630,6 +668,12 @@ struct MapTabView: View {
     @State private var clusterTask: Task<Void, Never>?
     @State private var calloutMemo: GeoMemo?
     @State private var activeSheet: ActiveSheet?
+    /// 地図上でタップした受信依頼。
+    @State private var mapSelectedReceived: SharedMemo?
+    @Query(sort: \SharedMemo.createdAt, order: .reverse) private var mapSharedMemos: [SharedMemo]
+    private var receivedPins: [SharedMemo] {
+        mapSharedMemos.filter { !$0.isMyRequest && ($0.status == .active || $0.status == .fired) }
+    }
     @State private var activeDetailMemo: GeoMemo?
     @State private var pendingDetailMemo: GeoMemo?
     /// 遅延して `activeDetailMemo` をセットする Task。新しい遅延が始まる前に cancel する。
@@ -652,6 +696,11 @@ struct MapTabView: View {
             }
         }
         .animation(.easeInOut(duration: 0.25), value: isSearching)
+        .sheet(item: $mapSelectedReceived) { shared in
+            ReceivedSharedMemoDetailView(shared: shared) {
+                deleteReceivedSharedMemo(shared, in: modelContext)
+            }
+        }
         .sheet(item: $activeSheet, onDismiss: handleSheetDismiss) { sheet in
             sheetContent(for: sheet)
         }
@@ -805,6 +854,29 @@ struct MapTabView: View {
                     }
                 }
                 
+                // 受信した依頼 (他の人から届いた場所メモ): 範囲の円 + ピン
+                ForEach(receivedPins) { shared in
+                    MapCircle(center: shared.memoCoordinate, radius: shared.memoRadius)
+                        .foregroundStyle(Brand.blue.opacity(0.12))
+                        .stroke(Brand.blue.opacity(0.6), lineWidth: 1.5)
+                }
+                ForEach(receivedPins) { shared in
+                    Annotation("", coordinate: shared.memoCoordinate) {
+                        ZStack {
+                            Circle()
+                                .fill(Brand.blue)
+                                .frame(width: 30, height: 30)
+                            Image(systemName: "person.2.fill")
+                                .font(.system(size: 13, weight: .semibold))
+                                .foregroundStyle(.white)
+                        }
+                        .shadow(color: .black.opacity(0.3), radius: 2, x: 0, y: 1)
+                        .onTapGesture { mapSelectedReceived = shared }
+                        .accessibilityLabel(String(localized: "受信した依頼: ") + shared.memoTitle)
+                        .accessibilityAddTraits(.isButton)
+                    }
+                }
+
                 ForEach(mapItems) { item in
                     switch item {
                     case .single(let memo):
@@ -896,7 +968,9 @@ struct MapTabView: View {
                     // リスト画面へ遷移するボタン
                     Button(action: {
                         HapticManager.impact(.light)
-                        withAnimation(.easeInOut(duration: 0.3)) { showList = true }
+                        // compact ではリストがこのボタンを覆うので常に「開く」。
+                        // regular（2 ペイン）ではリストペインの開閉トグルとして働く。
+                        withAnimation(.easeInOut(duration: 0.3)) { showList.toggle() }
                     }) {
                         Image("ph-list-bullets")
                             .resizable()
@@ -955,7 +1029,11 @@ struct MapTabView: View {
                         .stroke(Brand.border, lineWidth: 2)
                 )
             }
-            .containerRelativeFrame(.horizontal) { w, _ in w * 0.8 }
+            // containerRelativeFrame はウインドウ幅基準になり、2 ペイン時にマップペインを
+            // 押し広げてしまうため、親ペイン幅に追従する余白 + 上限幅で決める
+            // （iPhone 402pt 幅で従来の 80% ≒ 322pt と同等）。
+            .frame(maxWidth: 480)
+            .padding(.horizontal, 40)
             .padding(.bottom, 16)
         }
     }
@@ -1170,6 +1248,7 @@ struct ListTabView: View {
     }
 
     @State private var showDoneSection: Bool = false
+    @State private var selectedReceived: SharedMemo?
     @State private var showColorFilter: Bool = false
     @State private var selectedColorIndex: Int? = nil
     @State private var isListSearching = false
@@ -1285,6 +1364,11 @@ struct ListTabView: View {
             }
             .background(Brand.background)
             .navigationBarHidden(true)
+            .sheet(item: $selectedReceived) { shared in
+                ReceivedSharedMemoDetailView(shared: shared) {
+                    deleteReceivedSharedMemo(shared, in: modelContext)
+                }
+            }
             .animation(.easeInOut(duration: 0.2), value: isListSearching)
         }
         .onChange(of: intentShowFavorites) { _, newValue in
@@ -1553,6 +1637,17 @@ struct ListTabView: View {
                     Section {
                         ForEach(receivedActiveMemos) { shared in
                             receivedMemoRow(shared)
+                                .contentShape(Rectangle())
+                                .onTapGesture { selectedReceived = shared }
+                                .swipeActions(edge: .trailing, allowsFullSwipe: true) {
+                                    Button(role: .destructive) {
+                                        HapticManager.notification(.warning)
+                                        deleteReceivedSharedMemo(shared, in: modelContext)
+                                    } label: {
+                                        Label(String(localized: "削除"), systemImage: "trash")
+                                    }
+                                }
+                                .accessibilityAddTraits(.isButton)
                                 .listRowInsets(EdgeInsets(top: 12, leading: 20, bottom: 12, trailing: 20))
                                 .listRowSeparator(.visible, edges: .bottom)
                                 .listRowSeparatorTint(Brand.primaryText.opacity(0.1))
@@ -2001,4 +2096,25 @@ private struct PlaceResultRow: View {
 #Preview {
     ContentView()
         .modelContainer(for: GeoMemo.self, inMemory: true)
+}
+
+
+/// 受信した依頼を削除する。位置監視と本文キャッシュを消し、ローカルから削除したうえで
+/// CloudKit の共有から抜ける (抜けないと次回同期で再取り込みされる)。
+@MainActor
+func deleteReceivedSharedMemo(_ shared: SharedMemo, in context: ModelContext) {
+    let recordID = shared.cloudKitRecordID
+    LocationManager.shared.stopMonitoring(memoID: shared.geofenceIdentifier)
+    SharedMemoNoteStore.setNote("", for: shared.ckRecordName)
+    context.delete(shared)
+    try? context.save()
+    Task {
+        do {
+            try await CKShareService.shared.leaveReceivedShare(recordID: recordID)
+        } catch {
+            ToastCenter.shared.show(.error(
+                String(localized: "共有の解除に失敗しました。通信状況を確認してください。")
+            ))
+        }
+    }
 }
