@@ -246,7 +246,7 @@ struct WatchDashboardView: View {
                     Button(role: .destructive) {
                         pendingCancel = shared
                     } label: {
-                        Label(String(localized: "キャンセル"), systemImage: "xmark")
+                        Label(String(localized: "依頼を取り消す"), systemImage: "xmark")
                     }
                 }
             }
@@ -263,7 +263,7 @@ struct WatchDashboardView: View {
             : shared.memoTitle
         let statusText: String = {
             switch shared.status {
-            case .active:    return String(localized: "監視中")
+            case .active:    return String(localized: "到着待ち")
             case .fired:     return String(localized: "到着済み")
             case .completed: return String(localized: "完了")
             case .cancelled: return String(localized: "キャンセル済み")
@@ -306,19 +306,19 @@ struct WatchDashboardView: View {
         switch shared.status {
         case .active:
             if let deadline = shared.memoDeadline {
-                Text("〜\(deadline, format: .dateTime.hour().minute())")
+                Text("〜\(dayAndTimeText(deadline))")
             } else {
-                Text(String(localized: "監視中"))
+                Text(String(localized: "到着待ち"))
             }
         case .fired:
             if let firedAt = shared.firedAt {
-                Text("\(String(localized: "到着")) \(firedAt, format: .dateTime.hour().minute())")
+                Text("\(String(localized: "到着")) \(dayAndTimeText(firedAt))")
             } else {
                 Text(String(localized: "到着済み・完了待ち"))
             }
         case .completed:
             if let completedAt = shared.completedAt {
-                Text("\(String(localized: "完了")) \(completedAt, format: .dateTime.hour().minute())")
+                Text("\(String(localized: "完了")) \(dayAndTimeText(completedAt))")
             } else {
                 Text(String(localized: "完了"))
             }
