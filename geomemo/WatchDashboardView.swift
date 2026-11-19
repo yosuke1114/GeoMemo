@@ -29,6 +29,7 @@ struct WatchDashboardView: View {
     @State private var editing: SharedMemo?
     /// 取り消しの確認待ちの依頼
     @State private var pendingCancel: SharedMemo?
+    @State private var pendingDeleteUnsent: SharedMemo?
     /// 送れたか分からず「未送信」として残している依頼（`UnsentShareStore`）
     @State private var unsentRecordNames: Set<String> = []
 
@@ -69,6 +70,22 @@ struct WatchDashboardView: View {
                 Button(String(localized: "戻る"), role: .cancel) {}
             } message: { _ in
                 Text(String(localized: "取り消した依頼は、見守りの一覧から消えます。"))
+            }
+            .confirmationDialog(
+                String(localized: "この依頼を削除しますか？"),
+                isPresented: Binding(
+                    get: { pendingDeleteUnsent != nil },
+                    set: { if !$0 { pendingDeleteUnsent = nil } }
+                ),
+                titleVisibility: .visible,
+                presenting: pendingDeleteUnsent
+            ) { shared in
+                Button(String(localized: "削除"), role: .destructive) {
+                    Task { await deleteUnsent(shared) }
+                }
+                Button(String(localized: "戻る"), role: .cancel) {}
+            } message: { _ in
+                Text(String(localized: "相手に届いていない依頼を、サーバーから削除します。"))
             }
             .navigationTitle(String(localized: "見守り"))
             .navigationBarTitleDisplayMode(.inline)
@@ -238,7 +255,7 @@ struct WatchDashboardView: View {
                 if isUnsent(shared) {
                     // 送れたか分からない依頼。相手に届いていなければサーバから消す
                     Button(role: .destructive) {
-                        Task { await deleteUnsent(shared) }
+                        pendingDeleteUnsent = shared
                     } label: {
                         Label(String(localized: "削除"), systemImage: "trash")
                     }

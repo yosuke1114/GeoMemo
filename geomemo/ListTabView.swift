@@ -288,7 +288,7 @@ struct ListTabView: View {
                         .frame(width: 44, height: 44)
                     }
                     .padding(.trailing, 4)
-                    .accessibilityLabel(String(localized: "All colors"))
+                    .accessibilityLabel(String(localized: "Color filter"))
                     .accessibilityAddTraits(showColorFilter ? .isSelected : [])
                 }
             }
@@ -459,13 +459,15 @@ struct ListTabView: View {
                             receivedMemoRow(shared)
                                 .contentShape(Rectangle())
                                 .onTapGesture { selectedReceived = shared }
-                                .swipeActions(edge: .trailing, allowsFullSwipe: true) {
-                                    Button(role: .destructive) {
+                                .swipeActions(edge: .trailing, allowsFullSwipe: false) {
+                                    // 確認ダイアログ経由で削除するので destructive role は付けない
+                                    Button {
                                         HapticManager.notification(.warning)
                                         pendingDeleteReceived = shared
                                     } label: {
                                         Label(String(localized: "削除"), systemImage: "trash")
                                     }
+                                    .tint(.red)
                                 }
                                 .accessibilityAddTraits(.isButton)
                                 .listRowInsets(EdgeInsets(top: 12, leading: 20, bottom: 12, trailing: 20))

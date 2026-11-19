@@ -51,6 +51,8 @@ struct SettingsView: View {
     @ObservedObject private var store = StoreKitManager.shared
     @State private var showPaywall = false
     @State private var isRestoring = false
+    @State private var restoreMessage: String?
+    @State private var showRestoreAlert = false
 
     /// 公開済みのプライバシーポリシー (docs/privacy.html を GitHub Pages で公開したもの)。
     private static let privacyPolicyURL = URL(string: "https://yosuke1114.github.io/GeoMemo/privacy.html")!
@@ -329,6 +331,14 @@ struct SettingsView: View {
                     Task {
                         await store.restore()
                         isRestoring = false
+                        if store.purchaseError != nil {
+                            restoreMessage = String(localized: "復元できませんでした。通信状況を確認して、もう一度お試しください。")
+                        } else if store.isPro {
+                            restoreMessage = String(localized: "購入情報を復元しました。")
+                        } else {
+                            restoreMessage = String(localized: "復元できる購入が見つかりませんでした。")
+                        }
+                        showRestoreAlert = true
                     }
                 } label: {
                     Text(String(localized: "Restore Purchase"))
@@ -433,6 +443,11 @@ struct SettingsView: View {
             Button("OK", role: .cancel) {}
         } message: {
             Text(importAlertMessage ?? "")
+        }
+        .alert("Restore Purchase", isPresented: $showRestoreAlert) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text(restoreMessage ?? "")
         }
         .alert("Export failed", isPresented: $showExportError) {
             Button("OK", role: .cancel) {}

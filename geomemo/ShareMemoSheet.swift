@@ -264,7 +264,7 @@ struct ShareMemoSheet: View {
                 explanationRow(
                     icon: "eye",
                     title: String(localized: "相手に見える内容"),
-                    body: String(localized: "メモのタイトル・メモ・場所・範囲・期限と、あなたの表示名が見えます。"))
+                    body: visibleContentBody)
                 explanationRow(
                     icon: "bell",
                     title: String(localized: "あなたに届く内容"),
@@ -280,6 +280,18 @@ struct ShareMemoSheet: View {
             .clipShape(RoundedRectangle(cornerRadius: 12))
             .padding(.horizontal, 16)
         }
+    }
+
+    /// 相手に見える内容。時間帯が設定されていれば範囲も明示する。
+    private var visibleContentBody: String {
+        if let start = memo.timeWindowStart, let end = memo.timeWindowEnd {
+            return String(localized: "メモのタイトル・メモ・場所・範囲・期限・時間帯（\(Self.clock(start))〜\(Self.clock(end))）と、あなたの表示名が見えます。")
+        }
+        return String(localized: "メモのタイトル・メモ・場所・範囲・期限と、あなたの表示名が見えます。")
+    }
+
+    private static func clock(_ minutes: Int) -> String {
+        String(format: "%d:%02d", (minutes / 60) % 24, minutes % 60)
     }
 
     private func explanationRow(icon: String, title: String, body: String) -> some View {

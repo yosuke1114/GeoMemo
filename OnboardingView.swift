@@ -101,7 +101,7 @@ struct OnboardingView: View {
                 .foregroundColor(Brand.secondaryText)
                 .multilineTextAlignment(.center)
 
-            Text(String(localized: "アプリを閉じていても場所に着いたことを知らせるため、続けて表示される許可の画面で「常に許可」を選んでください。"))
+            Text(String(localized: "アプリを閉じていても場所に着いたことを知らせるため、最初の画面では「アプリの使用中は許可」を選び、次に表示される画面で「\"常に許可\"に変更」を選んでください。"))
                 .font(.footnote)
                 .foregroundColor(Brand.secondaryText)
                 .multilineTextAlignment(.center)

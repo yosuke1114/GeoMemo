@@ -427,6 +427,12 @@
             "state" : "translated",
             "value" : "すべての色"
           }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "All colors"
+          }
         }
       }
     },
@@ -3345,18 +3351,18 @@
         }
       }
     },
-    "アプリを閉じていても場所に着いたことを知らせるため、続けて表示される許可の画面で「常に許可」を選んでください。" : {
+    "アプリを閉じていても場所に着いたことを知らせるため、最初の画面では「アプリの使用中は許可」を選び、次に表示される画面で「\"常に許可\"に変更」を選んでください。" : {
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "So we can tell you when you arrive even if the app is closed, choose “Always Allow” on the permission screen that follows."
+            "value" : "So we can tell you when you arrive even if the app is closed, choose “Allow While Using App” on the first prompt, then “Change to Always Allow” on the next one."
           }
         },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "アプリを閉じていても場所に着いたことを知らせるため、続けて表示される許可の画面で「常に許可」を選んでください。"
+            "value" : "アプリを閉じていても場所に着いたことを知らせるため、最初の画面では「アプリの使用中は許可」を選び、次に表示される画面で「\"常に許可\"に変更」を選んでください。"
           }
         }
       }
@@ -3469,6 +3475,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "メモのタイトル・メモ・場所・範囲・期限と、あなたの表示名が見えます。"
+          }
+        }
+      }
+    },
+    "メモのタイトル・メモ・場所・範囲・期限・時間帯（%@〜%@）と、あなたの表示名が見えます。" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "They can see the memo title, note, place, radius, deadline, time window (%@–%@), and your display name."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "メモのタイトル・メモ・場所・範囲・期限・時間帯（%@〜%@）と、あなたの表示名が見えます。"
           }
         }
       }
@@ -5154,6 +5176,86 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "交通"
+          }
+        }
+      }
+    },
+    "Color filter" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Color filter"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "カラーフィルター"
+          }
+        }
+      }
+    },
+    "購入情報を復元しました。" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Your purchase has been restored."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "購入情報を復元しました。"
+          }
+        }
+      }
+    },
+    "復元できる購入が見つかりませんでした。" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "No purchases to restore were found."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "復元できる購入が見つかりませんでした。"
+          }
+        }
+      }
+    },
+    "復元できませんでした。通信状況を確認して、もう一度お試しください。" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Couldn’t restore purchases. Check your connection and try again."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "復元できませんでした。通信状況を確認して、もう一度お試しください。"
+          }
+        }
+      }
+    },
+    "相手に届いていない依頼を、サーバーから削除します。" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "This removes the request that hasn’t reached the recipient from the server."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "相手に届いていない依頼を、サーバーから削除します。"
           }
         }
       }
