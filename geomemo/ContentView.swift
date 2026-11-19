@@ -10,6 +10,7 @@ import os
 
 // MARK: - Main Content View
 struct ContentView: View {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Query(sort: \GeoMemo.createdAt, order: .reverse) private var memos: [GeoMemo]
     @Query(sort: \SharedMemo.createdAt, order: .reverse) private var allSharedMemos: [SharedMemo]
     @Query(sort: \UserProfile.createdAt) private var profiles: [UserProfile]
@@ -70,7 +71,7 @@ struct ContentView: View {
                         Rectangle().fill(Brand.border).frame(width: 1).ignoresSafeArea()
                     }
                 }
-                .transition(.move(edge: .trailing))
+                .transition(reduceMotion ? .opacity : .move(edge: .trailing))
                 .zIndex(1)
             }
         }

@@ -72,6 +72,7 @@ struct SplashView: View {
 
 private struct SplashContent: View {
     @Binding var showSplash: Bool
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     @State private var pinOffset: CGFloat = -300
     @State private var pinOpacity: Double = 0
@@ -109,31 +110,40 @@ private struct SplashContent: View {
         // .task は view 寿命に紐付くので、splash がバックグラウンド遷移などで
         // 早期に消えた場合に sleep もキャンセルされる（旧 asyncAfter は cancel 不可だった）。
         .task {
-            withAnimation(
-                .spring(
-                    response: 0.6,
-                    dampingFraction: 0.5,
-                    blendDuration: 0
-                )
-            ) {
+            if reduceMotion {
+                // 動きを減らす設定: ピンは跳ねずにフェードインだけ
                 pinOffset = 0
-                pinOpacity = 1
+                withAnimation(.easeIn(duration: 0.25)) {
+                    pinOpacity = 1
+                    textOpacity = 1
+                }
+            } else {
+                withAnimation(
+                    .spring(
+                        response: 0.4,
+                        dampingFraction: 0.6,
+                        blendDuration: 0
+                    )
+                ) {
+                    pinOffset = 0
+                    pinOpacity = 1
+                }
+
+                // Text fades in with delay
+                withAnimation(
+                    .easeIn(duration: 0.25)
+                    .delay(0.2)
+                ) {
+                    textOpacity = 1
+                }
+
+                // Haptic when pin lands (0.4s 後)
+                try? await Task.sleep(for: .seconds(0.4))
+                HapticManager.impact(.medium)
             }
 
-            // Text fades in with delay
-            withAnimation(
-                .easeIn(duration: 0.4)
-                .delay(0.4)
-            ) {
-                textOpacity = 1
-            }
-
-            // Haptic when pin lands (0.6s 後)
-            try? await Task.sleep(for: .seconds(0.6))
-            HapticManager.impact(.medium)
-
-            // Transition to main content (0.6s + 1.6s = 2.2s after start)
-            try? await Task.sleep(for: .seconds(1.6))
+            // Transition to main content。フェード (0.3s) を含めて 1 秒以内に収める
+            try? await Task.sleep(for: .seconds(reduceMotion ? 0.7 : 0.3))
             showSplash = false
         }
     }

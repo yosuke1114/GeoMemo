@@ -10,6 +10,7 @@ import CloudKit
 struct ListTabView: View {
     let memos: [GeoMemo]
     @Environment(\.modelContext) private var modelContext
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     @ObservedObject private var locationManager = LocationManager.shared
     @State private var selectedTab: FilterTab = .all
@@ -117,7 +118,7 @@ struct ListTabView: View {
                     .clipShape(RoundedRectangle(cornerRadius: 10))
                     .padding(.horizontal, 16)
                     .padding(.vertical, 8)
-                    .transition(.opacity.combined(with: .move(edge: .top)))
+                    .transition(reduceMotion ? .opacity : .opacity.combined(with: .move(edge: .top)))
                 }
 
                 switch ListContentState.resolve(ownMemoCount: memos.count,
@@ -351,7 +352,7 @@ struct ListTabView: View {
                 .padding(.horizontal, 16)
                 .padding(.vertical, 10)
                 .background(Brand.secondaryBackground)
-                .transition(.opacity.combined(with: .move(edge: .top)))
+                .transition(reduceMotion ? .opacity : .opacity.combined(with: .move(edge: .top)))
             }
         }
         .background(Brand.background)
@@ -427,7 +428,7 @@ struct ListTabView: View {
         } ?? true
         return memoList(for: selectedTab)
             .id(selectedTab)
-            .transition(.asymmetric(
+            .transition(reduceMotion ? .opacity : .asymmetric(
                 insertion: .move(edge: isForward ? .trailing : .leading).combined(with: .opacity),
                 removal:   .move(edge: isForward ? .leading  : .trailing).combined(with: .opacity)
             ))
@@ -494,7 +495,7 @@ struct ListTabView: View {
                     .listRowSeparator(.visible, edges: .bottom)
                     .listRowSeparatorTint(Brand.primaryText.opacity(0.1))
                     .listRowBackground(Brand.background)
-                    .transition(.asymmetric(
+                    .transition(reduceMotion ? .opacity : .asymmetric(
                         insertion: .move(edge: .trailing).combined(with: .opacity),
                         removal:   .move(edge: .leading).combined(with: .opacity)
                     ))
