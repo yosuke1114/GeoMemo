@@ -48,6 +48,12 @@ struct SettingsView: View {
     @AppStorage("mapStyle") private var mapStyleRaw: String = GeoMapStyle.mono.rawValue
 
     @Environment(CloudSyncMonitor.self) private var syncMonitor
+    @ObservedObject private var store = StoreKitManager.shared
+    @State private var showPaywall = false
+    @State private var isRestoring = false
+
+    /// 公開済みのプライバシーポリシー (docs/privacy.html を GitHub Pages で公開したもの)。
+    private static let privacyPolicyURL = URL(string: "https://yosuke1114.github.io/GeoMemo/privacy.html")!
 
     @State private var locationStatus: String = String(localized: "Checking...")
     @State private var notificationStatus: String = String(localized: "Checking...")
@@ -289,6 +295,50 @@ struct SettingsView: View {
                 }
             }
 
+            // MARK: - GEOMEMO PRO
+            Section {
+                LabeledContent {
+                    Text(store.isPro
+                         ? String(localized: "有効")
+                         : String(localized: "無料プラン"))
+                        .foregroundColor(Brand.secondaryText)
+                } label: {
+                    Text(String(localized: "ステータス"))
+                        .foregroundColor(Brand.primaryText)
+                }
+
+                if !store.isPro {
+                    Button {
+                        showPaywall = true
+                    } label: {
+                        HStack {
+                            Text(String(localized: "Upgrade to Pro"))
+                                .foregroundColor(Brand.blue)
+                            Spacer()
+                            Image("ph-caret-right-bold")
+                                .resizable()
+                                .frame(width: 12, height: 12)
+                                .foregroundColor(Brand.secondaryText)
+                                .accessibilityHidden(true)
+                        }
+                    }
+                }
+
+                Button {
+                    isRestoring = true
+                    Task {
+                        await store.restore()
+                        isRestoring = false
+                    }
+                } label: {
+                    Text(String(localized: "Restore Purchase"))
+                        .foregroundColor(Brand.primaryText)
+                }
+                .disabled(isRestoring || store.purchaseInProgress)
+            } header: {
+                Text("GEOMEMO PRO")
+            }
+
             // MARK: - ABOUT
             Section {
                 LabeledContent {
@@ -305,6 +355,18 @@ struct SettingsView: View {
                     Text("Licenses")
                         .foregroundColor(Brand.primaryText)
                 }
+
+                Link(destination: Self.privacyPolicyURL) {
+                    HStack {
+                        Text(String(localized: "プライバシーポリシー"))
+                            .foregroundColor(Brand.primaryText)
+                        Spacer()
+                        Image(systemName: "arrow.up.right.square")
+                            .font(.footnote)
+                            .foregroundColor(Brand.secondaryText)
+                            .accessibilityHidden(true)
+                    }
+                }
             } header: {
                 Text("ABOUT")
             }
@@ -312,6 +374,9 @@ struct SettingsView: View {
         .listStyle(.insetGrouped)
         .scrollContentBackground(.hidden)
         .background(Brand.tertiaryBackground)
+        .sheet(isPresented: $showPaywall) {
+            PaywallView()
+        }
         .navigationTitle("SETTINGS")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
