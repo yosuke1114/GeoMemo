@@ -68,9 +68,11 @@ struct MapTabView: View {
         }
         .animation(.easeInOut(duration: 0.25), value: isSearching)
         .sheet(item: $mapSelectedReceived) { shared in
-            ReceivedSharedMemoDetailView(shared: shared) {
-                deleteReceivedSharedMemo(shared, in: modelContext)
-            }
+            ReceivedSharedMemoDetailView(
+                shared: shared,
+                onDelete: { deleteReceivedSharedMemo(shared, in: modelContext) },
+                onComplete: { completeReceivedSharedMemo(shared, in: modelContext) }
+            )
         }
         .sheet(item: $activeSheet, onDismiss: handleSheetDismiss) { sheet in
             sheetContent(for: sheet)

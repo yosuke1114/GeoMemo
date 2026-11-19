@@ -8,6 +8,8 @@ struct ReceivedSharedMemoDetailView: View {
     let shared: SharedMemo
     /// 削除が確定したときに呼ぶ (呼び出し側でローカル削除と共有解除を行う)。
     var onDelete: (() -> Void)? = nil
+    /// 「完了にする」で呼ぶ (リスト行の完了と同じ処理)。到着済みのときだけボタンを出す。
+    var onComplete: (() -> Void)? = nil
     @State private var confirmingDelete = false
 
     private var coordinate: CLLocationCoordinate2D { shared.memoCoordinate }
@@ -39,6 +41,29 @@ struct ReceivedSharedMemoDetailView: View {
                         Text(shared.memoLocationName)
                             .font(.subheadline)
                             .foregroundStyle(Brand.secondaryText)
+                    }
+
+                    if shared.status == .active || shared.status == .fired {
+                        Text(String(format: String(localized: "この場所に着くと、依頼した人（%@）に通知されます。伝わるのは到着と完了だけで、現在地は共有されません。"),
+                                    shared.requesterName))
+                            .font(.footnote)
+                            .foregroundStyle(Brand.secondaryText)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                    }
+
+                    if shared.status == .fired, let onComplete {
+                        Button {
+                            HapticManager.notification(.success)
+                            onComplete()
+                        } label: {
+                            Text(String(localized: "完了にする"))
+                                .font(.body.weight(.semibold))
+                                .foregroundStyle(.white)
+                                .frame(maxWidth: .infinity, minHeight: 44)
+                                .background(Brand.blue)
+                                .clipShape(RoundedRectangle(cornerRadius: 12))
+                        }
+                        .buttonStyle(.plain)
                     }
 
                     if !note.isEmpty {

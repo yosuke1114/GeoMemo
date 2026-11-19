@@ -28,6 +28,7 @@ struct ListTabView: View {
 
     @State private var showDoneSection: Bool = false
     @State private var selectedReceived: SharedMemo?
+    @State private var pendingDeleteReceived: SharedMemo?
     @State private var showColorFilter: Bool = false
     @State private var selectedColorIndex: Int? = nil
     @State private var isListSearching = false
@@ -119,7 +120,9 @@ struct ListTabView: View {
                     .transition(.opacity.combined(with: .move(edge: .top)))
                 }
 
-                if memos.isEmpty {
+                switch ListContentState.resolve(ownMemoCount: memos.count,
+                                                receivedCount: receivedActiveMemos.count) {
+                case .empty:
                     Spacer()
                     VStack(spacing: 16) {
                         Image("ph-map-trifold-thin")
@@ -136,7 +139,10 @@ struct ListTabView: View {
                             .padding(.horizontal, 32)
                     }
                     Spacer()
-                } else {
+                case .receivedOnly:
+                    // 自分のメモが 0 件でも、受信した依頼は見えるようにする。
+                    memoList(for: .all)
+                case .memos:
                     tabBar
                     pageContent
                 }
@@ -144,11 +150,29 @@ struct ListTabView: View {
             .background(Brand.background)
             .navigationBarHidden(true)
             .sheet(item: $selectedReceived) { shared in
-                ReceivedSharedMemoDetailView(shared: shared) {
-                    deleteReceivedSharedMemo(shared, in: modelContext)
-                }
+                ReceivedSharedMemoDetailView(
+                    shared: shared,
+                    onDelete: { deleteReceivedSharedMemo(shared, in: modelContext) },
+                    onComplete: { completeReceivedSharedMemo(shared, in: modelContext) }
+                )
             }
             .animation(.easeInOut(duration: 0.2), value: isListSearching)
+            .confirmationDialog(
+                String(localized: "この依頼を削除しますか？"),
+                isPresented: Binding(
+                    get: { pendingDeleteReceived != nil },
+                    set: { if !$0 { pendingDeleteReceived = nil } }
+                ),
+                titleVisibility: .visible,
+                presenting: pendingDeleteReceived
+            ) { shared in
+                Button(String(localized: "削除"), role: .destructive) {
+                    deleteReceivedSharedMemo(shared, in: modelContext)
+                }
+                Button(String(localized: "キャンセル"), role: .cancel) {}
+            } message: { _ in
+                Text(String(localized: "この端末から削除し、共有から抜けます。依頼した人の側には残ります。"))
+            }
         }
         .onChange(of: intentShowFavorites) { _, newValue in
             if newValue {
@@ -396,7 +420,7 @@ struct ListTabView: View {
     @ViewBuilder
     private func memoList(for tab: FilterTab) -> some View {
         let tabMemos = memos(for: tab)
-        if tabMemos.isEmpty && doneMemos.isEmpty {
+        if tabMemos.isEmpty && doneMemos.isEmpty && !(tab == .all && !receivedActiveMemos.isEmpty) {
             VStack(spacing: 12) {
                 Spacer()
                 Image(systemName: tab == .favorites ? "heart" : "tray")
@@ -421,7 +445,7 @@ struct ListTabView: View {
                                 .swipeActions(edge: .trailing, allowsFullSwipe: true) {
                                     Button(role: .destructive) {
                                         HapticManager.notification(.warning)
-                                        deleteReceivedSharedMemo(shared, in: modelContext)
+                                        pendingDeleteReceived = shared
                                     } label: {
                                         Label(String(localized: "削除"), systemImage: "trash")
                                     }
@@ -577,7 +601,7 @@ struct ListTabView: View {
             if shared.status == .fired {
                 Button {
                     HapticManager.notification(.success)
-                    completeSharedMemo(shared)
+                    completeReceivedSharedMemo(shared, in: modelContext)
                 } label: {
                     Text(String(localized: "完了"))
                         .font(.footnote.weight(.semibold))
@@ -588,25 +612,6 @@ struct ListTabView: View {
                         .clipShape(Capsule())
                 }
                 .buttonStyle(.plain)
-            }
-        }
-    }
-
-    private func completeSharedMemo(_ shared: SharedMemo) {
-        let now = Date()
-        shared.status      = .completed
-        shared.completedAt = now
-        LocationManager.shared.stopMonitoring(memoID: shared.geofenceIdentifier)
-        try? modelContext.save()
-        let recordID = shared.cloudKitRecordID
-        let owner = shared.zoneOwnerName
-        Task {
-            do {
-                try await CKShareService.shared.updateStatus(recordID: recordID, status: .completed, date: now)
-            } catch {
-                PendingEventQueue.shared.enqueue(
-                    .completed(ckRecordName: shared.ckRecordName, zoneOwnerName: owner, completedAt: now)
-                )
             }
         }
     }

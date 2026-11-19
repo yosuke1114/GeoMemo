@@ -377,3 +377,26 @@ func deleteReceivedSharedMemo(_ shared: SharedMemo, in context: ModelContext) {
         }
     }
 }
+
+/// 受信した依頼を完了にする (リスト行・詳細画面で共通)。
+/// 位置監視を止め、依頼者へ完了を送る。送れなければ未送信キューに積む。
+@MainActor
+func completeReceivedSharedMemo(_ shared: SharedMemo, in context: ModelContext) {
+    let now = Date()
+    shared.status      = .completed
+    shared.completedAt = now
+    LocationManager.shared.stopMonitoring(memoID: shared.geofenceIdentifier)
+    try? context.save()
+    let recordID = shared.cloudKitRecordID
+    let owner = shared.zoneOwnerName
+    let recordName = shared.ckRecordName
+    Task {
+        do {
+            try await CKShareService.shared.updateStatus(recordID: recordID, status: .completed, date: now)
+        } catch {
+            PendingEventQueue.shared.enqueue(
+                .completed(ckRecordName: recordName, zoneOwnerName: owner, completedAt: now)
+            )
+        }
+    }
+}
