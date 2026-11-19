@@ -182,6 +182,10 @@ struct ContentView: View {
                 deepLinkMemoID = id
             }
         }
+        .onReceive(NotificationCenter.default.publisher(for: .focusSharedMemoOnMap)) { _ in
+            // 地図で場所を見せるため compact ではリストを閉じる。
+            if !isSideBySide { showList = false }
+        }
         .onReceive(NotificationCenter.default.publisher(for: .showGeoMemoFavorites)) { _ in
             showList = true
             intentShowFavorites = true
@@ -740,6 +744,18 @@ struct MapTabView: View {
             // メモ追加/削除で pass-through 監視対象も更新する。
             locationManager.updatePassMemos(memos)
         }
+        .onReceive(NotificationCenter.default.publisher(for: .focusSharedMemoOnMap)) { notification in
+            guard let id = notification.object as? UUID,
+                  let shared = mapSharedMemos.first(where: { $0.id == id }) else { return }
+            let span = max(shared.memoRadius * 6, 600)
+            withAnimation {
+                cameraPosition = .region(MKCoordinateRegion(
+                    center: shared.memoCoordinate,
+                    latitudinalMeters: span,
+                    longitudinalMeters: span
+                ))
+            }
+        }
         .onChange(of: deepLinkMemoID) { _, newID in
             guard let id = newID else { return }
             deepLinkMemoID = nil
@@ -851,7 +867,12 @@ struct MapTabView: View {
                     }
                 }
                 
-                // 受信した依頼 (他の人から届いた場所メモ)
+                // 受信した依頼 (他の人から届いた場所メモ): 範囲の円 + ピン
+                ForEach(receivedPins) { shared in
+                    MapCircle(center: shared.memoCoordinate, radius: shared.memoRadius)
+                        .foregroundStyle(Brand.blue.opacity(0.12))
+                        .stroke(Brand.blue.opacity(0.6), lineWidth: 1.5)
+                }
                 ForEach(receivedPins) { shared in
                     Annotation("", coordinate: shared.memoCoordinate) {
                         ZStack {
@@ -1240,7 +1261,6 @@ struct ListTabView: View {
     }
 
     @State private var showDoneSection: Bool = false
-    @State private var selectedReceived: SharedMemo?
     @State private var showColorFilter: Bool = false
     @State private var selectedColorIndex: Int? = nil
     @State private var isListSearching = false
@@ -1356,9 +1376,6 @@ struct ListTabView: View {
             }
             .background(Brand.background)
             .navigationBarHidden(true)
-            .sheet(item: $selectedReceived) { shared in
-                ReceivedSharedMemoDetailView(shared: shared)
-            }
             .animation(.easeInOut(duration: 0.2), value: isListSearching)
         }
         .onChange(of: intentShowFavorites) { _, newValue in
@@ -1628,7 +1645,9 @@ struct ListTabView: View {
                         ForEach(receivedActiveMemos) { shared in
                             receivedMemoRow(shared)
                                 .contentShape(Rectangle())
-                                .onTapGesture { selectedReceived = shared }
+                                .onTapGesture {
+                                    NotificationCenter.default.post(name: .focusSharedMemoOnMap, object: shared.id)
+                                }
                                 .accessibilityAddTraits(.isButton)
                                 .listRowInsets(EdgeInsets(top: 12, leading: 20, bottom: 12, trailing: 20))
                                 .listRowSeparator(.visible, edges: .bottom)
