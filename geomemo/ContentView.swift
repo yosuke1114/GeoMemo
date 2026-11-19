@@ -990,7 +990,11 @@ struct MapTabView: View {
                         .stroke(Brand.border, lineWidth: 2)
                 )
             }
-            .containerRelativeFrame(.horizontal) { w, _ in w * 0.8 }
+            // containerRelativeFrame はウインドウ幅基準になり、2 ペイン時にマップペインを
+            // 押し広げてしまうため、親ペイン幅に追従する余白 + 上限幅で決める
+            // （iPhone 402pt 幅で従来の 80% ≒ 322pt と同等）。
+            .frame(maxWidth: 480)
+            .padding(.horizontal, 40)
             .padding(.bottom, 16)
         }
     }
