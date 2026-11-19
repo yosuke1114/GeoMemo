@@ -184,35 +184,41 @@ class NotificationManager: NSObject, ObservableObject {
 // MARK: - UNUserNotificationCenterDelegate
 
 extension NotificationManager: UNUserNotificationCenterDelegate {
+    // UNUserNotificationCenter はデリゲートを main 以外のキューから呼ぶことがある。
+    // 完了ハンドラ版を MainActor 隔離で実装すると Swift 6 の実行時チェックで落ちるため、
+    // async 版を使い、MainActor への移動はランタイムに任せる。
+
     /// フォアグラウンド中も通知バナーを表示
-    func userNotificationCenter(
+    nonisolated func userNotificationCenter(
         _ center: UNUserNotificationCenter,
-        willPresent notification: UNNotification,
-        withCompletionHandler completionHandler: @escaping (UNNotificationPresentationOptions) -> Void
-    ) {
-        completionHandler([.banner, .sound])
+        willPresent notification: UNNotification
+    ) async -> UNNotificationPresentationOptions {
+        [.banner, .sound]
     }
 
     /// 通知アクションのハンドリング
-    func userNotificationCenter(
+    nonisolated func userNotificationCenter(
         _ center: UNUserNotificationCenter,
-        didReceive response: UNNotificationResponse,
-        withCompletionHandler completionHandler: @escaping () -> Void
-    ) {
+        didReceive response: UNNotificationResponse
+    ) async {
         let userInfo = response.notification.request.content.userInfo
         let memoID   = userInfo["memoID"]  as? String ?? ""
         let title    = userInfo["title"]   as? String ?? ""
         let body     = userInfo["body"]    as? String ?? ""
+        let action   = response.actionIdentifier
+        await handleNotificationAction(action, memoID: memoID, title: title, body: body)
+    }
 
-        switch response.actionIdentifier {
+    private func handleNotificationAction(_ action: String, memoID: String, title: String, body: String) async {
+        switch action {
         case Self.actionDone:
             NotificationCenter.default.post(name: .geoMemoMarkDone, object: memoID)
 
         case Self.actionSnooze5:
-            Task { await scheduleSnooze(title: title, body: body, memoID: memoID, minutes: 5) }
+            await scheduleSnooze(title: title, body: body, memoID: memoID, minutes: 5)
 
         case Self.actionSnooze30:
-            Task { await scheduleSnooze(title: title, body: body, memoID: memoID, minutes: 30) }
+            await scheduleSnooze(title: title, body: body, memoID: memoID, minutes: 30)
 
         default:
             // 通知タップ → アプリをフォアグラウンドに
@@ -220,7 +226,5 @@ extension NotificationManager: UNUserNotificationCenterDelegate {
                 NotificationCenter.default.post(name: .openGeoMemo, object: uuid)
             }
         }
-
-        completionHandler()
     }
 }

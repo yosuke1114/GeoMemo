@@ -111,8 +111,8 @@ enum GeoMemoStore {
 // MARK: - App Entity
 
 struct GeoMemoEntity: AppEntity, IndexedEntity {
-    static var defaultQuery = GeoMemoEntityQuery()
-    static var typeDisplayRepresentation: TypeDisplayRepresentation = "GeoMemo"
+    static let defaultQuery = GeoMemoEntityQuery()
+    static let typeDisplayRepresentation: TypeDisplayRepresentation = "GeoMemo"
 
     var id: UUID
     var title: String

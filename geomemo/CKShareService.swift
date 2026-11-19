@@ -157,16 +157,18 @@ final class CKShareService {
         // 受信側の依頼が active のまま残り、ジオフェンス監視も止まらない。
         // 条件は従来どおり status フィールドだけを使う（CloudKit の queryable インデックスを変えない）。
         let allStatuses = [ShareStatus.active, .fired, .completed, .cancelled].map(\.rawValue)
-        let predicate = NSPredicate(format: "status IN %@", allStatuses)
         return await withTaskGroup(of: [SharedMemoCKData].self) { group in
             for zone in zones {
+                let zoneID = zone.zoneID
                 group.addTask {
                     do {
+                        // NSPredicate は Sendable でないため子タスク内で組み立てる
+                        let predicate = NSPredicate(format: "status IN %@", allStatuses)
                         let query = CKQuery(recordType: Self.recordType, predicate: predicate)
-                        return try await self.fetchAll(database: self.sharedDB, query: query, zoneID: zone.zoneID, isMyRequest: false)
+                        return try await self.fetchAll(database: self.sharedDB, query: query, zoneID: zoneID, isMyRequest: false)
                     } catch {
                         // 個別ゾーンの失敗は無視して継続。デバッグ目的のみログ。
-                        print("[CKShareService] zone \(zone.zoneID) fetch failed: \(error)")
+                        print("[CKShareService] zone \(zoneID) fetch failed: \(error)")
                         return []
                     }
                 }
@@ -266,7 +268,8 @@ final class CKShareService {
         // 発火し、continuation を 2 回 resume すると fatal trap になる。
         // acceptSharesResultBlock 側に集約する（per-share の失敗もここに伝わる）。
         try await withCheckedThrowingContinuation { (cont: CheckedContinuation<Void, Error>) in
-            op.acceptSharesResultBlock = { result in
+            // CloudKit の内部キューで呼ばれるため @Sendable（MainActor 隔離を継承させない）
+            op.acceptSharesResultBlock = { @Sendable result in
                 switch result {
                 case .success: cont.resume(returning: ())
                 case .failure(let error): cont.resume(throwing: error)

@@ -4,7 +4,7 @@ import SwiftData
 // MARK: - Schema V1（タグ追加前）
 
 enum GeoMemoSchemaV1: VersionedSchema {
-    static var versionIdentifier = Schema.Version(1, 0, 0)
+    static let versionIdentifier = Schema.Version(1, 0, 0)
     static var models: [any PersistentModel.Type] { [GeoMemo.self] }
 
     @Model final class GeoMemo {
@@ -35,7 +35,7 @@ enum GeoMemoSchemaV1: VersionedSchema {
 // MARK: - Schema V2（タグ追加後）
 
 enum GeoMemoSchemaV2: VersionedSchema {
-    static var versionIdentifier = Schema.Version(2, 0, 0)
+    static let versionIdentifier = Schema.Version(2, 0, 0)
     static var models: [any PersistentModel.Type] { [GeoMemo.self] }
 
     @Model final class GeoMemo {
@@ -68,7 +68,7 @@ enum GeoMemoSchemaV2: VersionedSchema {
 // MARK: - Schema V3（notifyOnPass 追加）
 
 enum GeoMemoSchemaV3: VersionedSchema {
-    static var versionIdentifier = Schema.Version(3, 0, 0)
+    static let versionIdentifier = Schema.Version(3, 0, 0)
     static var models: [any PersistentModel.Type] { [GeoMemo.self] }
 
     @Model final class GeoMemo {
@@ -104,7 +104,7 @@ enum GeoMemoSchemaV3: VersionedSchema {
 // MARK: - Schema V4（isListMode / listItemsData 追加）
 
 enum GeoMemoSchemaV4: VersionedSchema {
-    static var versionIdentifier = Schema.Version(4, 0, 0)
+    static let versionIdentifier = Schema.Version(4, 0, 0)
     static var models: [any PersistentModel.Type] { [GeoMemo.self] }
 
     @Model final class GeoMemo {
@@ -142,7 +142,7 @@ enum GeoMemoSchemaV4: VersionedSchema {
 // MARK: - Schema V5（dwellMinutes 追加）
 
 enum GeoMemoSchemaV5: VersionedSchema {
-    static var versionIdentifier = Schema.Version(5, 0, 0)
+    static let versionIdentifier = Schema.Version(5, 0, 0)
     static var models: [any PersistentModel.Type] { [GeoMemo.self] }
 
     @Model final class GeoMemo {
@@ -181,7 +181,7 @@ enum GeoMemoSchemaV5: VersionedSchema {
 // MARK: - Schema V6（FavoritePlace 追加）
 
 enum GeoMemoSchemaV6: VersionedSchema {
-    static var versionIdentifier = Schema.Version(6, 0, 0)
+    static let versionIdentifier = Schema.Version(6, 0, 0)
     static var models: [any PersistentModel.Type] {
         [GeoMemoSchemaV5.GeoMemo.self, FavoritePlace.self]
     }
@@ -202,7 +202,7 @@ enum GeoMemoSchemaV6: VersionedSchema {
 // MARK: - Schema V7（UserProfile / FriendConnection 追加）
 
 enum GeoMemoSchemaV7: VersionedSchema {
-    static var versionIdentifier = Schema.Version(7, 0, 0)
+    static let versionIdentifier = Schema.Version(7, 0, 0)
     static var models: [any PersistentModel.Type] {
         [GeoMemoSchemaV5.GeoMemo.self,
          GeoMemoSchemaV6.FavoritePlace.self,
@@ -233,7 +233,7 @@ enum GeoMemoSchemaV7: VersionedSchema {
 // MARK: - Schema V8（SharedMemo 追加）
 
 enum GeoMemoSchemaV8: VersionedSchema {
-    static var versionIdentifier = Schema.Version(8, 0, 0)
+    static let versionIdentifier = Schema.Version(8, 0, 0)
     static var models: [any PersistentModel.Type] {
         [GeoMemoSchemaV5.GeoMemo.self,
          GeoMemoSchemaV6.FavoritePlace.self,

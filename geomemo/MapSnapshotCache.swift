@@ -6,7 +6,7 @@ actor MapSnapshotCache {
 
     private let cache = NSCache<NSString, UIImage>()
     /// 同一キーの進行中リクエストを共有し、重複生成を防ぐ
-    private var inFlight: [NSString: Task<UIImage?, Never>] = [:]
+    private var inFlight: [String: Task<UIImage?, Never>] = [:]
     /// 初回 snapshot 時に main から取得して以降は再利用。display scale はセッション中に変わらない。
     private var cachedDisplayScale: CGFloat?
 
@@ -22,14 +22,15 @@ actor MapSnapshotCache {
         mapStyleRaw: Int,
         size: CGSize = CGSize(width: 112, height: 112)
     ) async -> UIImage? {
-        let key = "\(latitude)_\(longitude)_\(mapStyleRaw)" as NSString
+        let keyString = "\(latitude)_\(longitude)_\(mapStyleRaw)"
+        let key = keyString as NSString
 
         if let cached = cache.object(forKey: key) {
             return cached
         }
 
         // 同じキーのリクエストが既に進行中なら結果を共有して待つ
-        if let existing = inFlight[key] {
+        if let existing = inFlight[keyString] {
             return await existing.value
         }
 
@@ -87,16 +88,17 @@ actor MapSnapshotCache {
                     strokePath.stroke()
                 }
 
-                await MapSnapshotCache.shared.store(image, forKey: key)
                 return image
             } catch {
                 return nil
             }
         }
 
-        inFlight[key] = task
+        inFlight[keyString] = task
         let result = await task.value
-        inFlight.removeValue(forKey: key)
+        inFlight.removeValue(forKey: keyString)
+        // キャッシュへの格納はアクター上で行う（タスク内から NSString キーを渡さない）
+        if let result { store(result, forKey: key) }
         return result
     }
 
