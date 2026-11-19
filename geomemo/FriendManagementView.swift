@@ -84,7 +84,7 @@ struct FriendManagementView: View {
         VStack(spacing: 16) {
             Image(systemName: "icloud.slash")
                 .font(.system(size: emptyStateIconSize))
-                .foregroundStyle(Brand.secondaryText.opacity(0.5))
+                .foregroundStyle(Brand.secondaryText)
                 .accessibilityHidden(true)
             Text(String(localized: "iCloudサインインが必要です"))
                 .font(.body.weight(.semibold))
@@ -99,7 +99,7 @@ struct FriendManagementView: View {
             } label: {
                 Text(String(localized: "設定を開く"))
                     .font(.subheadline.weight(.semibold))
-                    .foregroundStyle(.white)
+                    .foregroundStyle(Brand.onAccent)
                     .padding(.horizontal, 24)
                     .padding(.vertical, 12)
                     .frame(minWidth: 160, minHeight: 44)
@@ -134,7 +134,7 @@ struct FriendManagementView: View {
             } label: {
                 Text(String(localized: "プロフィールを設定"))
                     .font(.subheadline.weight(.semibold))
-                    .foregroundStyle(.white)
+                    .foregroundStyle(Brand.onAccent)
                     .padding(.horizontal, 24)
                     .padding(.vertical, 12)
                     .frame(minWidth: 200, minHeight: 44)
@@ -261,7 +261,7 @@ struct FriendManagementView: View {
         VStack(spacing: 12) {
             Image(systemName: "person.2.slash")
                 .font(.title)
-                .foregroundStyle(Brand.secondaryText.opacity(0.4))
+                .foregroundStyle(Brand.secondaryText)
                 .padding(.top, 24)
                 .accessibilityHidden(true)
             Text(String(localized: "まだフレンドがいません"))

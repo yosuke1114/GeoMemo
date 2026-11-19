@@ -228,7 +228,7 @@ struct SettingsView: View {
                     Text("Use Export to share a snapshot or migrate to a non-iCloud device.")
                 } else {
                     Text("iCloud sync is OFF. Export a backup to transfer data when switching devices.")
-                        .foregroundColor(.orange)
+                        .foregroundColor(Brand.warning)
                 }
             }
 
@@ -258,7 +258,7 @@ struct SettingsView: View {
                         iCloudStatusBadge
                     } else {
                         Text("Disabled")
-                            .foregroundColor(.orange)
+                            .foregroundColor(Brand.warning)
                     }
                 } label: {
                     Text("iCloud Sync")
@@ -278,10 +278,10 @@ struct SettingsView: View {
                 if case .failed(let msg) = syncMonitor.state {
                     HStack(alignment: .top, spacing: 8) {
                         Image(systemName: "exclamationmark.triangle.fill")
-                            .foregroundColor(.orange)
+                            .foregroundColor(Brand.warning)
                         Text(msg)
                             .font(.caption)
-                            .foregroundColor(.orange)
+                            .foregroundColor(Brand.warning)
                     }
                 }
             } header: {
@@ -291,7 +291,7 @@ struct SettingsView: View {
                     Text("Memos sync automatically across all devices signed in to the same Apple ID.")
                 } else {
                     Text("Sign in to iCloud in iOS Settings to enable automatic sync.")
-                        .foregroundColor(.orange)
+                        .foregroundColor(Brand.warning)
                 }
             }
 
@@ -477,7 +477,7 @@ struct SettingsView: View {
             }
         case .failed:
             Label("Sync error", systemImage: "exclamationmark.icloud")
-                .foregroundColor(.orange)
+                .foregroundColor(Brand.warning)
                 .font(.caption)
         case .idle:
             Label("Enabled", systemImage: "checkmark.icloud.fill")

@@ -241,7 +241,7 @@ struct MapTabView: View {
                                 .frame(width: 30, height: 30)
                             Image(systemName: "person.2.fill")
                                 .font(.system(size: 13, weight: .semibold))
-                                .foregroundStyle(.white)
+                                .foregroundStyle(Brand.onAccent)
                         }
                         .shadow(color: .black.opacity(0.3), radius: 2, x: 0, y: 1)
                         .frame(width: 44, height: 44)

@@ -68,7 +68,7 @@ struct FavoritePlacesView: View {
             } label: {
                 Text(String(localized: "Add Place"))
                     .font(.subheadline.weight(.semibold))
-                    .foregroundStyle(.white)
+                    .foregroundStyle(Brand.onAccent)
                     .padding(.horizontal, 24)
                     .padding(.vertical, 12)
                     .frame(minWidth: 160, minHeight: 44)

@@ -97,8 +97,23 @@ enum Brand {
 
     static let tertiaryText = Color(uiColor: UIColor { traits in
         traits.userInterfaceStyle == .dark
-            ? UIColor.white.withAlphaComponent(0.5)
-            : UIColor.black.withAlphaComponent(0.5)
+            ? UIColor.white.withAlphaComponent(0.6)
+            : UIColor.black.withAlphaComponent(0.6)
+    })
+
+    /// 警告・注意の文字色。システムのオレンジは白地で 2.2:1 しかないため、ライトでは濃いオレンジにする。
+    static let warning = Color(uiColor: UIColor { traits in
+        traits.userInterfaceStyle == .dark
+            ? UIColor(red: 0xFF/255.0, green: 0x9F/255.0, blue: 0x0A/255.0, alpha: 1)
+            : UIColor(red: 0xB2/255.0, green: 0x50/255.0, blue: 0x00/255.0, alpha: 1)
+    })
+
+    /// `Brand.blue` を背景にしたときの文字・アイコンの色。
+    /// ダークの `Brand.blue`（#7B79FF）は白文字だと 3.5:1 なので、濃色にして 4.5:1 以上を確保する。
+    static let onAccent = Color(uiColor: UIColor { traits in
+        traits.userInterfaceStyle == .dark
+            ? UIColor(red: 0x1A/255.0, green: 0x1A/255.0, blue: 0x1A/255.0, alpha: 1)
+            : .white
     })
 
     // Structural
@@ -168,7 +183,13 @@ enum MemoColor: Int, CaseIterable {
         switch self {
         case .blue:   return Brand.blue
         case .red:    return Color(hex: "E5484D")
-        case .amber:  return Color(hex: "E5A000")
+        case .amber:
+            // 白地のピンで 3:1 を確保するため、ライトでは少し濃くする
+            return Color(uiColor: UIColor { traits in
+                traits.userInterfaceStyle == .dark
+                    ? UIColor(red: 0xE5/255.0, green: 0xA0/255.0, blue: 0x00/255.0, alpha: 1)
+                    : UIColor(red: 0xC9/255.0, green: 0x85/255.0, blue: 0x00/255.0, alpha: 1)
+            })
         case .green:  return Color(hex: "30A46C")
         case .purple: return Color(hex: "8E4EC6")
         case .gray:

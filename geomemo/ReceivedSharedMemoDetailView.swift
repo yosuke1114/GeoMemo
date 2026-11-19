@@ -58,7 +58,7 @@ struct ReceivedSharedMemoDetailView: View {
                         } label: {
                             Text(String(localized: "完了にする"))
                                 .font(.body.weight(.semibold))
-                                .foregroundStyle(.white)
+                                .foregroundStyle(Brand.onAccent)
                                 .frame(maxWidth: .infinity, minHeight: 44)
                                 .background(Brand.blue)
                                 .clipShape(RoundedRectangle(cornerRadius: 12))

@@ -133,7 +133,7 @@ struct PaywallView: View {
                             } else {
                                 Text(String(localized: "Upgrade to Pro"))
                                     .font(.body.weight(.bold))
-                                    .foregroundStyle(.white)
+                                    .foregroundStyle(Brand.onAccent)
                             }
                         }
                         .frame(maxWidth: .infinity)

@@ -180,7 +180,7 @@ struct LocationPickerSheetV2: View {
             }) {
                 Text("SELECT", comment: "location picker confirm")
                     .font(.subheadline.weight(.semibold))
-                    .foregroundColor(.white)
+                    .foregroundColor(Brand.onAccent)
                     .padding(.horizontal, 18)
                     .padding(.vertical, 10)
                     .background(Brand.blue, in: Capsule())

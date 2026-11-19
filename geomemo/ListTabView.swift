@@ -128,10 +128,10 @@ struct ListTabView: View {
                         Image("ph-map-trifold-thin")
                             .resizable()
                             .frame(width: 48, height: 48)
-                            .foregroundColor(Brand.primaryText.opacity(0.45))
+                            .foregroundColor(Brand.secondaryText)
                         Text("No memos yet")
                             .font(.body.weight(.medium))
-                            .foregroundColor(Brand.primaryText.opacity(0.5))
+                            .foregroundColor(Brand.secondaryText)
                         Text("Tap the map to add a memo")
                             .font(.subheadline)
                             .foregroundColor(Brand.secondaryText)
@@ -441,12 +441,12 @@ struct ListTabView: View {
                 Spacer()
                 Image(systemName: tab == .favorites ? "heart" : "tray")
                     .font(.system(size: emptyTabIconSize))
-                    .foregroundColor(Brand.primaryText.opacity(0.2))
+                    .foregroundColor(Brand.secondaryText)
                 Text(tab == .favorites
                      ? String(localized: "No favorites yet")
                      : String(localized: "No matching memos"))
                     .font(.body.weight(.medium))
-                    .foregroundColor(Brand.primaryText.opacity(0.4))
+                    .foregroundColor(Brand.secondaryText)
                 Spacer()
             }
         } else {
@@ -592,7 +592,7 @@ struct ListTabView: View {
             Group {
                 if shared.status == .fired {
                     Image(systemName: "location.fill")
-                        .foregroundStyle(.orange)
+                        .foregroundStyle(Brand.warning)
                 } else {
                     Image(systemName: "clock")
                         .foregroundStyle(Brand.blue)
@@ -621,7 +621,7 @@ struct ListTabView: View {
                 } label: {
                     Text(String(localized: "完了"))
                         .font(.footnote.weight(.semibold))
-                        .foregroundStyle(.white)
+                        .foregroundStyle(Brand.onAccent)
                         .padding(.horizontal, 12)
                         .padding(.vertical, 6)
                         .background(Brand.blue)

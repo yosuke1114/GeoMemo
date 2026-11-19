@@ -153,7 +153,7 @@ struct OnboardingView: View {
         Button(action: action) {
             Text(title)
                 .font(.callout.weight(.semibold))
-                .foregroundColor(.white)
+                .foregroundColor(Brand.onAccent)
                 .frame(maxWidth: .infinity)
                 .frame(height: 52)
                 .background(Brand.blue)

@@ -105,7 +105,7 @@ struct WatchDashboardView: View {
     private var pendingBanner: some View {
         HStack(spacing: 10) {
             Image(systemName: "arrow.triangle.2.circlepath")
-                .foregroundStyle(.orange)
+                .foregroundStyle(Brand.warning)
                 .font(.footnote.weight(.semibold))
                 .accessibilityHidden(true)
             Text(String(localized: "未送信の更新が \(pendingCount) 件あります。通信が戻り次第再送します。"))
@@ -125,7 +125,7 @@ struct WatchDashboardView: View {
         VStack(spacing: 16) {
             Image(systemName: "eye.slash")
                 .font(.system(size: emptyStateIconSize))
-                .foregroundStyle(Brand.secondaryText.opacity(0.4))
+                .foregroundStyle(Brand.secondaryText)
                 .accessibilityHidden(true)
             Text(String(localized: "依頼中のメモはありません"))
                 .font(.body.weight(.semibold))
@@ -206,7 +206,7 @@ struct WatchDashboardView: View {
                 if isUnsent(shared) {
                     Text(String(localized: "未送信・送れたか確認できませんでした"))
                         .font(.caption.weight(.semibold))
-                        .foregroundStyle(.orange)
+                        .foregroundStyle(Brand.warning)
                 } else {
                     statusSubtitle(for: shared)
                         .font(.caption)
@@ -283,7 +283,7 @@ struct WatchDashboardView: View {
                 .foregroundStyle(Brand.blue)
         case .fired:
             Image(systemName: "location.fill")
-                .foregroundStyle(.orange)
+                .foregroundStyle(Brand.warning)
         case .completed:
             Image(systemName: "checkmark.circle.fill")
                 .foregroundStyle(.green)
@@ -295,7 +295,7 @@ struct WatchDashboardView: View {
 
     private func statusTitleColor(for status: ShareStatus) -> Color {
         switch status {
-        case .completed: return Brand.primaryText.opacity(0.5)
+        case .completed: return Brand.secondaryText
         case .cancelled: return Brand.secondaryText
         default: return Brand.primaryText
         }

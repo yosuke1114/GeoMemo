@@ -48,7 +48,7 @@ struct ClusterPinView: View {
                 .frame(width: 32, height: 32)
             Text("\(count)")
                 .font(.footnote.weight(.bold))
-                .foregroundColor(.white)
+                .foregroundColor(Brand.onAccent)
         }
         .overlay(
             Circle()

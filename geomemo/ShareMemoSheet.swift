@@ -498,7 +498,7 @@ struct UnverifiedFriendBadge: View {
     var body: some View {
         Text(String(localized: "未確認"))
             .font(.caption2.weight(.semibold))
-            .foregroundStyle(.orange)
+            .foregroundStyle(Brand.warning)
             .padding(.horizontal, 6)
             .padding(.vertical, 2)
             .background(Color.orange.opacity(0.12))
