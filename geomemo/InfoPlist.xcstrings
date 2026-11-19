@@ -1,0 +1,38 @@
+{
+  "sourceLanguage" : "en",
+  "strings" : {
+    "NSLocationAlwaysAndWhenInUseUsageDescription" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "GeoMemo uses your location in the background to notify you when you arrive at or leave a saved memo area, even when the app is closed. For requests shared with you, it also lets the person who sent the request know that you arrived."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "アプリを閉じていても、保存したメモの場所への到着・出発をお知らせするために、位置情報をバックグラウンドで使います。共有された依頼では、あなたが到着したことを依頼した人にも知らせます。"
+          }
+        }
+      }
+    },
+    "NSLocationWhenInUseUsageDescription" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "GeoMemo uses your location to show where you are on the map and to notify you when you approach a saved memo area."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "現在地を地図に表示し、保存したメモの場所に近づいたときにお知らせするために、位置情報を使います。"
+          }
+        }
+      }
+    }
+  },
+  "version" : "1.1"
+}
