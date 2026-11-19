@@ -8,6 +8,7 @@ struct ReceivedSharedMemoDetailView: View {
     let shared: SharedMemo
 
     private var coordinate: CLLocationCoordinate2D { shared.memoCoordinate }
+    private var note: String { SharedMemoNoteStore.note(for: shared.ckRecordName) }
 
     var body: some View {
         NavigationStack {
@@ -35,6 +36,17 @@ struct ReceivedSharedMemoDetailView: View {
                         Text(shared.memoLocationName)
                             .font(.subheadline)
                             .foregroundStyle(Brand.secondaryText)
+                    }
+
+                    if !note.isEmpty {
+                        Text(note)
+                            .font(.body)
+                            .foregroundStyle(Brand.primaryText)
+                            .textSelection(.enabled)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .padding(16)
+                            .background(Brand.surface)
+                            .clipShape(RoundedRectangle(cornerRadius: 12))
                     }
 
                     VStack(spacing: 0) {

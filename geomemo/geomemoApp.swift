@@ -79,8 +79,6 @@ struct AcceptedShareInfo {
 
 extension Notification.Name {
     static let didAcceptSharedMemo = Notification.Name("didAcceptSharedMemo")
-    /// 受信した依頼を地図上で表示する (object: SharedMemo.id の UUID)。
-    static let focusSharedMemoOnMap = Notification.Name("focusSharedMemoOnMap")
 }
 
 @main

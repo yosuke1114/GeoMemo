@@ -60,6 +60,7 @@ final class CKShareService {
 
         // 機密フィールドのみ encryptedValues に入れる（CK Dashboard でも復号できない）
         record.encryptedValues["memoTitle"]        = memo.title
+        record.encryptedValues["memoNote"]         = memo.note
         record.encryptedValues["memoLocationName"] = memo.locationName
         record.encryptedValues["memoLatitude"]     = memo.latitude
         record.encryptedValues["memoLongitude"]    = memo.longitude
@@ -220,6 +221,7 @@ final class CKShareService {
 struct SharedMemoCKData: Sendable {
     let ckRecordID: CKRecord.ID
     let memoTitle: String
+    let memoNote: String
     let memoLocationName: String
     let memoLatitude: Double
     let memoLongitude: Double
@@ -243,10 +245,12 @@ struct SharedMemoCKData: Sendable {
         memoDeadline: Date?, memoTimeWindowStart: Int?, memoTimeWindowEnd: Int?,
         requesterName: String, recipientRecordID: String, recipientName: String,
         autoComplete: Bool, status: ShareStatus,
-        firedAt: Date?, completedAt: Date?, createdAt: Date, isMyRequest: Bool
+        firedAt: Date?, completedAt: Date?, createdAt: Date, isMyRequest: Bool,
+        memoNote: String = ""
     ) {
         self.ckRecordID = ckRecordID
         self.memoTitle = memoTitle
+        self.memoNote = memoNote
         self.memoLocationName = memoLocationName
         self.memoLatitude = memoLatitude
         self.memoLongitude = memoLongitude
@@ -282,6 +286,8 @@ struct SharedMemoCKData: Sendable {
 
         self.ckRecordID          = record.recordID
         self.memoTitle           = title
+        // 本文は後から追加した項目。古い依頼レコードには無いので空文字にする。
+        self.memoNote            = record.encryptedValues["memoNote"] as? String ?? ""
         self.memoLocationName    = locName
         self.memoLatitude        = lat
         self.memoLongitude       = lon

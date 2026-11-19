@@ -340,6 +340,7 @@ struct ShareMemoSheet: View {
             autoComplete:        autoComplete,
             isMyRequest:         true
         )
+        SharedMemoNoteStore.setNote(memo.note, for: recordID.recordName)
         modelContext.insert(sharedMemo)
         try? modelContext.save()
     }
