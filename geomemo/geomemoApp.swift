@@ -15,6 +15,13 @@ import CloudKit
 // MARK: - CKShare Acceptance Delegate
 
 final class GeoMemoAppDelegate: NSObject, UIApplicationDelegate {
+    /// CloudKit の購読通知（依頼の到着・完了）を受け取るために APNs へ登録する。
+    func application(_ application: UIApplication,
+                     didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]? = nil) -> Bool {
+        application.registerForRemoteNotifications()
+        return true
+    }
+
     /// `application(_:userDidAcceptCloudKitShareWith:)` は iOS 26 で deprecated（UIScene ライフサイクルへ移行）。
     /// SwiftUI の WindowGroup に scene delegate を差し込み、共有受諾を scene 側で受け取る。
     func application(_ application: UIApplication,
