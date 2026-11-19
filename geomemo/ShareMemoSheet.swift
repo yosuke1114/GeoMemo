@@ -1,6 +1,7 @@
 import SwiftUI
 import SwiftData
 import CloudKit
+import os
 
 // MARK: - メモ依頼シート
 
@@ -15,21 +16,18 @@ struct ShareMemoSheet: View {
 
     private var myProfile: UserProfile? { profiles.first }
     private var acceptedFriends: [FriendConnection] {
-        connections.filter { $0.status == .accepted }
+        FriendConnection.deduplicated(connections.filter { $0.status == .accepted })
     }
 
     @State private var selectedFriend: FriendConnection?
-    /// フレンド以外へリンクで送る。フレンドは共有の受諾時にしか増えないため、
+    /// フレンド以外の相手を招待して送る。フレンドは共有の受諾時にしか増えないため、
     /// 最初の 1 人目はこの経路で送る (受け取った側で送り主がフレンド登録される)。
+    /// システムの共有シートで選んだ相手だけが参加できる（リンクを転送されても他人は開けない）。
     @State private var sendViaLink = false
     private var hasRecipient: Bool { selectedFriend != nil || sendViaLink }
     @State private var autoComplete: Bool = false
     @State private var isSending = false
     @State private var errorMessage: String?
-    @State private var shareWrapper: ShareWrapper?
-    /// 保存済み CKShare の URL。システムの共有シートで送る。
-    @State private var shareLinkItem: ShareLinkItem?
-    @State private var pendingSharedMemoRecordID: CKRecord.ID?
 
     var body: some View {
         NavigationStack {
@@ -77,29 +75,6 @@ struct ShareMemoSheet: View {
                 if acceptedFriends.isEmpty { sendViaLink = true }
             }
             .navigationBarTitleDisplayMode(.inline)
-            .sheet(item: $shareLinkItem, onDismiss: {
-                // 共有はこの時点でサーバに保存済み。送信先を選ばず閉じても
-                // リンクは有効なので、依頼として記録して閉じる。
-                dismiss()
-            }) { item in
-                ActivityShareSheet(items: [item.url])
-                    .presentationDetents([.medium, .large])
-            }
-            .sheet(item: $shareWrapper) { wrapper in
-                CloudSharingControllerSheet(
-                    share: wrapper.share,
-                    container: wrapper.container
-                ) { didShare in
-                    if didShare {
-                        saveLocalSharedMemo()
-                        HapticManager.notification(.success)
-                        dismiss()
-                    } else {
-                        // ユーザーがキャンセル → 作成したCKレコードもクリーンアップする
-                        cleanupCancelledShare()
-                    }
-                }
-            }
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button(String(localized: "キャンセル")) { dismiss() }
@@ -223,7 +198,7 @@ struct ShareMemoSheet: View {
                     Text(String(localized: "リンクで送る"))
                         .font(.body.weight(.semibold))
                         .foregroundStyle(Brand.primaryText)
-                    Text(String(localized: "メッセージなどで共有リンクを送ります"))
+                    Text(String(localized: "共有シートで選んだ相手だけが受け取れます"))
                         .font(.caption)
                         .foregroundStyle(Brand.secondaryText)
                 }
@@ -284,6 +259,10 @@ struct ShareMemoSheet: View {
 
     // MARK: - 送信
 
+    /// 依頼のレコードと非公開の共有を作り、システムの共有シートで送る。
+    /// - フレンド: 相手を参加者に加えた共有の URL を送る（その相手しか開けない）。
+    /// - 新しい相手（またはフレンドを参加者として引けなかったとき）: 共有シートで相手を招待する。
+    /// 共有シートを送らずに閉じたら、作ったレコードと共有を消す。
     private func send() {
         guard hasRecipient, let profile = myProfile else { return }
         let friend = selectedFriend
@@ -291,38 +270,56 @@ struct ShareMemoSheet: View {
         errorMessage = nil
 
         Task {
+            let service = CKShareService.shared
+            let prepared: CKShareService.PreparedShare
             do {
-                let (record, share) = try await CKShareService.shared.createSharedMemoShare(
+                prepared = try await service.createSharedMemoShare(
                     from: memo,
                     requesterName: profile.displayName,
-                    recipientRecordID: friend?.friendRecordID ?? "",
-                    recipientName: friend?.friendDisplayName ?? String(localized: "リンクで共有"),
+                    friendRecordName: friend?.friendRecordID,
+                    friendName: friend?.friendDisplayName,
                     autoComplete: autoComplete
                 )
-                pendingSharedMemoRecordID = record.recordID
-                isSending = false
-                if let url = share.url {
-                    // 保存済みの share を UICloudSharingController に渡すと「参加者の管理」
-                    // 表示になり、リンクのコピー等をしても完了コールバックが来ない。
-                    // URL が確定しているので、システムの共有シートで直接送る。
-                    saveLocalSharedMemo()
-                    HapticManager.notification(.success)
-                    shareLinkItem = ShareLinkItem(url: url)
-                } else {
-                    shareWrapper = ShareWrapper(share: share, container: CKShareService.shared.container)
-                }
             } catch {
+                errorMessage = String(localized: "送信に失敗しました。もう一度お試しください。")
+                isSending = false
+                return
+            }
+
+            let recordID = prepared.record.recordID
+            let shareID = prepared.share.recordID
+            let content: ShareActivityContent
+            if prepared.invitedFriend, let url = prepared.share.url {
+                content = .url(url)
+            } else {
+                content = .cloudKitInvite(prepared.share, service.container)
+            }
+            let recipient = prepared.invitedFriend ? friend : nil
+            let presented = ShareActivityPresenter.present(content) { completed in
+                isSending = false
+                if completed {
+                    saveLocalSharedMemo(recordID: recordID, profile: profile,
+                                        recipient: recipient, placeholderName: friend?.friendDisplayName)
+                    HapticManager.notification(.success)
+                    dismiss()
+                } else {
+                    discardUnsentShare(recordID: recordID, shareID: shareID)
+                }
+            }
+            if !presented {
+                discardUnsentShare(recordID: recordID, shareID: shareID)
                 errorMessage = String(localized: "送信に失敗しました。もう一度お試しください。")
                 isSending = false
             }
         }
     }
 
-    /// CloudSharingController で共有が完了した後、ローカルキャッシュへ保存。
-    private func saveLocalSharedMemo() {
-        guard let profile = myProfile,
-              let recordID = pendingSharedMemoRecordID else { return }
-        let friend = selectedFriend
+    /// 送信後、ローカルキャッシュへ保存する。
+    /// - Parameters:
+    ///   - recipient: 参加者として加えたフレンド。招待で送った場合は nil（相手が受け取ったら決まる）。
+    ///   - placeholderName: 受信者が決まるまで見守り画面に出す名前。
+    private func saveLocalSharedMemo(recordID: CKRecord.ID, profile: UserProfile,
+                                     recipient: FriendConnection?, placeholderName: String?) {
         let sharedMemo = SharedMemo(
             ckRecordName:        recordID.recordName,
             memoTitle:           memo.title,
@@ -335,8 +332,8 @@ struct ShareMemoSheet: View {
             memoTimeWindowEnd:   memo.timeWindowEnd,
             requesterRecordID:   profile.iCloudRecordID,
             requesterName:       profile.displayName,
-            recipientRecordID:   friend?.friendRecordID ?? "",
-            recipientName:       friend?.friendDisplayName ?? String(localized: "リンクで共有"),
+            recipientRecordID:   recipient?.friendRecordID ?? "",
+            recipientName:       recipient?.friendDisplayName ?? placeholderName ?? String(localized: "リンクで共有"),
             autoComplete:        autoComplete,
             isMyRequest:         true
         )
@@ -345,27 +342,15 @@ struct ShareMemoSheet: View {
         try? modelContext.save()
     }
 
-    /// CloudSharingController で「停止」を選んだ場合、サーバ側の record/share を削除。
-    private func cleanupCancelledShare() {
-        guard let recordID = pendingSharedMemoRecordID else { return }
+    /// 共有シートを送らずに閉じたら、サーバに作ったレコードと共有を消す。
+    private func discardUnsentShare(recordID: CKRecord.ID, shareID: CKRecord.ID) {
         Task {
-            _ = try? await CKShareService.shared.privateDB.deleteRecord(withID: recordID)
+            do {
+                try await CKShareService.shared.deleteUnsentShare(recordID: recordID, shareID: shareID)
+            } catch {
+                CKShareService.logger.error("unsent share cleanup failed: \(error.localizedDescription, privacy: .public)")
+            }
         }
     }
 }
 
-
-/// 共有シートに渡す CKShare URL。
-struct ShareLinkItem: Identifiable {
-    let url: URL
-    var id: String { url.absoluteString }
-}
-
-/// `UIActivityViewController` の SwiftUI ラッパー (メッセージ / AirDrop / コピー等)。
-struct ActivityShareSheet: UIViewControllerRepresentable {
-    let items: [Any]
-    func makeUIViewController(context: Context) -> UIActivityViewController {
-        UIActivityViewController(activityItems: items, applicationActivities: nil)
-    }
-    func updateUIViewController(_ uiViewController: UIActivityViewController, context: Context) {}
-}

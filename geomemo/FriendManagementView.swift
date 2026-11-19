@@ -12,7 +12,7 @@ struct FriendManagementView: View {
 
     private var myProfile: UserProfile? { profiles.first }
     private var acceptedFriends: [FriendConnection] {
-        connections.filter { $0.status == .accepted }
+        FriendConnection.deduplicated(connections.filter { $0.status == .accepted })
     }
 
     @State private var showProfileSetup = false
@@ -44,6 +44,12 @@ struct FriendManagementView: View {
         }
         .sheet(isPresented: $showProfileSetup) {
             UserProfileSetupView()
+        }
+        .onAppear {
+            // 複数端末の CloudKit ミラーリングで同じ相手が重複登録されていたら片付ける
+            if FriendConnection.removeDuplicates(in: modelContext) {
+                try? modelContext.save()
+            }
         }
     }
 
@@ -251,9 +257,11 @@ struct FriendManagementView: View {
 
     // MARK: - フレンド削除
 
+    /// 重複分も含めて削除し、削除の記録を残す（依頼の同期による自動登録で戻らないように）。
     private func deleteFriend(_ friend: FriendConnection) {
         HapticManager.notification(.warning)
-        modelContext.delete(friend)
+        FriendConnection.delete(recordID: friend.friendRecordID, fallback: friend,
+                                in: modelContext, tombstones: .shared)
         try? modelContext.save()
     }
 }

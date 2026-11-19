@@ -119,27 +119,54 @@ enum ShareStatus: String, Codable {
 
     /// CloudKit から取得したデータでローカルフィールドを更新する。
     /// 変更がなかった場合は `false` を返してデータストアの不要な dirty 化を防ぐ。
+    ///
+    /// - タイトル・期限は受け取った依頼（`isMyRequest == false`）にだけ反映する。共有の参加者は
+    ///   レコードを書き換えられるため、自分が送った依頼の表示を相手に書き換えさせない。
+    ///   また依頼者側は自分の編集が正なので、索引が古い CKQuery の結果で編集が戻るのも防げる。
+    /// - 受信者の名前・ID はここでは扱わない（依頼者側は共有の参加者から `applyVerifiedRecipient` で決める）。
+    /// - 状態は後戻りさせない（`ShareStatus.shouldAccept`）。
     @discardableResult
     func apply(_ data: SharedMemoCKData) -> Bool {
-        // 受信者が後から決まる「リンクで送る」の依頼では、受信者名・ID も追従させる
-        let recipientChanged = !data.recipientRecordID.isEmpty
-            && (recipientRecordID != data.recipientRecordID || recipientName != data.recipientName)
-        if recipientChanged {
-            recipientRecordID = data.recipientRecordID
-            recipientName = data.recipientName
+        var changed = false
+        if !isMyRequest {
+            // 依頼者が送信後に編集した内容（タイトル・期限）を受信側へ反映する
+            if memoTitle != data.memoTitle {
+                memoTitle = data.memoTitle
+                changed = true
+            }
+            if memoDeadline != data.memoDeadline {
+                memoDeadline = data.memoDeadline
+                changed = true
+            }
         }
-        // 依頼者が送信後に編集した内容（タイトル・期限）も受信側へ反映する
-        let contentChanged = memoTitle != data.memoTitle || memoDeadline != data.memoDeadline
-        if contentChanged {
-            memoTitle = data.memoTitle
-            memoDeadline = data.memoDeadline
-        }
-        guard status != data.status || firedAt != data.firedAt || completedAt != data.completedAt else {
-            return recipientChanged || contentChanged
-        }
+        guard ShareStatus.shouldAccept(data.status, over: status),
+              status != data.status || firedAt != data.firedAt || completedAt != data.completedAt
+        else { return changed }
         status      = data.status
         firedAt     = data.firedAt
         completedAt = data.completedAt
         return true
+    }
+
+    /// 依頼者側で、共有の参加者から確定した受信者を反映する。
+    /// - Returns: `changed` = 値が変わった、`isNewRecipient` = 受信者の ID が新しく決まった（または変わった）
+    @discardableResult
+    func applyVerifiedRecipient(_ recipient: VerifiedRecipient) -> (changed: Bool, isNewRecipient: Bool) {
+        guard isMyRequest, !recipient.userRecordName.isEmpty else { return (false, false) }
+        let isNewRecipient = recipientRecordID != recipient.userRecordName
+        var changed = false
+        if isNewRecipient {
+            recipientRecordID = recipient.userRecordName
+            changed = true
+        }
+        if !recipient.displayName.isEmpty, recipientName != recipient.displayName {
+            recipientName = recipient.displayName
+            changed = true
+        } else if isNewRecipient, recipient.displayName.isEmpty {
+            // 名前が分からない新しい受信者。前の相手の名前（や「リンクで共有」）を残さない
+            recipientName = String(localized: "相手")
+            changed = true
+        }
+        return (changed, isNewRecipient)
     }
 }

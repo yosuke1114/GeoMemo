@@ -47,9 +47,18 @@ extension FriendConnection {
     /// 依頼を受け取ったとき（受信側→依頼者）と、相手が受け取ったと分かったとき（依頼者→受信者）の
     /// 両方から呼び、フレンド関係を双方向にする。`@Query` のスナップショットではなく
     /// FetchDescriptor で直近の永続状態を見て、連続呼び出し時の二重登録を防ぐ。
-    @discardableResult
-    static func registerIfNeeded(recordID: String, displayName: String, in context: ModelContext) -> Bool {
+    ///
+    /// - Parameter tombstones: ユーザーが削除したフレンド。含まれる相手は登録しない
+    ///   （同期のたびの自動登録で、削除したフレンドが戻らないようにする）。
+    @MainActor @discardableResult
+    static func registerIfNeeded(
+        recordID: String,
+        displayName: String,
+        in context: ModelContext,
+        tombstones: FriendTombstoneStore? = nil
+    ) -> Bool {
         guard !recordID.isEmpty else { return false }
+        if let tombstones, tombstones.contains(recordID) { return false }
         let target = recordID
         var descriptor = FetchDescriptor<FriendConnection>(predicate: #Predicate { $0.friendRecordID == target })
         descriptor.fetchLimit = 1
@@ -60,5 +69,45 @@ extension FriendConnection {
             status: .accepted
         ))
         return true
+    }
+
+    /// 同じ相手（`friendRecordID`）の重複を取り除いた一覧。最初に登録したものを残す。
+    ///
+    /// SwiftData の CloudKit ミラーリングでは、複数端末がそれぞれ同じ相手を登録すると重複する。
+    /// どの端末でも同じものを残すよう、作成日時 → id の順で決める。
+    static func deduplicated(_ connections: [FriendConnection]) -> [FriendConnection] {
+        var seen = Set<String>()
+        return connections
+            .sorted { ($0.createdAt, $0.id.uuidString) < ($1.createdAt, $1.id.uuidString) }
+            .filter { connection in
+                // ID が空の古いデータは重複判定できないので、そのまま残す
+                guard !connection.friendRecordID.isEmpty else { return true }
+                return seen.insert(connection.friendRecordID).inserted
+            }
+    }
+
+    /// 重複しているフレンドを削除する。削除したら true。
+    @discardableResult
+    static func removeDuplicates(in context: ModelContext) -> Bool {
+        guard let all = try? context.fetch(FetchDescriptor<FriendConnection>()) else { return false }
+        let keep = Set(deduplicated(all).map(\.persistentModelID))
+        let duplicates = all.filter { !keep.contains($0.persistentModelID) }
+        duplicates.forEach(context.delete)
+        return !duplicates.isEmpty
+    }
+
+    /// フレンドを削除する。重複分も含めて消し、自動登録で戻らないよう削除の記録を残す。
+    @MainActor
+    static func delete(recordID: String, fallback: FriendConnection, in context: ModelContext,
+                       tombstones: FriendTombstoneStore) {
+        if recordID.isEmpty {
+            context.delete(fallback)
+            return
+        }
+        let target = recordID
+        let matches = (try? context.fetch(FetchDescriptor<FriendConnection>(
+            predicate: #Predicate { $0.friendRecordID == target }))) ?? [fallback]
+        matches.forEach(context.delete)
+        tombstones.add(recordID)
     }
 }

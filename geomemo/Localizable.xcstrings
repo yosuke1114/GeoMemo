@@ -2790,13 +2790,13 @@
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "%@ arrived at the requested place."
+            "value" : "The recipient arrived at the requested place."
           }
         },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "%@さんが依頼の場所に到着しました"
+            "value" : "依頼の相手が場所に到着しました"
           }
         }
       }
@@ -2807,13 +2807,13 @@
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "%@ completed your request."
+            "value" : "The recipient completed your request."
           }
         },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "%@さんが依頼を完了しました"
+            "value" : "依頼の相手が依頼を完了しました"
           }
         }
       }
