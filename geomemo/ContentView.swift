@@ -350,7 +350,11 @@ struct CustomNavigationBar: View {
             Text(verbatim: "GEOMEMO")
                 .font(.title2.weight(.heavy))
                 .foregroundColor(Brand.primaryText)
-            
+                // 狭い幅（折りたたみ端末のカバー画面・大きな文字サイズ）でロゴが
+                // 「GEOMEM / O」と折り返さないよう 1 行に固定して縮小で収める
+                .lineLimit(1)
+                .minimumScaleFactor(0.6)
+
             Spacer()
             
             // Memo Count Badge (only show if count > 0)
