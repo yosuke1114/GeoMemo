@@ -1901,6 +1901,25 @@ struct SharedMemoModelTests {
         #expect(shared.completedAt == later)
     }
 
+    @Test("依頼者が取り消すと、受信側の依頼は apply(_:) で cancelled になり監視対象から外れる")
+    func applyCancelledDeactivates() {
+        let shared = makeShared()
+        shared.status = .active
+        let zoneID = CKRecordZone.ID(zoneName: CKShareService.sharingZoneName, ownerName: "requester")
+        let recordID = CKRecord.ID(recordName: shared.ckRecordName, zoneID: zoneID)
+        let data = SharedMemoCKData(
+            ckRecordID: recordID, memoTitle: "", memoLocationName: "",
+            memoLatitude: 0, memoLongitude: 0, memoRadius: 0,
+            memoDeadline: nil, memoTimeWindowStart: nil, memoTimeWindowEnd: nil,
+            requesterName: "", recipientRecordID: "", recipientName: "",
+            autoComplete: false, status: .cancelled,
+            firedAt: nil, completedAt: nil, createdAt: Date(), isMyRequest: false
+        )
+        #expect(shared.apply(data) == true)
+        #expect(shared.status == .cancelled)
+        #expect(shared.isActive == false)
+    }
+
     private func makeShared() -> SharedMemo {
         SharedMemo(
             ckRecordName: UUID().uuidString, memoTitle: "T", memoLocationName: "L",

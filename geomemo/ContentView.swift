@@ -258,7 +258,16 @@ struct ContentView: View {
                         existing.requesterRecordID = zoneOwner
                         didChange = true
                     }
-                    if existing.apply(data) { didChange = true }
+                    if existing.apply(data) {
+                        didChange = true
+                        // 取り消し・完了になった依頼は位置の監視をやめる
+                        if !existing.isActive {
+                            LocationManager.shared.stopMonitoring(memoID: existing.geofenceIdentifier)
+                        }
+                    }
+                } else if data.status == .cancelled {
+                    // まだ取り込んでいない依頼が既に取り消されていれば取り込まない
+                    continue
                 } else {
                     let shared = SharedMemo(
                         ckRecordName:        recordName,

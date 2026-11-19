@@ -153,7 +153,11 @@ final class CKShareService {
     /// 子タスクは個別 catch して失敗ゾーンを空配列で返す。
     func fetchReceivedSharedMemos() async throws -> [SharedMemoCKData] {
         let zones = try await sharedDB.allRecordZones()
-        let predicate = NSPredicate(format: "status != %@", ShareStatus.cancelled.rawValue)
+        // 取り消し済み (cancelled) も取得する。除外すると依頼者の取り消しが受信側に伝わらず、
+        // 受信側の依頼が active のまま残り、ジオフェンス監視も止まらない。
+        // 条件は従来どおり status フィールドだけを使う（CloudKit の queryable インデックスを変えない）。
+        let allStatuses = [ShareStatus.active, .fired, .completed, .cancelled].map(\.rawValue)
+        let predicate = NSPredicate(format: "status IN %@", allStatuses)
         return await withTaskGroup(of: [SharedMemoCKData].self) { group in
             for zone in zones {
                 group.addTask {
