@@ -173,6 +173,16 @@ final class CKShareService {
         }
     }
 
+    // MARK: - 受信した依頼から抜ける（受信者）
+
+    /// 受信者が依頼の共有から抜ける。共有ゾーンごと sharedDB から消えるため、
+    /// 次回の同期で再び取り込まれない。依頼者側のレコードは残る。
+    func leaveReceivedShare(recordID: CKRecord.ID) async throws {
+        let record = try await sharedDB.record(for: recordID)
+        guard let shareID = record.share?.recordID else { return }
+        _ = try await sharedDB.modifyRecords(saving: [], deleting: [shareID])
+    }
+
     // MARK: - Share 受諾（受信者）
 
     /// `userDidAcceptCloudKitShareWith` から呼び出す。

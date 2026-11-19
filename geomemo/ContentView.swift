@@ -697,7 +697,9 @@ struct MapTabView: View {
         }
         .animation(.easeInOut(duration: 0.25), value: isSearching)
         .sheet(item: $mapSelectedReceived) { shared in
-            ReceivedSharedMemoDetailView(shared: shared)
+            ReceivedSharedMemoDetailView(shared: shared) {
+                deleteReceivedSharedMemo(shared, in: modelContext)
+            }
         }
         .sheet(item: $activeSheet, onDismiss: handleSheetDismiss) { sheet in
             sheetContent(for: sheet)
@@ -1363,7 +1365,9 @@ struct ListTabView: View {
             .background(Brand.background)
             .navigationBarHidden(true)
             .sheet(item: $selectedReceived) { shared in
-                ReceivedSharedMemoDetailView(shared: shared)
+                ReceivedSharedMemoDetailView(shared: shared) {
+                    deleteReceivedSharedMemo(shared, in: modelContext)
+                }
             }
             .animation(.easeInOut(duration: 0.2), value: isListSearching)
         }
@@ -1635,6 +1639,14 @@ struct ListTabView: View {
                             receivedMemoRow(shared)
                                 .contentShape(Rectangle())
                                 .onTapGesture { selectedReceived = shared }
+                                .swipeActions(edge: .trailing, allowsFullSwipe: true) {
+                                    Button(role: .destructive) {
+                                        HapticManager.notification(.warning)
+                                        deleteReceivedSharedMemo(shared, in: modelContext)
+                                    } label: {
+                                        Label(String(localized: "削除"), systemImage: "trash")
+                                    }
+                                }
                                 .accessibilityAddTraits(.isButton)
                                 .listRowInsets(EdgeInsets(top: 12, leading: 20, bottom: 12, trailing: 20))
                                 .listRowSeparator(.visible, edges: .bottom)
@@ -2084,4 +2096,25 @@ private struct PlaceResultRow: View {
 #Preview {
     ContentView()
         .modelContainer(for: GeoMemo.self, inMemory: true)
+}
+
+
+/// 受信した依頼を削除する。位置監視と本文キャッシュを消し、ローカルから削除したうえで
+/// CloudKit の共有から抜ける (抜けないと次回同期で再取り込みされる)。
+@MainActor
+func deleteReceivedSharedMemo(_ shared: SharedMemo, in context: ModelContext) {
+    let recordID = shared.cloudKitRecordID
+    LocationManager.shared.stopMonitoring(memoID: shared.geofenceIdentifier)
+    SharedMemoNoteStore.setNote("", for: shared.ckRecordName)
+    context.delete(shared)
+    try? context.save()
+    Task {
+        do {
+            try await CKShareService.shared.leaveReceivedShare(recordID: recordID)
+        } catch {
+            ToastCenter.shared.show(.error(
+                String(localized: "共有の解除に失敗しました。通信状況を確認してください。")
+            ))
+        }
+    }
 }

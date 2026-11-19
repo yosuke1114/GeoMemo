@@ -6,6 +6,9 @@ import MapKit
 struct ReceivedSharedMemoDetailView: View {
     @Environment(\.dismiss) private var dismiss
     let shared: SharedMemo
+    /// 削除が確定したときに呼ぶ (呼び出し側でローカル削除と共有解除を行う)。
+    var onDelete: (() -> Void)? = nil
+    @State private var confirmingDelete = false
 
     private var coordinate: CLLocationCoordinate2D { shared.memoCoordinate }
     private var note: String { SharedMemoNoteStore.note(for: shared.ckRecordName) }
@@ -60,6 +63,30 @@ struct ReceivedSharedMemoDetailView: View {
                     }
                     .background(Brand.surface)
                     .clipShape(RoundedRectangle(cornerRadius: 12))
+
+                    if onDelete != nil {
+                        Button(role: .destructive) {
+                            confirmingDelete = true
+                        } label: {
+                            Label(String(localized: "この依頼を削除"), systemImage: "trash")
+                                .font(.subheadline.weight(.semibold))
+                                .frame(maxWidth: .infinity, minHeight: 44)
+                        }
+                        .buttonStyle(.bordered)
+                        .confirmationDialog(
+                            String(localized: "この依頼を削除しますか？"),
+                            isPresented: $confirmingDelete,
+                            titleVisibility: .visible
+                        ) {
+                            Button(String(localized: "削除"), role: .destructive) {
+                                onDelete?()
+                                dismiss()
+                            }
+                            Button(String(localized: "キャンセル"), role: .cancel) {}
+                        } message: {
+                            Text(String(localized: "この端末から削除し、共有から抜けます。依頼した人の側には残ります。"))
+                        }
+                    }
                 }
                 .padding(16)
                 .frame(maxWidth: 600)
