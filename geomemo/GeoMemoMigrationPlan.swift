@@ -5,9 +5,9 @@ import SwiftData
 
 enum GeoMemoSchemaV1: VersionedSchema {
     static var versionIdentifier = Schema.Version(1, 0, 0)
-    static var models: [any PersistentModel.Type] { [GeoMemoV1.self] }
+    static var models: [any PersistentModel.Type] { [GeoMemo.self] }
 
-    @Model final class GeoMemoV1 {
+    @Model final class GeoMemo {
         var id: UUID = UUID()
         var title: String = ""
         var note: String = ""
@@ -36,9 +36,9 @@ enum GeoMemoSchemaV1: VersionedSchema {
 
 enum GeoMemoSchemaV2: VersionedSchema {
     static var versionIdentifier = Schema.Version(2, 0, 0)
-    static var models: [any PersistentModel.Type] { [GeoMemoV2.self] }
+    static var models: [any PersistentModel.Type] { [GeoMemo.self] }
 
-    @Model final class GeoMemoV2 {
+    @Model final class GeoMemo {
         var id: UUID = UUID()
         var title: String = ""
         var note: String = ""
@@ -69,9 +69,9 @@ enum GeoMemoSchemaV2: VersionedSchema {
 
 enum GeoMemoSchemaV3: VersionedSchema {
     static var versionIdentifier = Schema.Version(3, 0, 0)
-    static var models: [any PersistentModel.Type] { [GeoMemoV3.self] }
+    static var models: [any PersistentModel.Type] { [GeoMemo.self] }
 
-    @Model final class GeoMemoV3 {
+    @Model final class GeoMemo {
         var id: UUID = UUID()
         var title: String = ""
         var note: String = ""
@@ -105,9 +105,9 @@ enum GeoMemoSchemaV3: VersionedSchema {
 
 enum GeoMemoSchemaV4: VersionedSchema {
     static var versionIdentifier = Schema.Version(4, 0, 0)
-    static var models: [any PersistentModel.Type] { [GeoMemoV4.self] }
+    static var models: [any PersistentModel.Type] { [GeoMemo.self] }
 
-    @Model final class GeoMemoV4 {
+    @Model final class GeoMemo {
         var id: UUID = UUID()
         var title: String = ""
         var note: String = ""
@@ -143,9 +143,9 @@ enum GeoMemoSchemaV4: VersionedSchema {
 
 enum GeoMemoSchemaV5: VersionedSchema {
     static var versionIdentifier = Schema.Version(5, 0, 0)
-    static var models: [any PersistentModel.Type] { [GeoMemoV5.self] }
+    static var models: [any PersistentModel.Type] { [GeoMemo.self] }
 
-    @Model final class GeoMemoV5 {
+    @Model final class GeoMemo {
         var id: UUID = UUID()
         var title: String = ""
         var note: String = ""
@@ -183,11 +183,11 @@ enum GeoMemoSchemaV5: VersionedSchema {
 enum GeoMemoSchemaV6: VersionedSchema {
     static var versionIdentifier = Schema.Version(6, 0, 0)
     static var models: [any PersistentModel.Type] {
-        [GeoMemoSchemaV5.GeoMemoV5.self, FavoritePlaceV6.self]
+        [GeoMemoSchemaV5.GeoMemo.self, FavoritePlace.self]
     }
-    // V6: GeoMemo は V5 から変更なし（GeoMemoV5 を流用）。FavoritePlace テーブルを新規追加。
+    // V6: GeoMemo は V5 から変更なし（GeoMemo を流用）。FavoritePlace テーブルを新規追加。
 
-    @Model final class FavoritePlaceV6 {
+    @Model final class FavoritePlace {
         var id: UUID = UUID()
         var name: String = ""
         var subtitle: String = ""
@@ -204,14 +204,14 @@ enum GeoMemoSchemaV6: VersionedSchema {
 enum GeoMemoSchemaV7: VersionedSchema {
     static var versionIdentifier = Schema.Version(7, 0, 0)
     static var models: [any PersistentModel.Type] {
-        [GeoMemoSchemaV5.GeoMemoV5.self,
-         GeoMemoSchemaV6.FavoritePlaceV6.self,
-         UserProfileV7.self,
-         FriendConnectionV7.self]
+        [GeoMemoSchemaV5.GeoMemo.self,
+         GeoMemoSchemaV6.FavoritePlace.self,
+         UserProfile.self,
+         FriendConnection.self]
     }
     // V7: GeoMemo / FavoritePlace は変更なし。UserProfile / FriendConnection を新規追加。
 
-    @Model final class UserProfileV7 {
+    @Model final class UserProfile {
         var id: UUID = UUID()
         var displayName: String = ""
         var iCloudRecordID: String = ""
@@ -219,7 +219,7 @@ enum GeoMemoSchemaV7: VersionedSchema {
         init() {}
     }
 
-    @Model final class FriendConnectionV7 {
+    @Model final class FriendConnection {
         var id: UUID = UUID()
         var friendRecordID: String = ""
         var friendDisplayName: String = ""
@@ -235,18 +235,19 @@ enum GeoMemoSchemaV7: VersionedSchema {
 enum GeoMemoSchemaV8: VersionedSchema {
     static var versionIdentifier = Schema.Version(8, 0, 0)
     static var models: [any PersistentModel.Type] {
-        [GeoMemoSchemaV5.GeoMemoV5.self,
-         GeoMemoSchemaV6.FavoritePlaceV6.self,
-         GeoMemoSchemaV7.UserProfileV7.self,
-         GeoMemoSchemaV7.FriendConnectionV7.self,
-         SharedMemoV8.self]
+        [GeoMemoSchemaV5.GeoMemo.self,
+         GeoMemoSchemaV6.FavoritePlace.self,
+         GeoMemoSchemaV7.UserProfile.self,
+         GeoMemoSchemaV7.FriendConnection.self,
+         SharedMemo.self]
     }
     // V8: SharedMemo テーブルを新規追加。
-    // ※ live `GeoMemo` / `FavoritePlace` / `UserProfile` / `FriendConnection` /
-    //   `SharedMemo` の schema を変更したら、`SchemaV9` を新設して該当 model の
-    //   スナップショットを作成し、migration stage を追加すること。
+    // ※ スナップショット型は live model と同じ型名にすること（SwiftData の entity 名は型名で決まり、
+    //   端末のストアは live 名で作られているため。名前が違うと staged migration が既存ストアを識別できない）。
+    //   live model の schema を変更したら `GeoMemoSchemaV9` を新設し、変更したモデルのスナップショットを
+    //   同名で定義して migration stage を追加する。MigrationStoreTests が一致を検証する（docs/adr/0001）。
 
-    @Model final class SharedMemoV8 {
+    @Model final class SharedMemo {
         var id: UUID = UUID()
         var ckRecordName: String = ""
         var memoTitle: String = ""

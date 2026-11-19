@@ -2,10 +2,9 @@ import Foundation
 
 /// 依頼メモの本文を、共有レコード名 (`SharedMemo.ckRecordName`) ごとに保持する。
 ///
-/// 本文は SwiftData の `SharedMemo` に列を足さずに App Group の UserDefaults へ置く。
-/// 現行の VersionedSchema スナップショットは entity 名が live model と異なり
-/// (`SharedMemoV8` 等)、列追加の staged migration が既存ストアで失敗するため
-/// (docs/adr/0001 参照)。スキーマ移行を直すまではここで持つ。
+/// 本文は SwiftData の `SharedMemo` に列を足さずに App Group の UserDefaults へ置いている。
+/// 2.0.1 時点ではスキーマ移行（docs/adr/0001）が既存ストアで失敗したため、この形で回避した。
+/// 移行は直したので、将来 `SharedMemo` に列を足す際はこちらから移すこと。
 enum SharedMemoNoteStore {
     private static let key = "sharedMemoNotes"
     private static var defaults: UserDefaults? { UserDefaults(suiteName: GeoMemoStore.appGroupID) }

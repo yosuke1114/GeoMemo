@@ -89,3 +89,17 @@ SwiftData の entity 名も異なり、既存ストア（live 名で作られて
 - **次に SwiftData のスキーマを変える前に**、スナップショット型を live と同名の入れ子型
   （例: `enum GeoMemoSchemaV8 { @Model final class SharedMemo { ... } }`）に揃え、
   実ストア（2.0 / 2.0.1 で作られたもの）からの移行をオンディスクのテストで確認すること
+
+## 修正（2026-11 追記）
+
+スナップショット型をすべて live model と同名の入れ子型に改名した（例: `GeoMemoSchemaV5.GeoMemo`,
+`GeoMemoSchemaV8.SharedMemo`）。これで端末のストア（live 名）が各 VersionedSchema に一致し、
+staged migration が既存ストアを識別できる。
+
+- 1.3.x（V5 相当）のストアは、修正前の計画では 134504 で開けず、アプリはメモリ上の空ストアで起動していた
+  （ストアファイル自体は削除されないため、修正版への更新で復旧する）
+- `geomemoTests/MigrationStoreTests.swift` で次を検証する
+  - V1〜最新の各スキーマで作ったストアが現行の計画で開ける
+  - 1.3.x / 2.0 相当の実ストアが開ける
+  - 最新の VersionedSchema と live model が一致している（スナップショット追加忘れの検知）
+- 列追加（V9 で SharedMemo.memoNote を足す）を試行し、V8→V9 と V5→V9 の移行が通ることを確認済み

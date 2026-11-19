@@ -1623,25 +1623,25 @@ struct GeoMemoMigrationPlanTests {
     @Test("V7 のモデルに FavoritePlace が含まれる")
     func v7ModelsIncludeFavoritePlace() {
         let modelTypes = GeoMemoSchemaV7.models.map { ObjectIdentifier($0) }
-        #expect(modelTypes.contains(ObjectIdentifier(GeoMemoSchemaV6.FavoritePlaceV6.self)))
+        #expect(modelTypes.contains(ObjectIdentifier(GeoMemoSchemaV6.FavoritePlace.self)))
     }
 
     @Test("V7 のモデルに GeoMemo が含まれる")
     func v7ModelsIncludeGeoMemo() {
         let modelTypes = GeoMemoSchemaV7.models.map { ObjectIdentifier($0) }
-        #expect(modelTypes.contains(ObjectIdentifier(GeoMemoSchemaV5.GeoMemoV5.self)))
+        #expect(modelTypes.contains(ObjectIdentifier(GeoMemoSchemaV5.GeoMemo.self)))
     }
 
     @Test("V7 のモデルに UserProfile が含まれる")
     func v7ModelsIncludeUserProfile() {
         let modelTypes = GeoMemoSchemaV7.models.map { ObjectIdentifier($0) }
-        #expect(modelTypes.contains(ObjectIdentifier(GeoMemoSchemaV7.UserProfileV7.self)))
+        #expect(modelTypes.contains(ObjectIdentifier(GeoMemoSchemaV7.UserProfile.self)))
     }
 
     @Test("V7 のモデルに FriendConnection が含まれる")
     func v7ModelsIncludeFriendConnection() {
         let modelTypes = GeoMemoSchemaV7.models.map { ObjectIdentifier($0) }
-        #expect(modelTypes.contains(ObjectIdentifier(GeoMemoSchemaV7.FriendConnectionV7.self)))
+        #expect(modelTypes.contains(ObjectIdentifier(GeoMemoSchemaV7.FriendConnection.self)))
     }
 }
 
