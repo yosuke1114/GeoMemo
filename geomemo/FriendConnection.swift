@@ -39,3 +39,26 @@ enum FriendStatus: String, Codable {
         self.createdAt = createdAt
     }
 }
+
+// MARK: - Friend registration
+
+extension FriendConnection {
+    /// 相手をフレンドとして登録する（既に登録済みなら何もしない）。
+    /// 依頼を受け取ったとき（受信側→依頼者）と、相手が受け取ったと分かったとき（依頼者→受信者）の
+    /// 両方から呼び、フレンド関係を双方向にする。`@Query` のスナップショットではなく
+    /// FetchDescriptor で直近の永続状態を見て、連続呼び出し時の二重登録を防ぐ。
+    @discardableResult
+    static func registerIfNeeded(recordID: String, displayName: String, in context: ModelContext) -> Bool {
+        guard !recordID.isEmpty else { return false }
+        let target = recordID
+        var descriptor = FetchDescriptor<FriendConnection>(predicate: #Predicate { $0.friendRecordID == target })
+        descriptor.fetchLimit = 1
+        if let existing = try? context.fetch(descriptor), !existing.isEmpty { return false }
+        context.insert(FriendConnection(
+            friendRecordID: recordID,
+            friendDisplayName: displayName.isEmpty ? String(localized: "フレンド") : displayName,
+            status: .accepted
+        ))
+        return true
+    }
+}

@@ -177,6 +177,25 @@ final class CKShareService {
         }
     }
 
+    // MARK: - 送信後の編集・リンクの再送（依頼者）
+
+    /// 依頼の内容（タイトル・本文・期限）を送信後に更新する。依頼者の Private DB にのみ書く。
+    func updateSharedMemoContent(recordID: CKRecord.ID, title: String, note: String, deadline: Date?) async throws {
+        let record = try await privateDB.record(for: recordID)
+        record.encryptedValues["memoTitle"] = title
+        record.encryptedValues["memoNote"]  = note
+        record["memoDeadline"] = deadline
+        _ = try await privateDB.save(record)
+    }
+
+    /// 依頼の共有リンク（CKShare の URL）を取得する。リンクを失くした相手へ送り直す用。
+    func shareURL(for recordID: CKRecord.ID) async throws -> URL? {
+        let record = try await privateDB.record(for: recordID)
+        guard let shareID = record.share?.recordID else { return nil }
+        let share = try await privateDB.record(for: shareID) as? CKShare
+        return share?.url
+    }
+
     // MARK: - 依頼者への通知（CloudKit の購読）
 
     nonisolated static let arrivedSubscriptionID   = "requester-arrived-v1"

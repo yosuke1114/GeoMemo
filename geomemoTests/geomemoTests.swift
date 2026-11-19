@@ -1942,6 +1942,37 @@ struct SharedMemoModelTests {
         #expect(shared.apply(data) == false)
     }
 
+    @Test("依頼者が編集したタイトル・期限は apply(_:) で受信側に反映される")
+    func applyUpdatesEditedContent() {
+        let shared = makeShared()
+        let deadline = Date(timeIntervalSince1970: 1_900_000_000)
+        let zoneID = CKRecordZone.ID(zoneName: CKShareService.sharingZoneName, ownerName: "requester")
+        let recordID = CKRecord.ID(recordName: shared.ckRecordName, zoneID: zoneID)
+        let data = SharedMemoCKData(
+            ckRecordID: recordID, memoTitle: "牛乳と卵を買う", memoLocationName: shared.memoLocationName,
+            memoLatitude: 0, memoLongitude: 0, memoRadius: 0,
+            memoDeadline: deadline, memoTimeWindowStart: nil, memoTimeWindowEnd: nil,
+            requesterName: "", recipientRecordID: shared.recipientRecordID, recipientName: shared.recipientName,
+            autoComplete: false, status: shared.status,
+            firedAt: shared.firedAt, completedAt: shared.completedAt, createdAt: Date(), isMyRequest: false
+        )
+        #expect(shared.apply(data) == true)
+        #expect(shared.memoTitle == "牛乳と卵を買う")
+        #expect(shared.memoDeadline == deadline)
+    }
+
+    @Test("フレンド登録は二重にならず、空の ID は登録しない")
+    @MainActor
+    func friendRegistrationIsIdempotent() throws {
+        let container = try ModelContainer(for: FriendConnection.self,
+                                           configurations: ModelConfiguration(isStoredInMemoryOnly: true))
+        let context = container.mainContext
+        #expect(FriendConnection.registerIfNeeded(recordID: "_r1", displayName: "花子", in: context) == true)
+        #expect(FriendConnection.registerIfNeeded(recordID: "_r1", displayName: "花子", in: context) == false)
+        #expect(FriendConnection.registerIfNeeded(recordID: "", displayName: "名無し", in: context) == false)
+        #expect(try context.fetch(FetchDescriptor<FriendConnection>()).count == 1)
+    }
+
     private func makeShared() -> SharedMemo {
         SharedMemo(
             ckRecordName: UUID().uuidString, memoTitle: "T", memoLocationName: "L",

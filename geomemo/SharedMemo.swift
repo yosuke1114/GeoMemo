@@ -128,8 +128,14 @@ enum ShareStatus: String, Codable {
             recipientRecordID = data.recipientRecordID
             recipientName = data.recipientName
         }
+        // 依頼者が送信後に編集した内容（タイトル・期限）も受信側へ反映する
+        let contentChanged = memoTitle != data.memoTitle || memoDeadline != data.memoDeadline
+        if contentChanged {
+            memoTitle = data.memoTitle
+            memoDeadline = data.memoDeadline
+        }
         guard status != data.status || firedAt != data.firedAt || completedAt != data.completedAt else {
-            return recipientChanged
+            return recipientChanged || contentChanged
         }
         status      = data.status
         firedAt     = data.firedAt
