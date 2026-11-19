@@ -24,7 +24,7 @@ struct ReceivedSharedMemoDetailView: View {
                         Marker(shared.memoLocationName, coordinate: coordinate)
                             .tint(Brand.blue)
                     }
-                    .frame(height: 240)
+                    .frame(height: 360)
                     .clipShape(RoundedRectangle(cornerRadius: 12))
                     .accessibilityLabel(String(localized: "依頼の場所の地図"))
 
@@ -48,19 +48,6 @@ struct ReceivedSharedMemoDetailView: View {
                     }
                     .background(Brand.surface)
                     .clipShape(RoundedRectangle(cornerRadius: 12))
-
-                    Button {
-                        let item = MKMapItem(location: CLLocation(latitude: coordinate.latitude,
-                                                                  longitude: coordinate.longitude),
-                                             address: nil)
-                        item.name = shared.memoLocationName
-                        item.openInMaps()
-                    } label: {
-                        Label(String(localized: "マップで開く"), systemImage: "map")
-                            .font(.subheadline.weight(.semibold))
-                            .frame(maxWidth: .infinity, minHeight: 44)
-                    }
-                    .buttonStyle(.bordered)
                 }
                 .padding(16)
                 .frame(maxWidth: 600)
