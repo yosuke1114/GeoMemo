@@ -244,6 +244,8 @@ struct MapTabView: View {
                                 .foregroundStyle(.white)
                         }
                         .shadow(color: .black.opacity(0.3), radius: 2, x: 0, y: 1)
+                        .frame(width: 44, height: 44)
+                        .contentShape(Rectangle())
                         .onTapGesture { mapSelectedReceived = shared }
                         .accessibilityLabel(String(localized: "受信した依頼: ") + shared.memoTitle)
                         .accessibilityAddTraits(.isButton)
@@ -260,17 +262,30 @@ struct MapTabView: View {
                                     : (MemoColor(rawValue: memo.colorIndex)?.color ?? Brand.blue),
                                 isRoute: memo.isRouteTrigger && !memo.isDone
                             )
+                            .frame(width: 44, height: 44)
+                            .contentShape(Rectangle())
                             .onTapGesture {
                                 calloutMemo = memo
                             }
+                            .accessibilityElement(children: .ignore)
+                            .accessibilityLabel(mapPinAccessibilityLabel(
+                                title: memo.displayTitle,
+                                locationName: memo.locationName,
+                                isDone: memo.isDone))
+                            .accessibilityAddTraits(.isButton)
                         }
                     case .cluster(_, let coordinate, let clusterMemos):
                         Annotation("", coordinate: coordinate) {
                             ClusterPinView(count: clusterMemos.count)
+                                .frame(width: 44, height: 44)
+                                .contentShape(Rectangle())
                                 .onTapGesture {
                                     calloutMemo = nil
                                     activeSheet = .clusterList(clusterMemos)
                                 }
+                                .accessibilityElement(children: .ignore)
+                                .accessibilityLabel(String(localized: "\(clusterMemos.count) memos"))
+                                .accessibilityAddTraits(.isButton)
                         }
                     }
                 }
@@ -337,6 +352,7 @@ struct MapTabView: View {
                             .clipShape(Circle())
                             .overlay(Circle().stroke(Brand.border, lineWidth: 1))
                     }
+                    .accessibilityLabel(String(localized: "Current location"))
 
                     // リスト画面へ遷移するボタン
                     Button(action: {
@@ -355,6 +371,7 @@ struct MapTabView: View {
                             .overlay(Circle().stroke(Brand.border, lineWidth: 1))
                     }
                     .accessibilityIdentifier("listViewButton")
+                    .accessibilityLabel(String(localized: "List"))
                 }
                 .padding(.trailing, 16)
                 // ADD MEMO ボタン (高さ ~72pt + bottom 16pt) と重ならないように、

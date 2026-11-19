@@ -44,3 +44,11 @@ func dayAndTimeText(_ date: Date, now: Date = Date()) -> String {
         return "\(day) \(time)"
     }
 }
+
+/// 地図の単独ピンの VoiceOver ラベル。「（タイトル）、（場所名）」、完了済みなら末尾に「完了済み」。
+func mapPinAccessibilityLabel(title: String, locationName: String, isDone: Bool) -> String {
+    var parts = [title]
+    if !locationName.isEmpty { parts.append(locationName) }
+    if isDone { parts.append(String(localized: "完了済み")) }
+    return parts.joined(separator: "、")
+}

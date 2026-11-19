@@ -200,6 +200,8 @@ struct ListTabView: View {
                         .font(.body.weight(.bold))
                 }
                 .foregroundColor(Brand.primaryText)
+                .frame(minHeight: 44)
+                .contentShape(Rectangle())
             }
 
             Spacer()
@@ -213,8 +215,10 @@ struct ListTabView: View {
                     .resizable()
                     .frame(width: 20, height: 20)
                     .foregroundColor(isListSearching ? Brand.blue : Brand.primaryText)
-                    .frame(width: 32, height: 32)
+                    .frame(width: 44, height: 44)
+                    .contentShape(Rectangle())
             }
+            .accessibilityLabel(String(localized: "Search"))
 
             // 設定ボタン
             Button(action: { showSettings = true }) {
@@ -222,11 +226,13 @@ struct ListTabView: View {
                     .resizable()
                     .frame(width: 20, height: 20)
                     .foregroundColor(Brand.primaryText)
-                    .frame(width: 32, height: 32)
+                    .frame(width: 44, height: 44)
+                    .contentShape(Rectangle())
             }
+            .accessibilityLabel(String(localized: "Settings"))
         }
         .padding(.horizontal, 16)
-        .padding(.vertical, 12)
+        .padding(.vertical, 8)
         .background(Brand.background)
         .overlay(Rectangle().fill(Brand.border).frame(height: 1), alignment: .bottom)
     }
@@ -281,6 +287,8 @@ struct ListTabView: View {
                         .frame(width: 44, height: 44)
                     }
                     .padding(.trailing, 4)
+                    .accessibilityLabel(String(localized: "All colors"))
+                    .accessibilityAddTraits(showColorFilter ? .isSelected : [])
                 }
             }
 
@@ -304,7 +312,11 @@ struct ListTabView: View {
                             Circle()
                                 .stroke(selectedColorIndex == nil ? Brand.primaryText : Color.clear, lineWidth: 2)
                         )
+                        .frame(width: 44, height: 44)
+                        .contentShape(Rectangle())
                     }
+                    .accessibilityLabel(String(localized: "All colors"))
+                    .accessibilityAddTraits(selectedColorIndex == nil ? .isSelected : [])
 
                     ForEach(usedColors, id: \.rawValue) { memoColor in
                         Button {
@@ -327,7 +339,11 @@ struct ListTabView: View {
                                         .stroke(Brand.background, lineWidth: selectedColorIndex == memoColor.rawValue ? 3 : 0)
                                         .padding(2)
                                 )
+                                .frame(width: 44, height: 44)
+                                .contentShape(Rectangle())
                         }
+                        .accessibilityLabel(memoColor.accessibilityName)
+                        .accessibilityAddTraits(selectedColorIndex == memoColor.rawValue ? .isSelected : [])
                     }
 
                     Spacer()

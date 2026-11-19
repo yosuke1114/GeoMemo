@@ -167,7 +167,7 @@ struct ClusterListSheet: View {
                                         .foregroundColor(memo.isUntitled ? Brand.tertiaryText : Brand.primaryText)
                                         .italic(memo.isUntitled)
                                         .lineLimit(1)
-                                    Text(memo.locationName.isEmpty ? "Unknown Location" : memo.locationName)
+                                    Text(memo.locationName.isEmpty ? String(localized: "Unknown Location") : memo.locationName)
                                         .font(.caption)
                                         .foregroundColor(Brand.secondaryText)
                                         .lineLimit(1)
