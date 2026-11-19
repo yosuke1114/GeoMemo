@@ -667,6 +667,12 @@ struct MapTabView: View {
     @State private var clusterTask: Task<Void, Never>?
     @State private var calloutMemo: GeoMemo?
     @State private var activeSheet: ActiveSheet?
+    /// 地図上でタップした受信依頼。
+    @State private var mapSelectedReceived: SharedMemo?
+    @Query(sort: \SharedMemo.createdAt, order: .reverse) private var mapSharedMemos: [SharedMemo]
+    private var receivedPins: [SharedMemo] {
+        mapSharedMemos.filter { !$0.isMyRequest && ($0.status == .active || $0.status == .fired) }
+    }
     @State private var activeDetailMemo: GeoMemo?
     @State private var pendingDetailMemo: GeoMemo?
     /// 遅延して `activeDetailMemo` をセットする Task。新しい遅延が始まる前に cancel する。
@@ -689,6 +695,9 @@ struct MapTabView: View {
             }
         }
         .animation(.easeInOut(duration: 0.25), value: isSearching)
+        .sheet(item: $mapSelectedReceived) { shared in
+            ReceivedSharedMemoDetailView(shared: shared)
+        }
         .sheet(item: $activeSheet, onDismiss: handleSheetDismiss) { sheet in
             sheetContent(for: sheet)
         }
@@ -842,6 +851,24 @@ struct MapTabView: View {
                     }
                 }
                 
+                // 受信した依頼 (他の人から届いた場所メモ)
+                ForEach(receivedPins) { shared in
+                    Annotation("", coordinate: shared.memoCoordinate) {
+                        ZStack {
+                            Circle()
+                                .fill(Brand.blue)
+                                .frame(width: 30, height: 30)
+                            Image(systemName: "person.2.fill")
+                                .font(.system(size: 13, weight: .semibold))
+                                .foregroundStyle(.white)
+                        }
+                        .shadow(color: .black.opacity(0.3), radius: 2, x: 0, y: 1)
+                        .onTapGesture { mapSelectedReceived = shared }
+                        .accessibilityLabel(String(localized: "受信した依頼: ") + shared.memoTitle)
+                        .accessibilityAddTraits(.isButton)
+                    }
+                }
+
                 ForEach(mapItems) { item in
                     switch item {
                     case .single(let memo):
@@ -1213,6 +1240,7 @@ struct ListTabView: View {
     }
 
     @State private var showDoneSection: Bool = false
+    @State private var selectedReceived: SharedMemo?
     @State private var showColorFilter: Bool = false
     @State private var selectedColorIndex: Int? = nil
     @State private var isListSearching = false
@@ -1328,6 +1356,9 @@ struct ListTabView: View {
             }
             .background(Brand.background)
             .navigationBarHidden(true)
+            .sheet(item: $selectedReceived) { shared in
+                ReceivedSharedMemoDetailView(shared: shared)
+            }
             .animation(.easeInOut(duration: 0.2), value: isListSearching)
         }
         .onChange(of: intentShowFavorites) { _, newValue in
@@ -1596,6 +1627,9 @@ struct ListTabView: View {
                     Section {
                         ForEach(receivedActiveMemos) { shared in
                             receivedMemoRow(shared)
+                                .contentShape(Rectangle())
+                                .onTapGesture { selectedReceived = shared }
+                                .accessibilityAddTraits(.isButton)
                                 .listRowInsets(EdgeInsets(top: 12, leading: 20, bottom: 12, trailing: 20))
                                 .listRowSeparator(.visible, edges: .bottom)
                                 .listRowSeparatorTint(Brand.primaryText.opacity(0.1))
