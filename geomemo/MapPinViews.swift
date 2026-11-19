@@ -198,7 +198,8 @@ struct ClusterListSheet: View {
 
 // MARK: - Search Completer Helper
 @Observable
-class SearchCompleterHelper: NSObject, MKLocalSearchCompleterDelegate {
+// MKLocalSearchCompleter はデリゲートをメインスレッドで呼ぶので、適合をメインアクターに隔離する
+class SearchCompleterHelper: NSObject, @MainActor MKLocalSearchCompleterDelegate {
     var results: [MKLocalSearchCompletion] = []
     private let completer = MKLocalSearchCompleter()
 
@@ -221,11 +222,9 @@ class SearchCompleterHelper: NSObject, MKLocalSearchCompleterDelegate {
         completer.queryFragment = ""
     }
 
-    nonisolated func completerDidUpdateResults(_ completer: MKLocalSearchCompleter) {
-        Task { @MainActor in
-            self.results = completer.results
-        }
+    func completerDidUpdateResults(_ completer: MKLocalSearchCompleter) {
+        results = completer.results
     }
 
-    nonisolated func completer(_ completer: MKLocalSearchCompleter, didFailWithError error: Error) {}
+    func completer(_ completer: MKLocalSearchCompleter, didFailWithError error: Error) {}
 }

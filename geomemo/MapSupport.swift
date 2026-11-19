@@ -8,7 +8,7 @@ import CloudKit
 
 // MARK: - Heading Cone Shape
 
-struct HeadingCone: Shape {
+nonisolated struct HeadingCone: Shape {
     func path(in rect: CGRect) -> Path {
         var path = Path()
         // 先端（下）= ドット位置、広がりは上（進行方向）

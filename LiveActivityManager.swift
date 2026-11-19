@@ -1,4 +1,4 @@
-import ActivityKit
+@preconcurrency import ActivityKit  // Activity が Sendable でないため（Swift 6 の sending 診断を回避）
 import SwiftData
 import Foundation
 

@@ -284,11 +284,10 @@ class LocationManager: NSObject, ObservableObject {
     }
 }
 
-extension LocationManager: CLLocationManagerDelegate {
-    // CLLocationManagerDelegate のコールバックは CL が用意したキューで呼ばれるため、
-    // @MainActor 隔離の本クラスの state を直接触れない。各メソッドを nonisolated
-    // で受けて MainActor.assumeIsolated（実際には main で呼ばれる）経由で本体へ渡す。
-    nonisolated func locationManager(_ manager: CLLocationManager, didUpdateLocations locations: [CLLocation]) {
+extension LocationManager: @MainActor CLLocationManagerDelegate {
+    // CLLocationManager はデリゲートを生成したスレッド（main）で呼ぶため、適合を MainActor に隔離する
+    // （Swift 6 の isolated conformance）。もし main 以外から呼ばれれば実行時チェックで検出される。
+    func locationManager(_ manager: CLLocationManager, didUpdateLocations locations: [CLLocation]) {
         MainActor.assumeIsolated {
             guard let latest = locations.last else { return }
             location = latest
@@ -296,11 +295,11 @@ extension LocationManager: CLLocationManagerDelegate {
         }
     }
 
-    nonisolated func locationManager(_ manager: CLLocationManager, didFailWithError error: Error) {
+    func locationManager(_ manager: CLLocationManager, didFailWithError error: Error) {
         print("Location request failed: \(error.localizedDescription)")
     }
 
-    nonisolated func locationManagerDidChangeAuthorization(_ manager: CLLocationManager) {
+    func locationManagerDidChangeAuthorization(_ manager: CLLocationManager) {
         MainActor.assumeIsolated {
             authorizationStatus = manager.authorizationStatus
             switch manager.authorizationStatus {
@@ -319,7 +318,7 @@ extension LocationManager: CLLocationManagerDelegate {
         }
     }
 
-    nonisolated func locationManager(_ manager: CLLocationManager, didUpdateHeading newHeading: CLHeading) {
+    func locationManager(_ manager: CLLocationManager, didUpdateHeading newHeading: CLHeading) {
         guard newHeading.headingAccuracy >= 0 else { return }
         MainActor.assumeIsolated {
             heading = newHeading
@@ -345,7 +344,7 @@ extension LocationManager: CLLocationManagerDelegate {
         }
     }
 
-    nonisolated func locationManager(_ manager: CLLocationManager, didEnterRegion region: CLRegion) {
+    func locationManager(_ manager: CLLocationManager, didEnterRegion region: CLRegion) {
         MainActor.assumeIsolated {
             didEnterRegionMainActor(region)
         }
@@ -401,7 +400,7 @@ extension LocationManager: CLLocationManagerDelegate {
         }
     }
 
-    nonisolated func locationManager(_ manager: CLLocationManager, didExitRegion region: CLRegion) {
+    func locationManager(_ manager: CLLocationManager, didExitRegion region: CLRegion) {
         guard let circularRegion = region as? CLCircularRegion else { return }
         let identifier = circularRegion.identifier
         // ルートウェイポイントと共有メモの退出は無視
@@ -409,7 +408,7 @@ extension LocationManager: CLLocationManagerDelegate {
         NotificationCenter.default.post(name: .didExitGeoMemoRegion, object: identifier)
     }
 
-    nonisolated func locationManager(_ manager: CLLocationManager, monitoringDidFailFor region: CLRegion?, withError error: Error) {
+    func locationManager(_ manager: CLLocationManager, monitoringDidFailFor region: CLRegion?, withError error: Error) {
         print("Monitoring failed for region: \(region?.identifier ?? "unknown") with error: \(error.localizedDescription)")
     }
 }

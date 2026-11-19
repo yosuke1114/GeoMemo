@@ -14,8 +14,8 @@ extension Notification.Name {
 // MARK: - Open Memo Intent
 
 struct OpenGeoMemoIntent: OpenIntent {
-    static var title: LocalizedStringResource = "Open GeoMemo"
-    static var description: IntentDescription = "Opens a specific memo in GeoMemo"
+    static let title: LocalizedStringResource = "Open GeoMemo"
+    static let description: IntentDescription = "Opens a specific memo in GeoMemo"
 
     @Parameter(title: "Memo")
     var target: GeoMemoEntity
@@ -32,8 +32,8 @@ struct OpenGeoMemoIntent: OpenIntent {
 // MARK: - Show Favorites Intent
 
 struct ShowFavoritesIntent: AppIntent {
-    static var title: LocalizedStringResource = "Show Favorites"
-    static var description: IntentDescription = "Shows favorite memos in GeoMemo"
+    static let title: LocalizedStringResource = "Show Favorites"
+    static let description: IntentDescription = "Shows favorite memos in GeoMemo"
 
     static var openAppWhenRun: Bool { true }
 
@@ -47,8 +47,8 @@ struct ShowFavoritesIntent: AppIntent {
 // MARK: - List Nearby Memos Intent
 
 struct ListNearbyMemosIntent: AppIntent {
-    static var title: LocalizedStringResource = "Nearby Memos"
-    static var description: IntentDescription = "Lists GeoMemo memos near your current location"
+    static let title: LocalizedStringResource = "Nearby Memos"
+    static let description: IntentDescription = "Lists GeoMemo memos near your current location"
 
     func perform() async throws -> some IntentResult & ProvidesDialog {
         let allEntities: [GeoMemoEntity]
@@ -91,8 +91,8 @@ struct ListNearbyMemosIntent: AppIntent {
 // MARK: - Mark Memo Done Intent
 
 struct MarkMemoDoneIntent: AppIntent {
-    static var title: LocalizedStringResource = "Complete Memo"
-    static var description: IntentDescription = "Marks a GeoMemo memo as complete"
+    static let title: LocalizedStringResource = "Complete Memo"
+    static let description: IntentDescription = "Marks a GeoMemo memo as complete"
 
     @Parameter(title: "Memo")
     var target: GeoMemoEntity
@@ -110,8 +110,8 @@ struct MarkMemoDoneIntent: AppIntent {
 // MARK: - Add Memo Intent
 
 struct AddGeoMemoIntent: AppIntent {
-    static var title: LocalizedStringResource = "Add Memo"
-    static var description: IntentDescription = "Creates a new memo at your current location in GeoMemo"
+    static let title: LocalizedStringResource = "Add Memo"
+    static let description: IntentDescription = "Creates a new memo at your current location in GeoMemo"
 
     static var openAppWhenRun: Bool { false }
 
@@ -175,8 +175,8 @@ struct AddGeoMemoIntent: AppIntent {
 // MARK: - Get Nearby Memos Intent
 
 struct GetNearbyMemosIntent: AppIntent {
-    static var title: LocalizedStringResource = "Get Nearby Memos"
-    static var description: IntentDescription = "Returns GeoMemo memos near your current location — use the result in subsequent Shortcuts actions"
+    static let title: LocalizedStringResource = "Get Nearby Memos"
+    static let description: IntentDescription = "Returns GeoMemo memos near your current location — use the result in subsequent Shortcuts actions"
 
     @Parameter(title: "Radius (meters)", default: 1000)
     var radiusMeters: Int
@@ -216,8 +216,8 @@ struct GetNearbyMemosIntent: AppIntent {
 // MARK: - Search Intent
 
 struct SearchGeoMemosIntent: AppIntent {
-    static var title: LocalizedStringResource = "Search GeoMemo"
-    static var description: IntentDescription = "Search for memos in GeoMemo"
+    static let title: LocalizedStringResource = "Search GeoMemo"
+    static let description: IntentDescription = "Search for memos in GeoMemo"
 
     @Parameter(title: "Search Text")
     var query: String

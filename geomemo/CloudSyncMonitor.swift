@@ -22,7 +22,8 @@ final class CloudSyncMonitor {
 
     // MARK: - Init
 
-    private var observer: NSObjectProtocol?
+    // deinit（非隔離）から解除するため。書き込みは init のみ
+    nonisolated(unsafe) private var observer: NSObjectProtocol?
 
     init() {
         observer = NotificationCenter.default.addObserver(

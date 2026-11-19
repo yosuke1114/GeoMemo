@@ -24,7 +24,7 @@ enum PresetTag: Int, CaseIterable, Codable, Identifiable {
 
     var id: Int { rawValue }
 
-    var localizedName: String {
+    nonisolated var localizedName: String {
         switch self {
         case .work:      return String(localized: "tag.work",      defaultValue: "仕事")
         case .food:      return String(localized: "tag.food",      defaultValue: "食事")
