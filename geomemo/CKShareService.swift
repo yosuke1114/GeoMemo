@@ -268,7 +268,8 @@ final class CKShareService {
         // 発火し、continuation を 2 回 resume すると fatal trap になる。
         // acceptSharesResultBlock 側に集約する（per-share の失敗もここに伝わる）。
         try await withCheckedThrowingContinuation { (cont: CheckedContinuation<Void, Error>) in
-            op.acceptSharesResultBlock = { result in
+            // CloudKit の内部キューで呼ばれるため @Sendable（MainActor 隔離を継承させない）
+            op.acceptSharesResultBlock = { @Sendable result in
                 switch result {
                 case .success: cont.resume(returning: ())
                 case .failure(let error): cont.resume(throwing: error)
