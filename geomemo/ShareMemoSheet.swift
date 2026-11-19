@@ -28,6 +28,14 @@ struct ShareMemoSheet: View {
     @State private var autoComplete: Bool = false
     @State private var isSending = false
     @State private var errorMessage: String?
+    /// CloudKit の情報で本人を確かめたフレンド（それ以外は「未確認」と表示し、送る前に確認する）
+    @State private var verifiedFriendIDs: Set<String> = []
+    /// 未確認のフレンドへ送る前の確認
+    @State private var unverifiedFriendToConfirm: FriendConnection?
+
+    private func isUnverified(_ friend: FriendConnection) -> Bool {
+        !verifiedFriendIDs.contains(friend.friendRecordID)
+    }
 
     var body: some View {
         NavigationStack {
@@ -73,6 +81,27 @@ struct ShareMemoSheet: View {
             .navigationTitle(String(localized: "依頼する"))
             .onAppear {
                 if acceptedFriends.isEmpty { sendViaLink = true }
+                verifiedFriendIDs = VerifiedFriendStore.shared.all
+            }
+            .confirmationDialog(
+                unverifiedFriendToConfirm.map {
+                    String(localized: "「\($0.friendDisplayName)」に送りますか？")
+                } ?? "",
+                isPresented: Binding(
+                    get: { unverifiedFriendToConfirm != nil },
+                    set: { if !$0 { unverifiedFriendToConfirm = nil } }
+                ),
+                titleVisibility: .visible
+            ) {
+                Button(String(localized: "送る")) {
+                    unverifiedFriendToConfirm = nil
+                    performSend()
+                }
+                Button(String(localized: "キャンセル"), role: .cancel) {
+                    unverifiedFriendToConfirm = nil
+                }
+            } message: {
+                Text(String(localized: "このフレンドは以前のバージョンで登録されたため、名前が本人のものか確認できていません。相手が本人であることを確かめてから送ってください。"))
             }
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -160,12 +189,17 @@ struct ShareMemoSheet: View {
                                 Text(friend.friendDisplayName)
                                     .font(.body.weight(.semibold))
                                     .foregroundStyle(Brand.primaryText)
+                                if isUnverified(friend) {
+                                    UnverifiedFriendBadge()
+                                }
                                 Spacer(minLength: 0)
                             }
                             .padding(.horizontal, 16)
                             .padding(.vertical, 14)
                         }
-                        .accessibilityLabel(friend.friendDisplayName)
+                        .accessibilityLabel(isUnverified(friend)
+                            ? String(localized: "\(friend.friendDisplayName)、未確認")
+                            : friend.friendDisplayName)
                         .accessibilityAddTraits(selectedFriend?.id == friend.id ? .isSelected : [])
                         if friend.id != acceptedFriends.last?.id {
                             Rectangle()
@@ -259,11 +293,24 @@ struct ShareMemoSheet: View {
 
     // MARK: - 送信
 
+    /// 未確認のフレンドに送るときは、先に確認する（docs/sharing.md「本人確認できていないフレンド」）。
+    private func send() {
+        guard hasRecipient, myProfile != nil else { return }
+        if let friend = selectedFriend, isUnverified(friend) {
+            unverifiedFriendToConfirm = friend
+            return
+        }
+        performSend()
+    }
+
     /// 依頼のレコードと非公開の共有を作り、システムの共有シートで送る。
     /// - フレンド: 相手を参加者に加えた共有の URL を送る（その相手しか開けない）。
     /// - 新しい相手（またはフレンドを参加者として引けなかったとき）: 共有シートで相手を招待する。
-    /// 共有シートを送らずに閉じたら、作ったレコードと共有を消す。
-    private func send() {
+    /// 共有シートの結果（`ShareSheetOutcome`）で、作ったレコードと共有をどうするか決める。
+    /// - 送った: ローカルに保存する。
+    /// - 何も送らずに閉じた: サーバから消す（消せなければ次回の起動で消し直す）。
+    /// - 送れたか分からない: 消さずにローカルに保存し、見守り画面に「未送信」として出す。
+    private func performSend() {
         guard hasRecipient, let profile = myProfile else { return }
         let friend = selectedFriend
         isSending = true
@@ -287,7 +334,7 @@ struct ShareMemoSheet: View {
             }
 
             let recordID = prepared.record.recordID
-            let shareID = prepared.share.recordID
+            let recordName = recordID.recordName
             let content: ShareActivityContent
             if prepared.invitedFriend, let url = prepared.share.url {
                 content = .url(url)
@@ -295,19 +342,46 @@ struct ShareMemoSheet: View {
                 content = .cloudKitInvite(prepared.share, service.container)
             }
             let recipient = prepared.invitedFriend ? friend : nil
-            let presented = ShareActivityPresenter.present(content) { completed in
-                isSending = false
-                if completed {
-                    saveLocalSharedMemo(recordID: recordID, profile: profile,
-                                        recipient: recipient, placeholderName: friend?.friendDisplayName)
+            // 共有シートの表示中にアプリが終了されても、次回の起動で後片付けできるよう記録しておく
+            let store = UnsentShareStore.shared
+            let entry = UnsentShareEntry(
+                recordName: recordName,
+                shareRecordName: prepared.share.recordID.recordName,
+                invitedFriendRecordName: recipient?.friendRecordID ?? "",
+                createdAt: Date(),
+                state: .presenting
+            )
+            store.upsert(entry)
+            let saveLocally = {
+                saveLocalSharedMemo(recordID: recordID, profile: profile,
+                                    recipient: recipient, placeholderName: friend?.friendDisplayName)
+            }
+
+            let presented = ShareActivityPresenter.present(content) { outcome in
+                switch outcome {
+                case .sent:
+                    // 「分からない」と判断した後に送信完了が届いた場合は、未送信の印を外すだけ
+                    let alreadySaved = store.entry(for: recordName)?.state == .kept
+                    store.remove(recordName)
+                    guard !alreadySaved else { return }
+                    isSending = false
+                    saveLocally()
                     HapticManager.notification(.success)
                     dismiss()
-                } else {
-                    discardUnsentShare(recordID: recordID, shareID: shareID)
+                case .notSent:
+                    isSending = false
+                    discardUnsentShare(entry, saveLocally: saveLocally)
+                case .unknown:
+                    isSending = false
+                    store.setState(.kept, for: recordName)
+                    saveLocally()
+                    ToastCenter.shared.show(.warning(String(localized:
+                        "送信できたか確認できませんでした。見守り画面に「未送信」として残しています。")))
+                    dismiss()
                 }
             }
             if !presented {
-                discardUnsentShare(recordID: recordID, shareID: shareID)
+                discardUnsentShare(entry, saveLocally: saveLocally)
                 errorMessage = String(localized: "送信に失敗しました。もう一度お試しください。")
                 isSending = false
             }
@@ -343,10 +417,25 @@ struct ShareMemoSheet: View {
     }
 
     /// 共有シートを送らずに閉じたら、サーバに作ったレコードと共有を消す。
-    private func discardUnsentShare(recordID: CKRecord.ID, shareID: CKRecord.ID) {
+    /// 消せなかった（通信エラー等）ときは記録を残し、次回の起動で消し直す。
+    /// 受諾した人・招待中の人がいて消さなかったときは、ローカルに「未送信」として残す。
+    private func discardUnsentShare(_ entry: UnsentShareEntry, saveLocally: @escaping () -> Void) {
+        let store = UnsentShareStore.shared
+        store.setState(.discarding, for: entry.recordName)
+        let zoneID = CKRecordZone.ID(zoneName: CKShareService.sharingZoneName, ownerName: CKCurrentUserDefaultName)
+        let recordID = CKRecord.ID(recordName: entry.recordName, zoneID: zoneID)
+        let shareID = CKRecord.ID(recordName: entry.shareRecordName, zoneID: zoneID)
+        let allowed = entry.invitedFriendRecordName.isEmpty ? nil : entry.invitedFriendRecordName
         Task {
             do {
-                try await CKShareService.shared.deleteUnsentShare(recordID: recordID, shareID: shareID)
+                switch try await CKShareService.shared.deleteUnsentShare(
+                    recordID: recordID, shareID: shareID, allowedInviteeRecordName: allowed) {
+                case .deleted:
+                    store.remove(entry.recordName)
+                case .hasParticipants:
+                    store.setState(.kept, for: entry.recordName)
+                    saveLocally()
+                }
             } catch {
                 CKShareService.logger.error("unsent share cleanup failed: \(error.localizedDescription, privacy: .public)")
             }
@@ -354,3 +443,16 @@ struct ShareMemoSheet: View {
     }
 }
 
+/// 本人確認できていないフレンドに付ける印
+struct UnverifiedFriendBadge: View {
+    var body: some View {
+        Text(String(localized: "未確認"))
+            .font(.caption2.weight(.semibold))
+            .foregroundStyle(.orange)
+            .padding(.horizontal, 6)
+            .padding(.vertical, 2)
+            .background(Color.orange.opacity(0.12))
+            .clipShape(Capsule())
+            .accessibilityHidden(true)
+    }
+}

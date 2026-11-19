@@ -109,7 +109,8 @@ struct ContentView: View {
                     async let drain: () = PendingEventQueue.shared.drain()
                     async let sync:  () = syncSharedMemos()
                     async let subs:  () = ensureRequesterSubscriptionsOnce()
-                    _ = await (drain, sync, subs)
+                    async let unsent: () = cleanUpUnsentShares()
+                    _ = await (drain, sync, subs, unsent)
                 }
             }
         }
@@ -133,18 +134,27 @@ struct ContentView: View {
     /// 連続 .didAcceptSharedMemo 受信時の二重挿入レースを防ぐ。
     /// 所有者は CloudKit の共有情報 (`CKShare.Metadata.ownerIdentity`) から取るので本人確認済み。
     /// 共有の受諾はユーザー自身の操作なので、以前に削除したフレンドでも登録し直す（削除の記録も消す）。
+    /// 既に登録済みのフレンドは、CloudKit の名前が分かればそれに合わせて「確認済み」にする。
     private func registerFriendIfNeeded(info: AcceptedShareInfo) {
         FriendTombstoneStore.shared.remove(info.ownerRecordID)
-        if FriendConnection.registerIfNeeded(recordID: info.ownerRecordID, displayName: info.ownerName, in: modelContext) {
-            try? modelContext.save()
+        let verified = VerifiedFriendStore.shared
+        var changed = FriendConnection.registerIfNeeded(recordID: info.ownerRecordID, displayName: info.ownerName,
+                                                        in: modelContext, verified: verified)
+        if FriendConnection.confirmIdentity(recordID: info.ownerRecordID, cloudKitName: info.ownerName,
+                                            in: modelContext, verified: verified) {
+            changed = true
         }
+        if changed { try? modelContext.save() }
     }
 
     // MARK: - Sync Received SharedMemos
 
     @State private var isSyncing = false
 
-    /// 依頼者向け通知の購読を、起動ごとに 1 回だけ確認・登録する。
+    /// 依頼者向け通知の購読を、起動ごとに 1 回だけ確認・登録する（旧版の購読 -v1 もここで消す）。
+    /// 全項目が成功したときだけ済みにする。一部でも失敗したら、次回のアクティブ化で再試行する。
+    /// 起動後に旧版の端末が -v1 を作り直した場合は、-v1 の通知を受けたときに消す（`NotificationManager`、
+    /// `GeoMemoAppDelegate`）。
     @MainActor private static var didEnsureSubscriptions = false
     private func ensureRequesterSubscriptionsOnce() async {
         guard !Self.didEnsureSubscriptions, profiles.first != nil else { return }
@@ -152,9 +162,59 @@ struct ContentView: View {
             try await CKShareService.shared.ensureRequesterSubscriptions()
             Self.didEnsureSubscriptions = true
         } catch {
-            // iCloud 未サインインや通信不可。次回のアクティブ化で再試行する。
+            // iCloud 未サインインや通信不可、一部の購読の保存・削除の失敗。次回のアクティブ化で再試行する。
             CKShareService.logger.error("requester subscription failed: \(error.localizedDescription, privacy: .public)")
         }
+    }
+
+    // MARK: - 送らなかった依頼の後片付け
+
+    @MainActor private static var isCleaningUnsentShares = false
+
+    /// 送らずに閉じたのに消せなかった依頼や、共有シートの表示中にアプリが終了された依頼を片付ける。
+    /// 相手に届いているかもしれない依頼（参加者がいる）は消さず、ローカルに「未送信」として残す。
+    private func cleanUpUnsentShares() async {
+        let store = UnsentShareStore.shared
+        let now = Date()
+        let actionable = store.entries.contains {
+            UnsentShareCleanupPolicy.action(for: $0, now: now) != .leave
+        }
+        guard actionable, !Self.isCleaningUnsentShares, let me = profiles.first else { return }
+        Self.isCleaningUnsentShares = true
+        defer { Self.isCleaningUnsentShares = false }
+
+        let adopted = await CKShareService.shared.cleanUpUnsentShares(store: store, now: now)
+        guard !adopted.isEmpty else { return }
+        for (entry, data) in adopted {
+            let recordName = data.ckRecordID.recordName
+            guard !allSharedMemos.contains(where: { $0.ckRecordName == recordName }) else { continue }
+            let friendName = friends.first { $0.friendRecordID == entry.invitedFriendRecordName }?.friendDisplayName
+            modelContext.insert(SharedMemo(
+                ckRecordName:        recordName,
+                memoTitle:           data.memoTitle,
+                memoLocationName:    data.memoLocationName,
+                memoLatitude:        data.memoLatitude,
+                memoLongitude:       data.memoLongitude,
+                memoRadius:          data.memoRadius,
+                memoDeadline:        data.memoDeadline,
+                memoTimeWindowStart: data.memoTimeWindowStart,
+                memoTimeWindowEnd:   data.memoTimeWindowEnd,
+                requesterRecordID:   me.iCloudRecordID,
+                requesterName:       me.displayName,
+                // 受信者は、相手が書けるレコードの値ではなく、自分で加えたフレンドか（招待なら）未定にする
+                recipientRecordID:   entry.invitedFriendRecordName,
+                recipientName:       friendName ?? String(localized: "リンクで共有"),
+                autoComplete:        data.autoComplete,
+                isMyRequest:         true,
+                // 送信日時は端末の記録を使う（フレンドの再登録の判定に使うため、相手が書ける値は使わない）
+                createdAt:           entry.createdAt,
+                status:              data.status,
+                firedAt:             data.firedAt,
+                completedAt:         data.completedAt
+            ))
+            SharedMemoNoteStore.setNote(data.memoNote, for: recordName)
+        }
+        try? modelContext.save()
     }
 
     private func syncSharedMemos() async {

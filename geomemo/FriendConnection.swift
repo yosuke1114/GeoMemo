@@ -48,14 +48,18 @@ extension FriendConnection {
     /// 両方から呼び、フレンド関係を双方向にする。`@Query` のスナップショットではなく
     /// FetchDescriptor で直近の永続状態を見て、連続呼び出し時の二重登録を防ぐ。
     ///
-    /// - Parameter tombstones: ユーザーが削除したフレンド。含まれる相手は登録しない
-    ///   （同期のたびの自動登録で、削除したフレンドが戻らないようにする）。
+    /// - Parameters:
+    ///   - tombstones: ユーザーが削除したフレンド。含まれる相手は登録しない
+    ///     （同期のたびの自動登録で、削除したフレンドが戻らないようにする）。
+    ///   - verified: 呼び出し元が CloudKit の情報（共有の所有者・参加者）から相手を決めているなら渡す。
+    ///     新しく登録した相手を「確認済み」にする。
     @MainActor @discardableResult
     static func registerIfNeeded(
         recordID: String,
         displayName: String,
         in context: ModelContext,
-        tombstones: FriendTombstoneStore? = nil
+        tombstones: FriendTombstoneStore? = nil,
+        verified: VerifiedFriendStore? = nil
     ) -> Bool {
         guard !recordID.isEmpty else { return false }
         if let tombstones, tombstones.contains(recordID) { return false }
@@ -68,7 +72,35 @@ extension FriendConnection {
             friendDisplayName: displayName.isEmpty ? String(localized: "フレンド") : displayName,
             status: .accepted
         ))
+        verified?.add(recordID)
         return true
+    }
+
+    /// CloudKit の情報（共有の所有者・参加者）で分かった名前を、既存のフレンドに反映して「確認済み」にする。
+    ///
+    /// 旧版は相手が書けるレコードのフィールドからフレンドを登録していたため、名前と ID が別人のものでありうる。
+    /// CloudKit の名前が分からないときは、名前を確かめられないので何もしない（未確認のまま）。
+    /// - Returns: フレンドの名前を変えたら true。
+    @MainActor @discardableResult
+    static func confirmIdentity(
+        recordID: String,
+        cloudKitName: String,
+        in context: ModelContext,
+        verified: VerifiedFriendStore
+    ) -> Bool {
+        let name = cloudKitName.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !recordID.isEmpty, !name.isEmpty else { return false }
+        let target = recordID
+        let matches = (try? context.fetch(FetchDescriptor<FriendConnection>(
+            predicate: #Predicate { $0.friendRecordID == target }))) ?? []
+        guard !matches.isEmpty else { return false }
+        var changed = false
+        for friend in matches where friend.friendDisplayName != name {
+            friend.friendDisplayName = name
+            changed = true
+        }
+        verified.add(recordID)
+        return changed
     }
 
     /// 同じ相手（`friendRecordID`）の重複を取り除いた一覧。最初に登録したものを残す。

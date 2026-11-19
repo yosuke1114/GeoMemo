@@ -27,6 +27,12 @@ struct WatchDashboardView: View {
     @State private var isSyncing = false
     @State private var pendingCount = 0
     @State private var editing: SharedMemo?
+    /// 送れたか分からず「未送信」として残している依頼（`UnsentShareStore`）
+    @State private var unsentRecordNames: Set<String> = []
+
+    private func refreshUnsent() {
+        unsentRecordNames = UnsentShareStore.shared.keptRecordNames
+    }
 
     var body: some View {
         NavigationStack {
@@ -70,6 +76,7 @@ struct WatchDashboardView: View {
             }
         }
         .task {
+            refreshUnsent()
             await syncStatus()
             pendingCount = PendingEventQueue.shared.all.count
         }
@@ -178,9 +185,15 @@ struct WatchDashboardView: View {
                     .foregroundStyle(statusTitleColor(for: shared.status))
                     .lineLimit(2)
 
-                statusSubtitle(for: shared)
-                    .font(.caption)
-                    .foregroundStyle(Brand.secondaryText)
+                if isUnsent(shared) {
+                    Text(String(localized: "未送信・送れたか確認できませんでした"))
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(.orange)
+                } else {
+                    statusSubtitle(for: shared)
+                        .font(.caption)
+                        .foregroundStyle(Brand.secondaryText)
+                }
             }
 
             Spacer(minLength: 0)
@@ -204,13 +217,26 @@ struct WatchDashboardView: View {
                 } label: {
                     Label(String(localized: "リンクを送り直す"), systemImage: "link")
                 }
-                Button(role: .destructive) {
-                    Task { await cancelSharedMemo(shared) }
-                } label: {
-                    Label(String(localized: "キャンセル"), systemImage: "xmark")
+                if isUnsent(shared) {
+                    // 送れたか分からない依頼。相手に届いていなければサーバから消す
+                    Button(role: .destructive) {
+                        Task { await deleteUnsent(shared) }
+                    } label: {
+                        Label(String(localized: "削除"), systemImage: "trash")
+                    }
+                } else {
+                    Button(role: .destructive) {
+                        Task { await cancelSharedMemo(shared) }
+                    } label: {
+                        Label(String(localized: "キャンセル"), systemImage: "xmark")
+                    }
                 }
             }
         }
+    }
+
+    private func isUnsent(_ shared: SharedMemo) -> Bool {
+        shared.status == .active && unsentRecordNames.contains(shared.ckRecordName)
     }
 
     private func rowAccessibilityLabel(for shared: SharedMemo) -> String {
@@ -225,6 +251,9 @@ struct WatchDashboardView: View {
             case .cancelled: return String(localized: "キャンセル済み")
             }
         }()
+        if isUnsent(shared) {
+            return "\(title)、\(String(localized: "未送信"))"
+        }
         return "\(title)、\(statusText)"
     }
 
@@ -311,19 +340,48 @@ struct WatchDashboardView: View {
             // レコードの受信者名・ID は相手が自由に書けるので、そのままは信用しない。
             if let recipients = try? await service.fetchVerifiedRecipients(for: tracked) {
                 let tombstones = FriendTombstoneStore.shared
-                for (recordName, recipient) in recipients {
+                let verified = VerifiedFriendStore.shared
+                let unsent = UnsentShareStore.shared
+                for (recordName, resolved) in recipients {
                     guard let local = allSharedMemos.first(where: { $0.ckRecordName == recordName }) else { continue }
+                    let recipient = resolved.recipient
                     let result = local.applyVerifiedRecipient(recipient)
                     if result.changed { didChange = true }
+                    // 誰かが受け取ったので「未送信」ではない
+                    unsent.remove(recordName)
+
+                    // 旧版の公開リンクの共有は、表示にだけ使う（フレンドの登録・確認には使わない）
+                    guard !resolved.isPublicShare else { continue }
                     // 新しく受信者が決まったときだけ、相手をフレンドに登録する（双方向）。
-                    // ユーザーが削除したフレンドは登録し直さない。
-                    if result.isNewRecipient,
-                       FriendConnection.registerIfNeeded(recordID: recipient.userRecordName,
-                                                         displayName: recipient.displayName,
-                                                         in: modelContext, tombstones: tombstones) {
+                    // 削除したフレンドは、削除後に自分で招待して送った依頼のときだけ登録し直す。
+                    switch FriendAutoRegistrationPolicy.decide(
+                        isPublicShare: resolved.isPublicShare,
+                        isNewRecipient: result.isNewRecipient,
+                        requestSentAt: local.createdAt,
+                        tombstonedAt: tombstones.deletedAt(recipient.userRecordName)
+                    ) {
+                    case .skip:
+                        break
+                    case .registerClearingTombstone:
+                        tombstones.remove(recipient.userRecordName)
+                        fallthrough
+                    case .register:
+                        if FriendConnection.registerIfNeeded(recordID: recipient.userRecordName,
+                                                             displayName: recipient.displayName,
+                                                             in: modelContext, tombstones: tombstones,
+                                                             verified: verified) {
+                            didChange = true
+                        }
+                    }
+                    // CloudKit の名前が分かれば、既存のフレンドの名前をそれに合わせて「確認済み」にする
+                    if recipient.nameIsFromCloudKit,
+                       FriendConnection.confirmIdentity(recordID: recipient.userRecordName,
+                                                        cloudKitName: recipient.displayName,
+                                                        in: modelContext, verified: verified) {
                         didChange = true
                     }
                 }
+                refreshUnsent()
             }
             if didChange { try? modelContext.save() }
         } catch {
@@ -350,7 +408,15 @@ struct WatchDashboardView: View {
             case .systemInvite:
                 content = .cloudKitInvite(share, service.container)
             }
-            if ShareActivityPresenter.present(content, completion: { _ in }) { return }
+            let recordName = shared.ckRecordName
+            let presented = ShareActivityPresenter.present(content) { outcome in
+                // 送り直せたら「未送信」ではなくなる
+                if outcome == .sent {
+                    UnsentShareStore.shared.remove(recordName)
+                    refreshUnsent()
+                }
+            }
+            if presented { return }
         } catch {}
         ToastCenter.shared.show(.warning(
             String(localized: "共有リンクを取得できませんでした。通信状況を確認してください。")
@@ -361,9 +427,12 @@ struct WatchDashboardView: View {
 
     private func cancelSharedMemo(_ shared: SharedMemo) async {
         do {
-            try await CKShareService.shared.cancelSharedMemo(recordID: shared.cloudKitRecordID)
-            shared.status = .cancelled
+            // 相手が先に完了していれば、取り消しは書き込まれず完了のまま（サーバの状態に合わせる）
+            let serverStatus = try await CKShareService.shared.cancelSharedMemo(recordID: shared.cloudKitRecordID)
+            shared.status = serverStatus.isTerminal ? serverStatus : .cancelled
             SharedMemoNoteStore.setNote("", for: shared.ckRecordName)
+            UnsentShareStore.shared.remove(shared.ckRecordName)
+            refreshUnsent()
             try? modelContext.save()
         } catch {
             // オフライン等で書き込み失敗 → 再送キューに積み、次回 drain で送り直す。
@@ -375,6 +444,35 @@ struct WatchDashboardView: View {
                 String(localized: "キャンセルを送信できませんでした。通信が戻ったとき自動で再送します。")
             ))
             pendingCount = PendingEventQueue.shared.all.count
+        }
+    }
+}
+
+// MARK: - Delete unsent
+
+extension WatchDashboardView {
+    /// 「未送信」の依頼を削除する。相手に届いていなければサーバのレコードと共有を消す。
+    /// 受諾した人・招待中の人がいれば（リンクが届いているかもしれないので）消さずに取り消す。
+    fileprivate func deleteUnsent(_ shared: SharedMemo) async {
+        let service = CKShareService.shared
+        let recordName = shared.ckRecordName
+        do {
+            switch try await service.deleteUnsentShare(recordID: shared.cloudKitRecordID, shareID: nil,
+                                                       allowedInviteeRecordName: nil) {
+            case .deleted:
+                modelContext.delete(shared)
+            case .hasParticipants:
+                let serverStatus = try await service.cancelSharedMemo(recordID: shared.cloudKitRecordID)
+                shared.status = serverStatus.isTerminal ? serverStatus : .cancelled
+            }
+            SharedMemoNoteStore.setNote("", for: recordName)
+            UnsentShareStore.shared.remove(recordName)
+            refreshUnsent()
+            try? modelContext.save()
+        } catch {
+            ToastCenter.shared.show(.warning(
+                String(localized: "依頼を削除できませんでした。通信状況を確認してください。")
+            ))
         }
     }
 }
@@ -396,6 +494,10 @@ private struct EditSharedMemoSheet: View {
     /// 本文の読み込み状態。本文は端末のキャッシュに無いことがある（別の端末で送った、再インストール等）ので、
     /// 開くたびにサーバから読む。読めなかったときは本文を書き込まない（空で上書きしない）。
     @State private var noteState: NoteState = .loading
+    /// 本文をどこから読んだか。キャッシュから出した本文は、書き換えたときだけ保存する。
+    @State private var noteSource: SharedMemoNoteEditPolicy.Source = .unavailable
+    /// 読み込んだときの本文（書き換えたかどうかの判定用）
+    @State private var loadedNote = ""
 
     private enum NoteState { case loading, loaded, unavailable }
 
@@ -413,6 +515,11 @@ private struct EditSharedMemoSheet: View {
                     case .loaded:
                         TextField(String(localized: "メモ"), text: $note, axis: .vertical)
                             .lineLimit(3...8)
+                        if noteSource == .cache {
+                            Text(String(localized: "最新の本文を読み込めなかったため、この端末に保存した本文を表示しています。本文は書き換えたときだけ保存されます。"))
+                                .font(.footnote)
+                                .foregroundStyle(.secondary)
+                        }
                     case .unavailable:
                         Text(String(localized: "本文を読み込めませんでした。本文は変更されません。"))
                             .foregroundStyle(.secondary)
@@ -457,15 +564,20 @@ private struct EditSharedMemoSheet: View {
     private func loadNote() async {
         if let data = try? await CKShareService.shared.fetchSentSharedMemo(recordID: shared.cloudKitRecordID) {
             note = data.memoNote
+            loadedNote = data.memoNote
+            noteSource = .server
             noteState = .loaded
             SharedMemoNoteStore.setNote(data.memoNote, for: shared.ckRecordName)
             return
         }
         let cached = SharedMemoNoteStore.note(for: shared.ckRecordName)
         if cached.isEmpty {
+            noteSource = .unavailable
             noteState = .unavailable
         } else {
             note = cached
+            loadedNote = cached
+            noteSource = .cache
             noteState = .loaded
         }
     }
@@ -474,8 +586,8 @@ private struct EditSharedMemoSheet: View {
         isSaving = true
         defer { isSaving = false }
         let newDeadline = hasDeadline ? deadline : nil
-        // 本文が分からないときは nil を渡し、サーバの本文を変えない
-        let newNote: String? = noteState == .loaded ? note : nil
+        // 本文が分からないとき、キャッシュの本文を書き換えていないときは nil を渡し、サーバの本文を変えない
+        let newNote = SharedMemoNoteEditPolicy.noteToSave(source: noteSource, loaded: loadedNote, current: note)
         do {
             try await CKShareService.shared.updateSharedMemoContent(
                 recordID: shared.cloudKitRecordID, title: title, note: newNote, deadline: newDeadline)

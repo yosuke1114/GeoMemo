@@ -1,5 +1,6 @@
 import Foundation
 import UserNotifications
+import CloudKit
 import Combine
 
 extension Notification.Name {
@@ -196,6 +197,16 @@ extension NotificationManager: UNUserNotificationCenterDelegate {
         willPresent notification: UNNotification,
         withCompletionHandler completionHandler: @escaping @Sendable (UNNotificationPresentationOptions) -> Void
     ) {
+        // 旧版の購読（-v1）の通知は出さない。同じ Apple ID の旧版の端末が作り直した購読で、
+        // -v2 と二重に届き、通知文に相手が書いた名前が入る。受けたら -v1 を消す。
+        let ckNotification = CKNotification(fromRemoteNotificationDictionary: notification.request.content.userInfo)
+        if RequesterSubscriptionPolicy.isLegacy(ckNotification?.subscriptionID) {
+            completionHandler([])
+            Task { @MainActor in
+                try? await CKShareService.shared.ensureRequesterSubscriptions()
+            }
+            return
+        }
         completionHandler([.banner, .sound])
     }
 

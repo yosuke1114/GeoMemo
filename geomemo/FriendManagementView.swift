@@ -16,6 +16,12 @@ struct FriendManagementView: View {
     }
 
     @State private var showProfileSetup = false
+    /// CloudKit の情報で本人を確かめたフレンド（それ以外は「未確認」と表示する）
+    @State private var verifiedFriendIDs: Set<String> = []
+
+    private func isUnverified(_ friend: FriendConnection) -> Bool {
+        !verifiedFriendIDs.contains(friend.friendRecordID)
+    }
 
     private var iCloudAvailable: Bool {
         FileManager.default.ubiquityIdentityToken != nil
@@ -46,6 +52,7 @@ struct FriendManagementView: View {
             UserProfileSetupView()
         }
         .onAppear {
+            verifiedFriendIDs = VerifiedFriendStore.shared.all
             // 複数端末の CloudKit ミラーリングで同じ相手が重複登録されていたら片付ける
             if FriendConnection.removeDuplicates(in: modelContext) {
                 try? modelContext.save()
@@ -133,6 +140,13 @@ struct FriendManagementView: View {
                 // フレンド一覧
                 if !acceptedFriends.isEmpty {
                     friendsListSection
+                    if acceptedFriends.contains(where: isUnverified) {
+                        Text(String(localized: "「未確認」のフレンドは以前のバージョンで登録されたため、名前が本人のものか確認できていません。相手から依頼を受け取ると確認済みになります。"))
+                            .font(.footnote)
+                            .foregroundStyle(Brand.secondaryText)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .padding(.horizontal, 4)
+                    }
                 } else {
                     emptyFriendsView
                 }
@@ -200,6 +214,9 @@ struct FriendManagementView: View {
             Text(friend.friendDisplayName)
                 .font(.body.weight(.semibold))
                 .foregroundStyle(Brand.primaryText)
+            if isUnverified(friend) {
+                UnverifiedFriendBadge()
+            }
 
             Spacer(minLength: 0)
         }
@@ -207,7 +224,9 @@ struct FriendManagementView: View {
         .padding(.vertical, 14)
         .contentShape(Rectangle())
         .accessibilityElement(children: .combine)
-        .accessibilityLabel(friend.friendDisplayName)
+        .accessibilityLabel(isUnverified(friend)
+            ? String(localized: "\(friend.friendDisplayName)、未確認")
+            : friend.friendDisplayName)
         // ScrollView/VStack 内では .swipeActions が動かないため長押しメニューで代替。
         .contextMenu {
             Button(role: .destructive) {

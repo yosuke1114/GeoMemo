@@ -52,6 +52,8 @@ final class CKShareService {
         case notEditable
         /// 依頼に共有が付いていない
         case shareNotFound
+        /// 一部の項目の保存・削除に失敗した（詳細はログ）
+        case partialFailure
     }
 
     // MARK: - Zone Bootstrap
@@ -162,11 +164,98 @@ final class CKShareService {
         }
     }
 
-    /// 送らずに閉じた依頼のレコードと共有をサーバから消す。
-    func deleteUnsentShare(recordID: CKRecord.ID, shareID: CKRecord.ID?) async throws {
+    enum UnsentDeletionResult: Equatable {
+        /// 消した（既に無かった場合も含む）
+        case deleted
+        /// 受諾した人・招待中の人がいるため消さなかった
+        case hasParticipants
+    }
+
+    /// 送らなかった依頼のレコードと共有をサーバから消す。
+    ///
+    /// 所有者以外に受諾した人・招待中の人がいれば消さない（相手に届いているかもしれないリンクを無効にしない）。
+    /// `allowedInviteeRecordName` は、招待中のままでも消してよい参加者（フレンドに送るとき自分で加え、
+    /// URL を送らなかった相手）。
+    ///
+    /// - Parameter shareID: 共有のレコード ID。nil ならレコードから調べる。
+    func deleteUnsentShare(recordID: CKRecord.ID, shareID: CKRecord.ID?,
+                           allowedInviteeRecordName: String?) async throws -> UnsentDeletionResult {
+        var shareID = shareID
+        if shareID == nil {
+            do {
+                shareID = try await privateDB.record(for: recordID).share?.recordID
+            } catch let error as CKError where error.code == .unknownItem {
+                return .deleted
+            }
+        }
+        if let shareID {
+            do {
+                if let share = try await privateDB.record(for: shareID) as? CKShare {
+                    let participants = share.participants.map(ShareParticipantSummary.init)
+                    guard UnsentShareCleanupPolicy.canDelete(participants: participants,
+                                                             allowedInviteeRecordName: allowedInviteeRecordName)
+                    else {
+                        Self.logger.notice("unsent share kept: it has participants")
+                        return .hasParticipants
+                    }
+                }
+            } catch let error as CKError where error.code == .unknownItem {
+                // 共有は既に無い。レコードだけ消す
+            }
+        }
+
         // 共有のルートレコードを消すと共有も消えるが、念のため両方を指定する（片方が無くても続行）
         let ids = [shareID, recordID].compactMap { $0 }
-        _ = try await privateDB.modifyRecords(saving: [], deleting: ids, atomically: false)
+        let (_, deleteResults) = try await privateDB.modifyRecords(saving: [], deleting: ids, atomically: false)
+        var firstError: (any Error)?
+        for (id, result) in deleteResults {
+            guard case .failure(let error) = result else { continue }
+            if let ckError = error as? CKError, ckError.code == .unknownItem { continue }
+            Self.logger.error("unsent share delete failed (\(id.recordName, privacy: .private)): \(error.localizedDescription, privacy: .public)")
+            if firstError == nil { firstError = error }
+        }
+        if let firstError { throw firstError }
+        return .deleted
+    }
+
+    /// 送らなかった依頼の後片付け（起動時）。
+    ///
+    /// - 送らずに閉じたのに消せなかった依頼（通信エラー等）を消し直す。
+    /// - 共有シートの表示中にアプリが終了され、結果の分からない依頼は、`orphanAge` を過ぎていて
+    ///   参加者が誰もいなければ消す。
+    /// - 参加者がいて消せなかった依頼は、記録を「未送信」にして返す（呼び出し側でローカルに残す）。
+    func cleanUpUnsentShares(store: UnsentShareStore, now: Date = Date())
+        async -> [(entry: UnsentShareEntry, data: SharedMemoCKData)] {
+        var adopted: [(entry: UnsentShareEntry, data: SharedMemoCKData)] = []
+        let zoneID = CKRecordZone.ID(zoneName: Self.sharingZoneName, ownerName: CKCurrentUserDefaultName)
+        for entry in store.entries {
+            guard case .delete(let allowed) = UnsentShareCleanupPolicy.action(for: entry, now: now) else { continue }
+            let recordID = CKRecord.ID(recordName: entry.recordName, zoneID: zoneID)
+            let shareID = entry.shareRecordName.isEmpty
+                ? nil : CKRecord.ID(recordName: entry.shareRecordName, zoneID: zoneID)
+            do {
+                switch try await deleteUnsentShare(recordID: recordID, shareID: shareID,
+                                                   allowedInviteeRecordName: allowed) {
+                case .deleted:
+                    store.remove(entry.recordName)
+                case .hasParticipants:
+                    if let data = try await fetchSentSharedMemo(recordID: recordID) {
+                        var kept = entry
+                        kept.state = .kept
+                        store.upsert(kept)
+                        adopted.append((kept, data))
+                    } else {
+                        store.remove(entry.recordName)
+                    }
+                }
+            } catch let error as CKError where error.code == .unknownItem {
+                store.remove(entry.recordName)
+            } catch {
+                // 通信できない等。記録を残し、次回の起動で再試行する
+                Self.logger.error("unsent share cleanup failed: \(error.localizedDescription, privacy: .public)")
+            }
+        }
+        return adopted
     }
 
     // MARK: - ステータス更新
@@ -175,9 +264,12 @@ final class CKShareService {
     /// zoneID.ownerName から先に DB を確定し、`.unknownItem` の時だけもう一方へ
     /// フォールバックする。permission error など他のエラーは呼び出し元へ伝播。
     ///
-    /// サーバの状態が既に同じか先へ進んでいれば書き込まない。再送キューのリトライや二重の発火で
-    /// レコードが更新されると、依頼者の購読（到着・完了）が再び通知を出してしまうため。
-    func updateStatus(recordID: CKRecord.ID, status: ShareStatus, date: Date? = nil) async throws {
+    /// サーバの状態が既に同じか先へ進んでいる、または終点（完了・取り消し）なら書き込まない。
+    /// 再送キューのリトライや二重の発火でレコードが更新されると、依頼者の購読（到着・完了）が
+    /// 再び通知を出してしまうため。
+    /// - Returns: 呼び出し後のサーバの状態（書き込まなかったときはサーバにあった状態）。
+    @discardableResult
+    func updateStatus(recordID: CKRecord.ID, status: ShareStatus, date: Date? = nil) async throws -> ShareStatus {
         let isMyZone = recordID.zoneID.ownerName == CKCurrentUserDefaultName
         let primaryDB:  CKDatabase = isMyZone ? privateDB : sharedDB
         let fallbackDB: CKDatabase = isMyZone ? sharedDB  : privateDB
@@ -189,7 +281,7 @@ final class CKShareService {
             record = try await fallbackDB.record(for: recordID)
         }
         let current = ShareStatus(rawValue: record["status"] as? String ?? "") ?? .active
-        guard ShareStatus.shouldWrite(status, over: current) else { return }
+        guard ShareStatus.shouldWrite(status, over: current) else { return current }
         record["status"] = status.rawValue
         switch status {
         case .fired:     record["firedAt"]     = date
@@ -200,9 +292,12 @@ final class CKShareService {
         let saveDB: CKDatabase = record.recordID.zoneID.ownerName == CKCurrentUserDefaultName
             ? privateDB : sharedDB
         _ = try await saveDB.save(record)
+        return status
     }
 
-    func cancelSharedMemo(recordID: CKRecord.ID) async throws {
+    /// - Returns: 呼び出し後のサーバの状態。相手が先に完了していれば `.completed` のまま。
+    @discardableResult
+    func cancelSharedMemo(recordID: CKRecord.ID) async throws -> ShareStatus {
         try await updateStatus(recordID: recordID, status: .cancelled)
     }
 
@@ -218,8 +313,8 @@ final class CKShareService {
     }
 
     /// 送った依頼ごとに、共有を受諾した受信者を CloudKit の参加者情報から決める。
-    /// - Returns: レコード名 → 受信者。受諾した人がいない依頼は含まない。
-    func fetchVerifiedRecipients(for sent: [SharedMemoCKData]) async throws -> [String: VerifiedRecipient] {
+    /// - Returns: レコード名 → 受信者と共有の種類。受諾した人がいない依頼は含まない。
+    func fetchVerifiedRecipients(for sent: [SharedMemoCKData]) async throws -> [String: ResolvedShareRecipient] {
         let pairs = sent.compactMap { data in data.shareRecordID.map { (data, $0) } }
         guard !pairs.isEmpty else { return [:] }
 
@@ -235,7 +330,7 @@ final class CKShareService {
             }
         }
 
-        var recipients: [String: VerifiedRecipient] = [:]
+        var recipients: [String: ResolvedShareRecipient] = [:]
         for (data, shareID) in pairs {
             guard let share = shares[shareID] else { continue }
             let participants = share.participants.map(ShareParticipantSummary.init)
@@ -244,7 +339,8 @@ final class CKShareService {
                 claimedRecordName: data.recipientRecordID,
                 claimedName: data.recipientName
             ) {
-                recipients[data.ckRecordID.recordName] = recipient
+                recipients[data.ckRecordID.recordName] = ResolvedShareRecipient(
+                    recipient: recipient, isPublicShare: share.publicPermission != .none)
             }
         }
         return recipients
@@ -364,9 +460,27 @@ final class CKShareService {
             subscription.notificationInfo = info
             return subscription
         }
+        // 旧版の購読は見つけるたびに消す。旧版の端末が同じ Apple ID にあると起動のたびに作り直されるが、
+        // 残すと通知が二重に届き続け、相手が書いた名前も通知文に出続ける（docs/sharing.md の制限事項）。
         let toDelete = Self.legacySubscriptionIDs.filter(existing.contains)
         guard !toSave.isEmpty || !toDelete.isEmpty else { return }
-        _ = try await privateDB.modifySubscriptions(saving: toSave, deleting: toDelete)
+        let (saveResults, deleteResults) = try await privateDB.modifySubscriptions(saving: toSave, deleting: toDelete)
+        var failed = false
+        for (id, result) in saveResults {
+            if case .failure(let error) = result,
+               RequesterSubscriptionPolicy.isFailure(error, deleting: false) {
+                Self.logger.error("subscription save failed (\(id, privacy: .public)): \(error.localizedDescription, privacy: .public)")
+                failed = true
+            }
+        }
+        for (id, result) in deleteResults {
+            if case .failure(let error) = result,
+               RequesterSubscriptionPolicy.isFailure(error, deleting: true) {
+                Self.logger.error("subscription delete failed (\(id, privacy: .public)): \(error.localizedDescription, privacy: .public)")
+                failed = true
+            }
+        }
+        if failed { throw ServiceError.partialFailure }
     }
 
     // MARK: - 受信者名の書き込み（招待で送った依頼の相手名）

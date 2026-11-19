@@ -26,8 +26,11 @@ extension ShareStatus {
     ///
     /// 同じ状態や後戻りになる書き込みはしない。再送キューのリトライや、状態が変わった後の
     /// 余計な書き込みで、依頼者の購読通知（到着・完了）が何度も届くのを防ぐ。
+    /// サーバの状態が終点（完了・取り消し）なら何も書かない。オフラインで溜まった「取り消し」が、
+    /// その後に相手が付けた「完了」を上書きしないようにする（終点の後は誰が書いても変わらない）。
     nonisolated static func shouldWrite(_ target: ShareStatus, over current: ShareStatus) -> Bool {
-        target.progressRank > current.progressRank
+        guard !current.isTerminal else { return false }
+        return target.progressRank > current.progressRank
     }
 
     /// 取得した状態 `incoming` で、手元の状態 `local` を置き換えてよいか。
@@ -70,12 +73,16 @@ struct ShareParticipantSummary: Equatable, Sendable {
     var displayName: String
     var isOwner: Bool
     var isAccepted: Bool
+    /// 招待済みでまだ受諾していない（`.pending`、または状態不明の `.unknown`）。取り除かれた参加者は false。
+    var isInvited: Bool
 
-    nonisolated init(userRecordName: String, displayName: String, isOwner: Bool, isAccepted: Bool) {
+    nonisolated init(userRecordName: String, displayName: String, isOwner: Bool, isAccepted: Bool,
+                     isInvited: Bool = false) {
         self.userRecordName = userRecordName
         self.displayName = displayName
         self.isOwner = isOwner
         self.isAccepted = isAccepted
+        self.isInvited = isInvited
     }
 
     nonisolated init(_ participant: CKShare.Participant) {
@@ -86,16 +93,19 @@ struct ShareParticipantSummary: Equatable, Sendable {
             userRecordName: participant.userIdentity.userRecordID?.recordName ?? "",
             displayName: name.trimmingCharacters(in: .whitespacesAndNewlines),
             isOwner: participant.role == .owner,
-            isAccepted: participant.acceptanceStatus == .accepted
+            isAccepted: participant.acceptanceStatus == .accepted,
+            isInvited: participant.acceptanceStatus == .pending || participant.acceptanceStatus == .unknown
         )
     }
 }
 
 /// CloudKit が保証する「共有を受諾した参加者」から確定した受信者。
-struct VerifiedRecipient: Equatable, Sendable {
+nonisolated struct VerifiedRecipient: Equatable, Sendable {
     var userRecordName: String
     /// 表示名。分からなければ空文字。
     var displayName: String
+    /// 表示名が CloudKit の名前（連絡先・iCloud）か。false なら本人がレコードに書いた名前（または空）。
+    var nameIsFromCloudKit: Bool = false
 }
 
 enum SharedMemoRecipientResolver {
@@ -117,12 +127,22 @@ enum SharedMemoRecipientResolver {
             .sorted { $0.userRecordName < $1.userRecordName }
         guard let chosen = candidates.first(where: { $0.userRecordName == claimedRecordName }) ?? candidates.first
         else { return nil }
+        if !chosen.displayName.isEmpty {
+            return VerifiedRecipient(userRecordName: chosen.userRecordName, displayName: chosen.displayName,
+                                     nameIsFromCloudKit: true)
+        }
         let claimed = claimedName.trimmingCharacters(in: .whitespacesAndNewlines)
-        let name = !chosen.displayName.isEmpty
-            ? chosen.displayName
-            : (chosen.userRecordName == claimedRecordName ? claimed : "")
+        let name = chosen.userRecordName == claimedRecordName ? claimed : ""
         return VerifiedRecipient(userRecordName: chosen.userRecordName, displayName: name)
     }
+}
+
+/// 送った依頼ごとに、共有の参加者から決めた受信者と、その共有の種類。
+nonisolated struct ResolvedShareRecipient: Equatable, Sendable {
+    var recipient: VerifiedRecipient
+    /// 旧版で作った公開リンクの共有（`publicPermission != .none`）。URL を知っていれば誰でも参加でき、
+    /// 受信者の選び方（`claimedRecordName` を優先）も参加者に操作されうるので、表示にだけ使う。
+    var isPublicShare: Bool
 }
 
 // MARK: - リンクの送り直し
@@ -148,13 +168,16 @@ enum ShareResendMethod: Equatable {
 
 // MARK: - 削除したフレンドの記録
 
-/// ユーザーが削除したフレンドの userRecordID を覚えておき、自動登録で復活させないための記録。
+/// ユーザーが削除したフレンドの userRecordID と削除した日時を覚えておき、自動登録で復活させないための記録。
 ///
 /// 依頼者側は「相手が依頼を受け取った」ことを同期のたびに確認してフレンドを自動登録する。
 /// 記録が無いと、削除したフレンドが次の同期で戻ってしまう。
 /// 端末ごとの App Group UserDefaults に置く（iCloud 間では同期しない。docs/sharing.md の制限事項を参照）。
 struct FriendTombstoneStore {
-    private static let key = "deletedFriendRecordIDs"
+    /// userRecordID → 削除した日時
+    private static let key = "deletedFriends"
+    /// 日時を持たない以前の形式（userRecordID の配列）。読んだら新しい形式へ移す。
+    private static let legacyKey = "deletedFriendRecordIDs"
     let defaults: UserDefaults?
 
     init(defaults: UserDefaults?) {
@@ -163,6 +186,102 @@ struct FriendTombstoneStore {
 
     static var shared: FriendTombstoneStore {
         FriendTombstoneStore(defaults: UserDefaults(suiteName: GeoMemoStore.appGroupID))
+    }
+
+    private func load() -> [String: Date] {
+        guard let defaults else { return [:] }
+        var map = defaults.dictionary(forKey: Self.key) as? [String: Date] ?? [:]
+        if let legacy = defaults.stringArray(forKey: Self.legacyKey) {
+            // 削除した日時が分からないので、移行した時点で削除したものとして扱う（その後に送った依頼だけが記録を外せる）
+            let now = Date()
+            for recordName in legacy where !recordName.isEmpty && map[recordName] == nil {
+                map[recordName] = now
+            }
+            defaults.set(map, forKey: Self.key)
+            defaults.removeObject(forKey: Self.legacyKey)
+        }
+        return map
+    }
+
+    var all: Set<String> {
+        Set(load().keys)
+    }
+
+    func contains(_ recordName: String) -> Bool {
+        deletedAt(recordName) != nil
+    }
+
+    /// 削除した日時。削除の記録が無ければ nil。
+    func deletedAt(_ recordName: String) -> Date? {
+        guard !recordName.isEmpty else { return nil }
+        return load()[recordName]
+    }
+
+    func add(_ recordName: String, at date: Date = Date()) {
+        guard !recordName.isEmpty, let defaults else { return }
+        var current = load()
+        guard current[recordName] == nil else { return }
+        current[recordName] = date
+        defaults.set(current, forKey: Self.key)
+    }
+
+    func remove(_ recordName: String) {
+        guard let defaults else { return }
+        var current = load()
+        guard current.removeValue(forKey: recordName) != nil else { return }
+        defaults.set(current, forKey: Self.key)
+    }
+}
+
+// MARK: - フレンドの自動登録（依頼者側）
+
+nonisolated enum FriendAutoRegistration: Equatable, Sendable {
+    /// 登録しない
+    case skip
+    /// 登録する（既に登録済みなら何もしない）
+    case register
+    /// 削除の記録を外してから登録する（削除した後に、依頼者が自分で招待し直した相手）
+    case registerClearingTombstone
+}
+
+nonisolated enum FriendAutoRegistrationPolicy {
+    /// 依頼者側で、共有の参加者から受信者が決まったときに、その人をフレンドに登録するか。
+    ///
+    /// - 旧版の公開リンクの共有では登録しない（誰でも参加でき、受信者の選び方も参加者に操作されうる）。
+    /// - 新しく受信者が決まったとき（招待で送った依頼を誰かが受け取った）だけ登録する。
+    /// - 削除したフレンドは登録しない。ただし、削除した後に依頼者が招待で送った依頼
+    ///   （`requestSentAt` は端末で記録した送信日時。相手が書けるレコードの値は使わない）を受け取ったなら、
+    ///   依頼者自身の操作による招待なので、削除の記録を外して登録し直す（受信側の共有の受諾と同じ考え方）。
+    nonisolated static func decide(
+        isPublicShare: Bool,
+        isNewRecipient: Bool,
+        requestSentAt: Date,
+        tombstonedAt: Date?
+    ) -> FriendAutoRegistration {
+        guard !isPublicShare, isNewRecipient else { return .skip }
+        guard let tombstonedAt else { return .register }
+        return requestSentAt > tombstonedAt ? .registerClearingTombstone : .skip
+    }
+}
+
+// MARK: - 本人確認できたフレンド
+
+/// CloudKit の情報（共有の所有者・参加者）で本人と名前を確かめたフレンドの userRecordID。
+///
+/// 旧版は、共有の参加者が自由に書けるレコードのフィールド（受信者名・ID）からフレンドを登録していた。
+/// そのため「母」という名前で別人の ID を持つフレンドが作られている可能性がある。非公開の共有では
+/// フレンドを選ぶとその ID の人だけを招待するので、確かめていないフレンドには「未確認」と表示し、
+/// 送る前に確認する。SwiftData のスキーマを変えないよう、App Group の UserDefaults に置く（端末ごと）。
+struct VerifiedFriendStore {
+    private static let key = "verifiedFriendRecordIDs"
+    let defaults: UserDefaults?
+
+    init(defaults: UserDefaults?) {
+        self.defaults = defaults
+    }
+
+    static var shared: VerifiedFriendStore {
+        VerifiedFriendStore(defaults: UserDefaults(suiteName: GeoMemoStore.appGroupID))
     }
 
     var all: Set<String> {
@@ -179,11 +298,225 @@ struct FriendTombstoneStore {
         guard current.insert(recordName).inserted else { return }
         defaults.set(current.sorted(), forKey: Self.key)
     }
+}
+
+// MARK: - 共有シートの結果
+
+/// 依頼を送る共有シート（`UIActivityViewController`）の結果。
+nonisolated enum ShareSheetOutcome: Equatable, Sendable {
+    /// 送信（コピー等を含む）が完了した
+    case sent
+    /// 何も送らずに共有シートを閉じた（システムが「何も完了していない」と知らせた）
+    case notSent
+    /// 共有シートは閉じたが、送れたかどうか分からない
+    case unknown
+}
+
+/// `completionWithItemsHandler` の呼び出しと共有シートが閉じたことから、送ったかどうかを決める。
+///
+/// iOS 13 以降、共有シートで「メッセージ」「メール」等を選んで作成画面をキャンセルすると、共有シートは
+/// 開いたまま `completed == false`（`activityType` は選んだもの）で呼ばれる。ユーザーはそのまま別の方法で
+/// 送れるので、この時点では決めない。
+///
+/// - `completed == true` → 送った。
+/// - `activityType == nil && completed == false` → 何も送らずに閉じた。
+/// - `activityType != nil && completed == false` → 次の呼び出しを待つ。
+/// - 共有シートが閉じたのに結果が決まらない → 分からない（サーバのレコードは消さずに「未送信」として残す）。
+///   その後に `completed == true` が届いたら「送った」に改める。
+nonisolated struct ShareSheetCompletionTracker {
+    private(set) var reported: ShareSheetOutcome?
+
+    nonisolated init() {}
+
+    /// 完了ハンドラの 1 回分を記録する。新しく知らせるべき結果があれば返す。
+    nonisolated mutating func record(activityType: String?, completed: Bool) -> ShareSheetOutcome? {
+        if completed {
+            guard reported == nil || reported == .unknown else { return nil }
+            reported = .sent
+            return .sent
+        }
+        guard activityType == nil, reported == nil else { return nil }
+        reported = .notSent
+        return .notSent
+    }
+
+    /// 共有シートが閉じた後、しばらく待っても結果が決まらなかったときに呼ぶ。
+    nonisolated mutating func sheetDismissedWithoutResult() -> ShareSheetOutcome? {
+        guard reported == nil else { return nil }
+        reported = .unknown
+        return .unknown
+    }
+}
+
+// MARK: - 送らなかった依頼の後片付け
+
+/// 共有シートで送るために作った依頼のうち、まだ行き先の決まっていないものの記録。
+nonisolated struct UnsentShareEntry: Codable, Equatable, Sendable {
+    enum State: String, Codable, Sendable {
+        /// 共有シートを表示中（結果を待っている）。アプリが終了されるとこのまま残る。
+        case presenting
+        /// 送らずに閉じた。サーバのレコードと共有を消す（失敗したら次回の起動で再試行する）。
+        case discarding
+        /// 送れたか分からない。サーバに残し、見守り画面に「未送信」として出す（送り直すか削除はユーザーが決める）。
+        case kept
+    }
+
+    var recordName: String
+    var shareRecordName: String
+    /// フレンドに送るとき参加者として加えた相手。新しい相手（招待）なら空。
+    var invitedFriendRecordName: String
+    /// 端末で記録した作成日時
+    var createdAt: Date
+    var state: State
+
+    nonisolated init(recordName: String, shareRecordName: String, invitedFriendRecordName: String,
+                     createdAt: Date, state: State) {
+        self.recordName = recordName
+        self.shareRecordName = shareRecordName
+        self.invitedFriendRecordName = invitedFriendRecordName
+        self.createdAt = createdAt
+        self.state = state
+    }
+}
+
+/// `UnsentShareEntry` を App Group の UserDefaults に置く（端末ごと）。
+struct UnsentShareStore {
+    private static let key = "unsentShares"
+    let defaults: UserDefaults?
+
+    init(defaults: UserDefaults?) {
+        self.defaults = defaults
+    }
+
+    static var shared: UnsentShareStore {
+        UnsentShareStore(defaults: UserDefaults(suiteName: GeoMemoStore.appGroupID))
+    }
+
+    var entries: [UnsentShareEntry] {
+        guard let data = defaults?.data(forKey: Self.key),
+              let decoded = try? JSONDecoder().decode([UnsentShareEntry].self, from: data)
+        else { return [] }
+        return decoded
+    }
+
+    /// 「未送信」として残している依頼のレコード名
+    var keptRecordNames: Set<String> {
+        Set(entries.filter { $0.state == .kept }.map(\.recordName))
+    }
+
+    func entry(for recordName: String) -> UnsentShareEntry? {
+        entries.first { $0.recordName == recordName }
+    }
+
+    func upsert(_ entry: UnsentShareEntry) {
+        var current = entries.filter { $0.recordName != entry.recordName }
+        current.append(entry)
+        save(current)
+    }
+
+    func setState(_ state: UnsentShareEntry.State, for recordName: String) {
+        var current = entries
+        guard let index = current.firstIndex(where: { $0.recordName == recordName }),
+              current[index].state != state
+        else { return }
+        current[index].state = state
+        save(current)
+    }
 
     func remove(_ recordName: String) {
-        guard let defaults else { return }
-        var current = all
-        guard current.remove(recordName) != nil else { return }
-        defaults.set(current.sorted(), forKey: Self.key)
+        let current = entries
+        let remaining = current.filter { $0.recordName != recordName }
+        guard remaining.count != current.count else { return }
+        save(remaining)
+    }
+
+    private func save(_ entries: [UnsentShareEntry]) {
+        defaults?.set(try? JSONEncoder().encode(entries), forKey: Self.key)
+    }
+}
+
+nonisolated enum UnsentShareCleanupPolicy {
+    /// 共有シートの表示中にアプリが終了されたとみなすまでの時間
+    nonisolated static let orphanAge: TimeInterval = 10 * 60
+
+    enum Action: Equatable, Sendable {
+        /// 何もしない（ユーザーが決める、またはまだ待つ）
+        case leave
+        /// サーバのレコードと共有を消す。`allowedInviteeRecordName` は、招待中のままでも消してよい参加者
+        /// （フレンドに送るとき自分で加え、URL を送っていない相手）。
+        case delete(allowedInviteeRecordName: String?)
+    }
+
+    /// 起動時の後片付けで、記録 1 件をどうするか。
+    nonisolated static func action(for entry: UnsentShareEntry, now: Date) -> Action {
+        switch entry.state {
+        case .kept:
+            return .leave
+        case .discarding:
+            // 送らずに閉じたことが分かっている。フレンドに URL は渡っていない
+            return .delete(allowedInviteeRecordName: entry.invitedFriendRecordName.isEmpty
+                           ? nil : entry.invitedFriendRecordName)
+        case .presenting:
+            // 結果が分からないまま残った。送った可能性があるので、参加者が誰もいないときだけ消す
+            guard now.timeIntervalSince(entry.createdAt) >= orphanAge else { return .leave }
+            return .delete(allowedInviteeRecordName: nil)
+        }
+    }
+
+    /// 共有を消してよいか。所有者以外に、受諾した人・招待中の人がいれば消さない
+    /// （相手に届いているかもしれないリンクを無効にしない）。
+    /// `allowedInviteeRecordName` に一致する招待中（未受諾）の参加者だけは例外にできる。
+    nonisolated static func canDelete(participants: [ShareParticipantSummary],
+                                      allowedInviteeRecordName: String?) -> Bool {
+        for participant in participants where !participant.isOwner {
+            if participant.isAccepted { return false }
+            if participant.isInvited {
+                guard let allowed = allowedInviteeRecordName, !allowed.isEmpty,
+                      participant.userRecordName == allowed
+                else { return false }
+            }
+        }
+        return true
+    }
+}
+
+// MARK: - 送信後の編集で本文を書き込むか
+
+nonisolated enum SharedMemoNoteEditPolicy {
+    /// 編集画面の本文をどこから読んだか
+    enum Source: Equatable, Sendable {
+        /// サーバから読めた
+        case server
+        /// サーバから読めず、端末のキャッシュを出した（サーバにはもっと新しい本文があるかもしれない）
+        case cache
+        /// どちらからも読めなかった
+        case unavailable
+    }
+
+    /// 保存するときに書き込む本文。nil なら本文には触れない。
+    /// キャッシュから出した本文は、ユーザーが書き換えたときだけ書き込む（古い本文でサーバを上書きしない）。
+    nonisolated static func noteToSave(source: Source, loaded: String, current: String) -> String? {
+        switch source {
+        case .server:      return current
+        case .cache:       return current == loaded ? nil : current
+        case .unavailable: return nil
+        }
+    }
+}
+
+// MARK: - 依頼者への通知の購読
+
+nonisolated enum RequesterSubscriptionPolicy {
+    /// 通知文に受信者名（相手が書けるフィールド）を差し込んでいた旧版の購読か。
+    nonisolated static func isLegacy(_ subscriptionID: String?) -> Bool {
+        guard let subscriptionID else { return false }
+        return CKShareService.legacySubscriptionIDs.contains(subscriptionID)
+    }
+
+    /// `modifySubscriptions` の項目ごとの失敗を、失敗として扱うか。
+    /// 削除しようとした購読が既に無い（別の端末が先に消した等）のは成功とみなす。
+    nonisolated static func isFailure(_ error: any Error, deleting: Bool) -> Bool {
+        if deleting, let ckError = error as? CKError, ckError.code == .unknownItem { return false }
+        return true
     }
 }
