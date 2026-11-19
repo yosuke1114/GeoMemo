@@ -26,6 +26,8 @@ struct WatchDashboardView: View {
 
     @State private var isSyncing = false
     @State private var pendingCount = 0
+    @State private var editing: SharedMemo?
+    @State private var resendLink: ShareLinkItem?
 
     var body: some View {
         NavigationStack {
@@ -42,6 +44,13 @@ struct WatchDashboardView: View {
                 }
             }
             .background(Brand.background)
+            .sheet(item: $editing) { shared in
+                EditSharedMemoSheet(shared: shared)
+            }
+            .sheet(item: $resendLink) { item in
+                ActivityShareSheet(items: [item.url])
+                    .presentationDetents([.medium, .large])
+            }
             .navigationTitle(String(localized: "見守り"))
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -187,7 +196,19 @@ struct WatchDashboardView: View {
         .accessibilityLabel(rowAccessibilityLabel(for: shared))
         // ScrollView/VStack 内では .swipeActions が動かないため長押しメニューで代替。
         .contextMenu {
+            if shared.isActive {
+                Button {
+                    editing = shared
+                } label: {
+                    Label(String(localized: "内容・期限を編集"), systemImage: "pencil")
+                }
+            }
             if shared.status == .active {
+                Button {
+                    Task { await resend(shared) }
+                } label: {
+                    Label(String(localized: "リンクを送り直す"), systemImage: "link")
+                }
                 Button(role: .destructive) {
                     Task { await cancelSharedMemo(shared) }
                 } label: {
@@ -280,9 +301,13 @@ struct WatchDashboardView: View {
             var didChange = false
             for data in sentData {
                 let recordName = data.ckRecordID.recordName
-                if let local = allSharedMemos.first(where: { $0.ckRecordName == recordName }),
-                   local.apply(data) {
-                    didChange = true
+                if let local = allSharedMemos.first(where: { $0.ckRecordName == recordName }) {
+                    if local.apply(data) { didChange = true }
+                    // 相手が受け取った依頼なら、依頼者側にも相手をフレンドとして登録（双方向）
+                    if FriendConnection.registerIfNeeded(recordID: local.recipientRecordID,
+                                                          displayName: local.recipientName, in: modelContext) {
+                        didChange = true
+                    }
                 }
             }
             if didChange { try? modelContext.save() }
@@ -291,6 +316,20 @@ struct WatchDashboardView: View {
                 String(localized: "最新の状態を取得できませんでした。通信状況を確認してください。")
             ))
         }
+    }
+
+    // MARK: - Resend link
+
+    private func resend(_ shared: SharedMemo) async {
+        do {
+            if let url = try await CKShareService.shared.shareURL(for: shared.cloudKitRecordID) {
+                resendLink = ShareLinkItem(url: url)
+                return
+            }
+        } catch {}
+        ToastCenter.shared.show(.warning(
+            String(localized: "共有リンクを取得できませんでした。通信状況を確認してください。")
+        ))
     }
 
     // MARK: - Cancel
@@ -310,6 +349,82 @@ struct WatchDashboardView: View {
                 String(localized: "キャンセルを送信できませんでした。通信が戻ったとき自動で再送します。")
             ))
             pendingCount = PendingEventQueue.shared.all.count
+        }
+    }
+}
+
+// MARK: - 送信後の編集（依頼者）
+
+/// 送った依頼のタイトル・本文・期限を編集する。保存すると受信側の次回同期で反映される。
+private struct EditSharedMemoSheet: View {
+    @Environment(\.dismiss) private var dismiss
+    @Environment(\.modelContext) private var modelContext
+    let shared: SharedMemo
+
+    @State private var title = ""
+    @State private var note = ""
+    @State private var hasDeadline = false
+    @State private var deadline = Date()
+    @State private var isSaving = false
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section(String(localized: "タイトル")) {
+                    TextField(String(localized: "タイトル"), text: $title)
+                }
+                Section(String(localized: "メモ")) {
+                    TextField(String(localized: "メモ"), text: $note, axis: .vertical)
+                        .lineLimit(3...8)
+                }
+                Section {
+                    Toggle(String(localized: "期限を設定"), isOn: $hasDeadline)
+                    if hasDeadline {
+                        DatePicker(String(localized: "期限"), selection: $deadline, in: Date()...)
+                    }
+                } footer: {
+                    Text(String(localized: "保存すると、相手のアプリにも反映されます。場所は変更できません。"))
+                }
+            }
+            .navigationTitle(String(localized: "依頼を編集"))
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button(String(localized: "キャンセル")) { dismiss() }
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    if isSaving {
+                        ProgressView()
+                    } else {
+                        Button(String(localized: "保存")) { Task { await save() } }
+                    }
+                }
+            }
+            .onAppear {
+                title = shared.memoTitle
+                note = SharedMemoNoteStore.note(for: shared.ckRecordName)
+                hasDeadline = shared.memoDeadline != nil
+                deadline = shared.memoDeadline ?? Calendar.current.date(byAdding: .day, value: 1, to: Date()) ?? Date()
+            }
+        }
+    }
+
+    private func save() async {
+        isSaving = true
+        defer { isSaving = false }
+        let newDeadline = hasDeadline ? deadline : nil
+        do {
+            try await CKShareService.shared.updateSharedMemoContent(
+                recordID: shared.cloudKitRecordID, title: title, note: note, deadline: newDeadline)
+            shared.memoTitle = title
+            shared.memoDeadline = newDeadline
+            SharedMemoNoteStore.setNote(note, for: shared.ckRecordName)
+            try? modelContext.save()
+            dismiss()
+        } catch {
+            ToastCenter.shared.show(.warning(
+                String(localized: "依頼を更新できませんでした。通信状況を確認してください。")
+            ))
         }
     }
 }
