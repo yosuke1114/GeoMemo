@@ -27,6 +27,8 @@ struct WatchDashboardView: View {
     @State private var isSyncing = false
     @State private var pendingCount = 0
     @State private var editing: SharedMemo?
+    /// 取り消しの確認待ちの依頼
+    @State private var pendingCancel: SharedMemo?
     /// 送れたか分からず「未送信」として残している依頼（`UnsentShareStore`）
     @State private var unsentRecordNames: Set<String> = []
 
@@ -51,6 +53,22 @@ struct WatchDashboardView: View {
             .background(Brand.background)
             .sheet(item: $editing) { shared in
                 EditSharedMemoSheet(shared: shared)
+            }
+            .confirmationDialog(
+                String(localized: "この依頼を取り消しますか？"),
+                isPresented: Binding(
+                    get: { pendingCancel != nil },
+                    set: { if !$0 { pendingCancel = nil } }
+                ),
+                titleVisibility: .visible,
+                presenting: pendingCancel
+            ) { shared in
+                Button(String(localized: "依頼を取り消す"), role: .destructive) {
+                    Task { await cancelSharedMemo(shared) }
+                }
+                Button(String(localized: "戻る"), role: .cancel) {}
+            } message: { _ in
+                Text(String(localized: "取り消した依頼は、見守りの一覧から消えます。"))
             }
             .navigationTitle(String(localized: "見守り"))
             .navigationBarTitleDisplayMode(.inline)
@@ -226,7 +244,7 @@ struct WatchDashboardView: View {
                     }
                 } else {
                     Button(role: .destructive) {
-                        Task { await cancelSharedMemo(shared) }
+                        pendingCancel = shared
                     } label: {
                         Label(String(localized: "キャンセル"), systemImage: "xmark")
                     }

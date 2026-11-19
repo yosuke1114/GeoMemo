@@ -16,6 +16,8 @@ struct FriendManagementView: View {
     }
 
     @State private var showProfileSetup = false
+    /// 削除の確認待ちのフレンド
+    @State private var pendingDeleteFriend: FriendConnection?
     /// CloudKit の情報で本人を確かめたフレンド（それ以外は「未確認」と表示する）
     @State private var verifiedFriendIDs: Set<String> = []
 
@@ -50,6 +52,22 @@ struct FriendManagementView: View {
         }
         .sheet(isPresented: $showProfileSetup) {
             UserProfileSetupView()
+        }
+        .confirmationDialog(
+            String(localized: "このフレンドを削除しますか？"),
+            isPresented: Binding(
+                get: { pendingDeleteFriend != nil },
+                set: { if !$0 { pendingDeleteFriend = nil } }
+            ),
+            titleVisibility: .visible,
+            presenting: pendingDeleteFriend
+        ) { friend in
+            Button(String(localized: "削除"), role: .destructive) {
+                deleteFriend(friend)
+            }
+            Button(String(localized: "キャンセル"), role: .cancel) {}
+        } message: { friend in
+            Text(String(localized: "「\(friend.friendDisplayName)」をフレンド一覧から削除します。"))
         }
         .onAppear {
             verifiedFriendIDs = VerifiedFriendStore.shared.all
@@ -230,7 +248,7 @@ struct FriendManagementView: View {
         // ScrollView/VStack 内では .swipeActions が動かないため長押しメニューで代替。
         .contextMenu {
             Button(role: .destructive) {
-                deleteFriend(friend)
+                pendingDeleteFriend = friend
             } label: {
                 Label(String(localized: "削除"), systemImage: "trash")
             }
