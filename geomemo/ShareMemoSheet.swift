@@ -27,6 +27,8 @@ struct ShareMemoSheet: View {
     @State private var isSending = false
     @State private var errorMessage: String?
     @State private var shareWrapper: ShareWrapper?
+    /// 保存済み CKShare の URL。システムの共有シートで送る。
+    @State private var shareLinkItem: ShareLinkItem?
     @State private var pendingSharedMemoRecordID: CKRecord.ID?
 
     var body: some View {
@@ -75,6 +77,14 @@ struct ShareMemoSheet: View {
                 if acceptedFriends.isEmpty { sendViaLink = true }
             }
             .navigationBarTitleDisplayMode(.inline)
+            .sheet(item: $shareLinkItem, onDismiss: {
+                // 共有はこの時点でサーバに保存済み。送信先を選ばず閉じても
+                // リンクは有効なので、依頼として記録して閉じる。
+                dismiss()
+            }) { item in
+                ActivityShareSheet(items: [item.url])
+                    .presentationDetents([.medium, .large])
+            }
             .sheet(item: $shareWrapper) { wrapper in
                 CloudSharingControllerSheet(
                     share: wrapper.share,
@@ -290,8 +300,17 @@ struct ShareMemoSheet: View {
                     autoComplete: autoComplete
                 )
                 pendingSharedMemoRecordID = record.recordID
-                shareWrapper = ShareWrapper(share: share, container: CKShareService.shared.container)
                 isSending = false
+                if let url = share.url {
+                    // 保存済みの share を UICloudSharingController に渡すと「参加者の管理」
+                    // 表示になり、リンクのコピー等をしても完了コールバックが来ない。
+                    // URL が確定しているので、システムの共有シートで直接送る。
+                    saveLocalSharedMemo()
+                    HapticManager.notification(.success)
+                    shareLinkItem = ShareLinkItem(url: url)
+                } else {
+                    shareWrapper = ShareWrapper(share: share, container: CKShareService.shared.container)
+                }
             } catch {
                 errorMessage = String(localized: "送信に失敗しました。もう一度お試しください。")
                 isSending = false
@@ -332,4 +351,20 @@ struct ShareMemoSheet: View {
             _ = try? await CKShareService.shared.privateDB.deleteRecord(withID: recordID)
         }
     }
+}
+
+
+/// 共有シートに渡す CKShare URL。
+struct ShareLinkItem: Identifiable {
+    let url: URL
+    var id: String { url.absoluteString }
+}
+
+/// `UIActivityViewController` の SwiftUI ラッパー (メッセージ / AirDrop / コピー等)。
+struct ActivityShareSheet: UIViewControllerRepresentable {
+    let items: [Any]
+    func makeUIViewController(context: Context) -> UIActivityViewController {
+        UIActivityViewController(activityItems: items, applicationActivities: nil)
+    }
+    func updateUIViewController(_ uiViewController: UIActivityViewController, context: Context) {}
 }

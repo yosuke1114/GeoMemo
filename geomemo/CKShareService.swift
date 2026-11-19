@@ -90,10 +90,15 @@ final class CKShareService {
         let (results, _) = try await privateDB.modifyRecords(
             saving: [record, share], deleting: []
         )
+        var savedRecord = record
+        var savedShare = share
         for (_, result) in results {
-            _ = try result.get()
+            switch try result.get() {
+            case let saved as CKShare: savedShare = saved   // サーバ確定後の share (url 付き)
+            case let saved: savedRecord = saved
+            }
         }
-        return (record, share)
+        return (savedRecord, savedShare)
     }
 
     // MARK: - ステータス更新
