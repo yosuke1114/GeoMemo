@@ -19,6 +19,10 @@ struct ShareMemoSheet: View {
     }
 
     @State private var selectedFriend: FriendConnection?
+    /// フレンド以外へリンクで送る。フレンドは共有の受諾時にしか増えないため、
+    /// 最初の 1 人目はこの経路で送る (受け取った側で送り主がフレンド登録される)。
+    @State private var sendViaLink = false
+    private var hasRecipient: Bool { selectedFriend != nil || sendViaLink }
     @State private var autoComplete: Bool = false
     @State private var isSending = false
     @State private var errorMessage: String?
@@ -46,6 +50,14 @@ struct ShareMemoSheet: View {
                         // オプション
                         optionSection
 
+                        if myProfile == nil {
+                            // 表示名が無いと送信できない (ボタンが無反応に見えるのを防ぐ)
+                            Text(String(localized: "依頼を送るには、設定の「フレンド」で表示名を設定してください。"))
+                                .font(.footnote)
+                                .foregroundStyle(Brand.secondaryText)
+                                .padding(.horizontal, 20)
+                        }
+
                         if let error = errorMessage {
                             Text(error)
                                 .font(.footnote)
@@ -59,6 +71,9 @@ struct ShareMemoSheet: View {
             }
             .background(Brand.background)
             .navigationTitle(String(localized: "依頼する"))
+            .onAppear {
+                if acceptedFriends.isEmpty { sendViaLink = true }
+            }
             .navigationBarTitleDisplayMode(.inline)
             .sheet(item: $shareWrapper) { wrapper in
                 CloudSharingControllerSheet(
@@ -89,8 +104,8 @@ struct ShareMemoSheet: View {
                                 .font(.subheadline.weight(.semibold))
                         }
                     }
-                    .disabled(selectedFriend == nil || isSending || myProfile == nil)
-                    .foregroundStyle(selectedFriend != nil ? Brand.blue : Brand.secondaryText)
+                    .disabled(!hasRecipient || isSending || myProfile == nil)
+                    .foregroundStyle(hasRecipient && myProfile != nil ? Brand.blue : Brand.secondaryText)
                     .accessibilityLabel(isSending
                         ? String(localized: "送信中")
                         : String(localized: "依頼を送る"))
@@ -132,26 +147,22 @@ struct ShareMemoSheet: View {
         VStack(alignment: .leading, spacing: 0) {
             sectionHeader(String(localized: "送る相手"))
 
+            linkRecipientRow
+                .padding(.bottom, acceptedFriends.isEmpty ? 0 : 12)
+
             if acceptedFriends.isEmpty {
-                HStack {
-                    Image(systemName: "person.2.slash")
-                        .foregroundStyle(Brand.secondaryText)
-                        .accessibilityHidden(true)
-                    Text(String(localized: "フレンドがいません。設定からフレンドを追加してください。"))
-                        .font(.subheadline)
-                        .foregroundStyle(Brand.secondaryText)
-                }
-                .padding(16)
-                .background(Brand.surface)
-                .clipShape(RoundedRectangle(cornerRadius: 12))
-                .padding(.horizontal, 16)
-                .accessibilityElement(children: .combine)
+                Text(String(localized: "共有を受け取った相手は、次回からフレンドとしてここに表示されます。"))
+                    .font(.caption)
+                    .foregroundStyle(Brand.secondaryText)
+                    .padding(.horizontal, 20)
+                    .padding(.top, 8)
             } else {
                 VStack(spacing: 0) {
                     ForEach(acceptedFriends) { friend in
                         Button {
                             HapticManager.selection()
                             selectedFriend = friend
+                            sendViaLink = false
                         } label: {
                             HStack(spacing: 14) {
                                 Image(systemName: selectedFriend?.id == friend.id
@@ -184,6 +195,41 @@ struct ShareMemoSheet: View {
                 .padding(.horizontal, 16)
             }
         }
+    }
+
+    /// フレンド以外 (まだフレンドでない相手) にリンクで送る行。
+    private var linkRecipientRow: some View {
+        Button {
+            HapticManager.selection()
+            sendViaLink = true
+            selectedFriend = nil
+        } label: {
+            HStack(spacing: 14) {
+                Image(systemName: sendViaLink ? "checkmark.circle.fill" : "circle")
+                    .font(.title3)
+                    .foregroundStyle(sendViaLink ? Brand.blue : Brand.primaryText.opacity(0.3))
+                    .accessibilityHidden(true)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(String(localized: "リンクで送る"))
+                        .font(.body.weight(.semibold))
+                        .foregroundStyle(Brand.primaryText)
+                    Text(String(localized: "メッセージなどで共有リンクを送ります"))
+                        .font(.caption)
+                        .foregroundStyle(Brand.secondaryText)
+                }
+                Spacer(minLength: 0)
+                Image(systemName: "link")
+                    .foregroundStyle(Brand.secondaryText)
+                    .accessibilityHidden(true)
+            }
+            .padding(.horizontal, 16)
+            .padding(.vertical, 14)
+        }
+        .background(Brand.surface)
+        .clipShape(RoundedRectangle(cornerRadius: 12))
+        .padding(.horizontal, 16)
+        .accessibilityLabel(String(localized: "リンクで送る"))
+        .accessibilityAddTraits(sendViaLink ? .isSelected : [])
     }
 
     // MARK: - オプション
@@ -229,7 +275,8 @@ struct ShareMemoSheet: View {
     // MARK: - 送信
 
     private func send() {
-        guard let friend = selectedFriend, let profile = myProfile else { return }
+        guard hasRecipient, let profile = myProfile else { return }
+        let friend = selectedFriend
         isSending = true
         errorMessage = nil
 
@@ -238,8 +285,8 @@ struct ShareMemoSheet: View {
                 let (record, share) = try await CKShareService.shared.createSharedMemoShare(
                     from: memo,
                     requesterName: profile.displayName,
-                    recipientRecordID: friend.friendRecordID,
-                    recipientName: friend.friendDisplayName,
+                    recipientRecordID: friend?.friendRecordID ?? "",
+                    recipientName: friend?.friendDisplayName ?? String(localized: "リンクで共有"),
                     autoComplete: autoComplete
                 )
                 pendingSharedMemoRecordID = record.recordID
@@ -254,8 +301,9 @@ struct ShareMemoSheet: View {
 
     /// CloudSharingController で共有が完了した後、ローカルキャッシュへ保存。
     private func saveLocalSharedMemo() {
-        guard let friend = selectedFriend, let profile = myProfile,
+        guard let profile = myProfile,
               let recordID = pendingSharedMemoRecordID else { return }
+        let friend = selectedFriend
         let sharedMemo = SharedMemo(
             ckRecordName:        recordID.recordName,
             memoTitle:           memo.title,
@@ -268,8 +316,8 @@ struct ShareMemoSheet: View {
             memoTimeWindowEnd:   memo.timeWindowEnd,
             requesterRecordID:   profile.iCloudRecordID,
             requesterName:       profile.displayName,
-            recipientRecordID:   friend.friendRecordID,
-            recipientName:       friend.friendDisplayName,
+            recipientRecordID:   friend?.friendRecordID ?? "",
+            recipientName:       friend?.friendDisplayName ?? String(localized: "リンクで共有"),
             autoComplete:        autoComplete,
             isMyRequest:         true
         )
