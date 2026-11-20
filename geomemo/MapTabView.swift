@@ -1,4 +1,5 @@
 import SwiftUI
+import WidgetKit
 import SwiftData
 import MapKit
 import CoreLocation
@@ -119,7 +120,10 @@ struct MapTabView: View {
         .onChange(of: seenTick) { _, _ in recomputeReceived() }
         .onChange(of: receivedStateKey) { _, _ in recomputeReceived() }
         .onChange(of: isAnotherSheetPresented) { _, presented in
-            if !presented { presentArrivalWhenReady() }
+            if !presented {
+                presentArrivalWhenReady()
+                handleExternalNewMemoRequest()
+            }
         }
         // 設定アプリから戻った直後に、通知の許可状態を読み直す。
         .onChange(of: scenePhase) { _, phase in
@@ -127,6 +131,7 @@ struct MapTabView: View {
             if phase == .active {
                 notificationManager.checkAuthorizationStatus()
                 recomputeReceived() // 完了から 24 時間の判定が時間で変わるため
+                handleExternalNewMemoRequest() // 閉じていたシートの後ろで待たせていた要求
             }
         }
         // 許可を変えた後（設定アプリから戻った・ダイアログで許可した）に、監視を張り直す。
@@ -151,6 +156,7 @@ struct MapTabView: View {
         .onChange(of: regionRegistrationKey) { _, _ in
             GeofenceReconciler.reconcile(memos: memos, sharedMemos: mapSharedMemos)
             recomputeGuidance()
+            WidgetCenter.shared.reloadAllTimelines() // メモの増減・完了をウィジェットへ
         }
         .sheet(item: $mapSelectedReceived, onDismiss: { seenTick += 1 }) { shared in
             ReceivedSharedMemoDetailView(
@@ -190,6 +196,7 @@ struct MapTabView: View {
             }
             recomputeReceived()
             reRegisterAllGeofences()
+            handleExternalNewMemoRequest()
             // Pass-through 通知の対象を LocationManager に同期（接近時 Dynamic Island 表示）。
             // フォアグラウンド中のみ動作（バックグラウンド対応は別途審査が必要）。
             locationManager.updatePassMemos(memos)
@@ -217,6 +224,10 @@ struct MapTabView: View {
             // メモ追加/削除で pass-through 監視対象も更新する。
             locationManager.updatePassMemos(memos)
             recomputeGuidance()
+        }
+        // コントロール・ロック画面ウィジェットからの「新しいメモ」
+        .onReceive(NotificationCenter.default.publisher(for: .startNewGeoMemo)) { _ in
+            handleExternalNewMemoRequest()
         }
         .onChange(of: deepLinkMemoID) { _, newID in
             guard let id = newID else { return }
@@ -525,12 +536,38 @@ struct MapTabView: View {
         }
     }
     
+    /// 外（コントロール・ロック画面ウィジェット）からの作成の要求。シートが出ている間は残しておき、閉じたら処理する。
+    private func handleExternalNewMemoRequest() {
+        guard NewMemoRequest.isPending, !NewMemoRequest.containerBlocked, !isAnotherSheetPresented else { return }
+        _ = NewMemoRequest.consume()
+        isSearching = false
+        Task { @MainActor in
+            // 無料版の上限の判定は、購入状態の確認が済んでから（起動直後は Free に見えるため）
+            await store.waitForProStatus()
+            // 位置は短く待つ。取れなければ東京駅の既定座標では開かず、案内を出して地図から選んでもらう。
+            locationManager.refreshLocation()
+            var waited = 0
+            while locationManager.location == nil && waited < 15 {
+                try? await Task.sleep(for: .milliseconds(200))
+                waited += 1
+            }
+            startNewMemo(requiresLocation: true)
+        }
+    }
+
     /// メモの作成を始める（「ADD MEMO」と、受け取るだけの人の「＋」で共通）。
-    private func startNewMemo() {
+    /// `requiresLocation` が true（外からの要求）で現在地が無いときは、既定座標で開かず案内を出す。
+    private func startNewMemo() { startNewMemo(requiresLocation: false) }
+
+    private func startNewMemo(requiresLocation: Bool) {
         HapticManager.impact(.medium)
         // Free プランかつ上限に達している場合はペイウォールを表示
         if MemoLimitPolicy.isAtLimit(currentCount: memos.count, isPro: store.isPro) {
             showPaywall = true
+            return
+        }
+        if requiresLocation, newMemoCoordinate == nil, locationManager.location == nil {
+            ToastCenter.shared.show(.warning(String(localized: "Couldn't get your location. Tap the map to choose a place.")))
             return
         }
         let defaultTokyo = CLLocationCoordinate2D(latitude: 35.6812, longitude: 139.7671)

@@ -104,6 +104,17 @@ struct ContentView: View {
                 deepLinkMemoID = id
             }
         }
+        .onReceive(NotificationCenter.default.publisher(for: .startNewGeoMemo)) { _ in
+            // 新しいメモは地図から始めるので、リストを開いていれば閉じる
+            if !isSideBySide { showList = false }
+        }
+        // 設定・見守りを開いている間は、新しいメモの要求を地図に渡さず、閉じたあとに処理する
+        .onChange(of: showSettings || showWatchDashboard) { _, blocked in
+            NewMemoRequest.containerBlocked = blocked
+            if !blocked && NewMemoRequest.isPending {
+                NotificationCenter.default.post(name: .startNewGeoMemo, object: nil)
+            }
+        }
         .onReceive(NotificationCenter.default.publisher(for: .showGeoMemoFavorites)) { _ in
             showList = true
             intentShowFavorites = true

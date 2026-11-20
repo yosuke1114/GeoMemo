@@ -54,6 +54,16 @@
         }
       }
     },
+    "Couldn't get your location. Tap the map to choose a place." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "現在地を取得できませんでした。地図をタップして場所を選んでください。"
+          }
+        }
+      }
+    },
     "Creates a new memo at one of your saved favorite places in GeoMemo" : {
       "localizations" : {
         "ja" : {
