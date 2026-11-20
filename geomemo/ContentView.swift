@@ -120,6 +120,10 @@ struct ContentView: View {
                 Task { await handleSharedMemoFired(geofenceIdentifier: identifier) }
             }
         }
+        // プロフィールを設定した直後に、既に取り込んだ依頼へ名前を書き込む（claim）。
+        .onChange(of: profiles.count) { _, _ in
+            Task { await syncSharedMemos() }
+        }
         .onReceive(NotificationCenter.default.publisher(for: .didAcceptSharedMemo)) { _ in
             processPendingShares()
             Task { await syncSharedMemos() }
@@ -162,6 +166,7 @@ struct ContentView: View {
     // MARK: - Sync Received SharedMemos
 
     @State private var isSyncing = false
+    @State private var needsResync = false
 
     /// 依頼者向け通知の購読を、起動ごとに 1 回だけ確認・登録する（旧版の購読 -v1 もここで消す）。
     /// 全項目が成功したときだけ済みにする。一部でも失敗したら、次回のアクティブ化で再試行する。
@@ -229,12 +234,25 @@ struct ContentView: View {
         try? modelContext.save()
     }
 
+    /// 同期中に要求が来たら捨てずに覚えておき、終わったあとにもう一度だけ実行する
+    /// （受諾の直後は、先に走っていた同期が受諾前のデータを取り終えていることがあるため）。
     private func syncSharedMemos() async {
-        // プロフィール（表示名）が無くても取り込む。受信者としての名前の書き込みだけ、プロフィールがあるときに行う
-        guard !isSyncing else { return }
-        let me = profiles.first
+        guard !isSyncing else {
+            needsResync = true
+            return
+        }
         isSyncing = true
         defer { isSyncing = false }
+        repeat {
+            needsResync = false
+            await syncSharedMemosOnce()
+        } while needsResync
+    }
+
+    private func syncSharedMemosOnce() async {
+        // プロフィール（表示名）が無くても取り込む。受信者としての名前の書き込みだけ、プロフィールがあるときに行う
+        let me = profiles.first
+        var importedCount = 0
         do {
             let received = try await CKShareService.shared.fetchReceivedSharedMemos()
             var didChange = false
@@ -298,6 +316,7 @@ struct ContentView: View {
                     )
                     modelContext.insert(shared)
                     didChange = true
+                    importedCount += 1
                     if let claimingMe {
                         claimRecipient(data.ckRecordID, me: claimingMe)
                     }
@@ -307,6 +326,10 @@ struct ContentView: View {
                 }
             }
             if didChange { try? modelContext.save() }
+            if importedCount > 0 {
+                // 旧版で受諾済みだった依頼が、この版で初めてまとめて取り込まれることがある
+                ToastCenter.shared.show(.info(String(localized: "Received requests added: \(importedCount)")))
+            }
         } catch {
             // ネットワーク不可は通常運用の一部なので、UI を遮るのは "今ユーザー操作で
             // 取得を期待していたとき" だけにする。ここはバックグラウンド同期なので silent。

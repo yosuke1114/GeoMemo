@@ -219,6 +219,9 @@ class LocationManager: NSObject, ObservableObject {
         }
     }
 
+    /// 今登録されている領域の識別子（差分での登録に使う）。
+    var monitoredRegionIdentifiers: Set<String> { Set(manager.monitoredRegions.map(\.identifier)) }
+
     // MARK: - Route Trigger Monitoring
 
     /// Waypoint identifier format: "{memoID}|wp|{index}"

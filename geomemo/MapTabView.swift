@@ -103,6 +103,13 @@ struct MapTabView: View {
         .onChange(of: notificationManager.authorizationStatus) { _, _ in recomputeGuidance() }
         .onChange(of: guidanceDismissalsJSON) { _, _ in recomputeGuidance() }
         .onChange(of: mapSharedMemos.count) { _, _ in recomputeGuidance() }
+        // 受信した依頼が増減したとき・自分のメモが増減したときに、監視を差分で合わせる。
+        // 20 件あるときに新しい依頼を取り込んでも、次の起動を待たずに登録される（古いメモが外れる）。
+        // 逆に依頼が完了・取り消しになって枠が空けば、外れていた自分のメモが戻る。
+        .onChange(of: regionRegistrationKey) { _, _ in
+            GeofenceReconciler.reconcile(memos: memos, sharedMemos: mapSharedMemos)
+            recomputeGuidance()
+        }
         .sheet(item: $mapSelectedReceived) { shared in
             ReceivedSharedMemoDetailView(
                 shared: shared,
@@ -626,6 +633,14 @@ struct MapTabView: View {
     /// 監視したいジオフェンスの数（`GeofenceRegistrar` に置いた。「通知のチェック」と共有）。
     private var requiredRegionCount: Int {
         GeofenceRegistrar.requiredRegionCount(memos: memos, sharedMemos: mapSharedMemos)
+    }
+
+    /// 監視の登録に影響する材料。変わったときだけ差分で合わせ直す。
+    private var regionRegistrationKey: [String] {
+        let received = mapSharedMemos.filter { !$0.isMyRequest && $0.status == .active }
+            .map(\.geofenceIdentifier).sorted()
+        let own = memos.filter { !$0.isDone }.map { "\($0.id.uuidString):\($0.isRouteTrigger ? $0.routeWaypoints.count : 1)" }.sorted()
+        return received + own
     }
 
     /// 案内の材料（メモ・許可状態・閉じた記録）が変わったときだけ呼ぶ。

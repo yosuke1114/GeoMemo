@@ -21,7 +21,7 @@ enum GeofenceRegistrar {
         locationManager.stopAllMonitoring()
         var registeredRegionCount = 0
         let receivedActive = sharedMemos.filter { !$0.isMyRequest && $0.status == .active }
-        let ownActive = memos.filter { !$0.isDone }
+        let ownActive = GeofenceReconciler.ownByPriority(memos)
         for entry in GeofenceRegistrationOrder.prioritized(received: receivedActive, own: ownActive) {
             switch entry {
             case .received(let shared):
