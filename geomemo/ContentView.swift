@@ -104,6 +104,10 @@ struct ContentView: View {
                 deepLinkMemoID = id
             }
         }
+        .onReceive(NotificationCenter.default.publisher(for: .startNewGeoMemo)) { _ in
+            // 新しいメモは地図から始めるので、リストを開いていれば閉じる
+            if !isSideBySide { showList = false }
+        }
         .onReceive(NotificationCenter.default.publisher(for: .showGeoMemoFavorites)) { _ in
             showList = true
             intentShowFavorites = true

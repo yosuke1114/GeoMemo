@@ -276,31 +276,19 @@ struct geomemoApp: App {
 
     /// Deep-link URL の scheme / host 定数。widget 側 (`geomemoWidget.swift`) で URL を
     /// 組み立てる際にも同じ scheme を使うのでドリフトに注意。
-    static let deepLinkScheme = "geomemo"
-    enum DeepLinkHost {
-        static let memo = "memo"
-        static let favorites = "favorites"
-        static let search = "search"
-    }
+    static let deepLinkScheme = DeepLinkRoute.scheme
 
     private func handleDeepLink(_ url: URL) {
-        guard url.scheme == Self.deepLinkScheme else { return }
-
-        switch url.host {
-        case DeepLinkHost.memo:
-            if let idString = url.pathComponents.dropFirst().first,
-               let uuid = UUID(uuidString: idString) {
-                NotificationCenter.default.post(name: .openGeoMemo, object: uuid)
-            }
-        case DeepLinkHost.favorites:
+        guard let route = DeepLinkRoute.parse(url) else { return }
+        switch route {
+        case .memo(let uuid):
+            NotificationCenter.default.post(name: .openGeoMemo, object: uuid)
+        case .favorites:
             NotificationCenter.default.post(name: .showGeoMemoFavorites, object: nil)
-        case DeepLinkHost.search:
-            if let query = URLComponents(url: url, resolvingAgainstBaseURL: false)?
-                .queryItems?.first(where: { $0.name == "q" })?.value {
-                NotificationCenter.default.post(name: .searchGeoMemos, object: query)
-            }
-        default:
-            break
+        case .search(let query):
+            NotificationCenter.default.post(name: .searchGeoMemos, object: query)
+        case .newMemo:
+            NewMemoRequest.post()
         }
     }
 }
