@@ -219,22 +219,10 @@ struct MapTabView: View {
             Map(position: $cameraPosition, interactionModes: .all) {
                 UserAnnotation {
                     ZStack {
-                        // 方位は EMA で平滑化済みの値が @Published で届くので、その変化で再描画する。
-                        // （TimelineView のクロージャ内で MainActor 隔離の値を読むと、SwiftUI の
-                        //  AsyncRenderer スレッドで隔離チェックに失敗して落ちるため、読まない。）
-                        if locationManager.smoothedHeadingDegrees >= 0 {
-                            HeadingCone()
-                                .fill(
-                                    LinearGradient(
-                                        colors: [Brand.blue.opacity(0.5), Brand.blue.opacity(0.0)],
-                                        startPoint: UnitPoint(x: 0.5, y: 0.5),
-                                        endPoint: .top
-                                    )
-                                )
-                                .frame(width: 36, height: 56)
-                                .padding(.bottom, 56)
-                                .rotationEffect(.degrees(locationManager.smoothedHeadingDegrees))
-                        }
+                        // 方位の値（EMA で平滑化済み）は更新のたびに再描画される。
+                        // TimelineView(.animation) は地図の注釈の中では描画スレッドから呼ばれ、
+                        // Swift 6 のメインアクター検査でクラッシュするため使わない。
+                        HeadingConeIndicator(degrees: locationManager.smoothedHeadingDegrees)
                         Circle()
                             .stroke(Brand.blue.opacity(0.5), lineWidth: 2.5)
                             .frame(width: 36, height: 36)
