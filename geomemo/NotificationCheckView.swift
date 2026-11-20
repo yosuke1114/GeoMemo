@@ -2,6 +2,7 @@ import SwiftUI
 import SwiftData
 import UIKit
 import Combine
+import CoreLocation
 
 /// 設定 → PERMISSIONS →「通知のチェック」。通知が届かない原因になりうる設定を 1 画面に並べる。
 /// 判定と文言は NotificationDiagnostics.swift（純粋なロジック）。この View は表示と、システムの値の読み取りだけ。
@@ -9,12 +10,20 @@ struct NotificationCheckView: View {
     @Environment(\.scenePhase) private var scenePhase
     @Query private var memos: [GeoMemo]
     @Query private var sharedMemos: [SharedMemo]
-    @ObservedObject private var locationManager = LocationManager.shared
+    // LocationManager 全体は監視しない（位置・方位の更新のたびに画面が描き直されるため）。
+    // 必要な値だけ onReceive で @State に写す。
+    private let locationManager = LocationManager.shared
     @ObservedObject private var notificationManager = NotificationManager.shared
     @AppStorage("notificationsEnabled") private var inAppNotificationsEnabled = true
 
-    @State private var snapshot = SystemSnapshot.read()
-    @State private var performer = PermissionActionPerformer()
+    @State private var locationAuthorization: CLAuthorizationStatus = LocationManager.shared.authorizationStatus
+    @State private var isPreciseLocation = LocationManager.shared.isPreciseLocation
+    @State private var snapshot: SystemSnapshot?
+    @State private var input: DiagnosticInput?
+    @State private var items: [DiagnosticItem] = []
+    @State private var issueCount = 0
+    @State private var performer: PermissionActionPerformer?
+    @State private var announceArmed = false
     @State private var isSendingTest = false
     @State private var testResult: TestNotificationResult?
 
@@ -23,6 +32,7 @@ struct NotificationCheckView: View {
         var backgroundRefresh: BackgroundRefreshAccess
         var isLowPowerMode: Bool
         var monitoredRegions: Int
+        var monitoredIdentifiers: Set<String>
         var isMonitoringAvailable: Bool
         var lastRegionEventAt: Date?
         var lastNotificationAt: Date?
@@ -39,25 +49,31 @@ struct NotificationCheckView: View {
                 backgroundRefresh: refresh,
                 isLowPowerMode: ProcessInfo.processInfo.isLowPowerModeEnabled,
                 monitoredRegions: LocationManager.shared.monitoredRegionCount,
+                monitoredIdentifiers: LocationManager.shared.monitoredRegionIdentifiers,
                 isMonitoringAvailable: LocationManager.isGeofencingAvailable,
                 lastRegionEventAt: DiagnosticsLog.shared.lastRegionEventAt,
                 lastNotificationAt: DiagnosticsLog.shared.lastNotificationAt)
         }
     }
 
-    private var input: DiagnosticInput {
-        DiagnosticInput.current(
-            locationManager: locationManager, notificationManager: notificationManager,
-            inAppNotificationsEnabled: inAppNotificationsEnabled, snapshot: snapshot,
-            memos: memos, sharedMemos: sharedMemos)
-    }
-
     private var canSendTest: Bool { NotificationAccess(notificationManager.authorizationStatus) == .allowed }
 
+    /// 材料が変わったときだけ、判定をやり直す（body の評価のたびには計算しない）。
+    private func recompute() {
+        let snap = snapshot ?? SystemSnapshot.read()
+        snapshot = snap
+        let new = DiagnosticInput.current(
+            locationAuthorization: locationAuthorization, isPreciseLocation: isPreciseLocation,
+            notificationManager: notificationManager,
+            inAppNotificationsEnabled: inAppNotificationsEnabled, snapshot: snap,
+            memos: memos, sharedMemos: sharedMemos)
+        input = new
+        items = NotificationDiagnostics.evaluate(new)
+        issueCount = NotificationDiagnostics.issueCount(items)
+    }
+
     var body: some View {
-        let currentInput = input
-        let currentItems = NotificationDiagnostics.evaluate(currentInput)
-        let count = NotificationDiagnostics.issueCount(currentItems)
+        let count = issueCount
         List {
             Section {
                 Label {
@@ -73,24 +89,26 @@ struct NotificationCheckView: View {
             }
 
             Section {
-                ForEach(currentItems) { item in
-                    row(item, input: currentInput)
+                if let currentInput = input {
+                    ForEach(items) { item in
+                        row(item, input: currentInput)
+                    }
                 }
             }
 
             Section {
                 LabeledContent {
-                    Text(timeText(snapshot.lastRegionEventAt)).foregroundColor(Brand.secondaryText)
+                    Text(timeText(snapshot?.lastRegionEventAt)).foregroundColor(Brand.secondaryText)
                 } label: {
                     Text("Last time a place was detected")
                 }
                 LabeledContent {
-                    Text(timeText(snapshot.lastNotificationAt)).foregroundColor(Brand.secondaryText)
+                    Text(timeText(snapshot?.lastNotificationAt)).foregroundColor(Brand.secondaryText)
                 } label: {
                     Text("Last alert sent")
                 }
             } footer: {
-                Text("Only the time is recorded, not the place. It stays on this device.")
+                Text("Only the time is recorded, not the place. GeoMemo never sends it anywhere.")
             }
 
             Section {
@@ -129,26 +147,43 @@ struct NotificationCheckView: View {
         .navigationTitle("Notification Check")
         .navigationBarTitleDisplayMode(.inline)
         .task {
+            if performer == nil { performer = PermissionActionPerformer() }
             notificationManager.checkAuthorizationStatus()
-            reload()
-            announceSummary(count)
+            recompute()
+            // 開いた直後のまとめは読み上げない（画面の読み上げと重なる）。少し待ってから、変化だけ読む。
+            try? await Task.sleep(for: .seconds(1))
+            announceArmed = true
         }
         .onChange(of: scenePhase) { _, phase in
-            performer.scenePhaseChanged(phase)
+            performer?.scenePhaseChanged(phase)
             if phase == .active {
                 notificationManager.checkAuthorizationStatus()
                 reload()
             }
         }
-        .onChange(of: locationManager.authorizationStatus) { _, _ in reload() }
-        .onChange(of: locationManager.isPreciseLocation) { _, _ in reload() }
+        // `receive(on:)` で main に寄せてから受ける（どのスレッドから来ても MainActor のクロージャを main で呼ぶ）。
+        .onReceive(locationManager.$authorizationStatus.removeDuplicates().receive(on: DispatchQueue.main)) { status in
+            locationAuthorization = status
+            if snapshot != nil { reload() }
+        }
+        .onReceive(locationManager.$isPreciseLocation.removeDuplicates().receive(on: DispatchQueue.main)) { precise in
+            isPreciseLocation = precise
+            if snapshot != nil { reload() }
+        }
         .onChange(of: notificationManager.authorizationStatus) { _, _ in reload() }
-        // 低電力モードの変更の通知は、どのスレッドから届くか分からない。MainActor のクロージャを
+        .onChange(of: notificationManager.presentation) { _, _ in reload() }
+        .onChange(of: inAppNotificationsEnabled) { _, _ in reload() }
+        .onChange(of: memos.count) { _, _ in reload() }
+        .onChange(of: sharedMemos.count) { _, _ in reload() }
+        // 低電力モードの通知は、どのスレッドから届くか分からない。MainActor のクロージャを
         // 別スレッドで呼ぶと Swift 6 の実行時の隔離チェックで落ちるので、main に寄せてから受ける。
         .onReceive(NotificationCenter.default.publisher(for: .NSProcessInfoPowerStateDidChange)
             .receive(on: DispatchQueue.main)) { _ in reload() }
-        .onChange(of: count) { _, new in announceSummary(new) }
-        .onDisappear { performer.cancel() }
+        // まとめの読み上げは、件数が変わったとき（登録し直し・設定から戻った後）だけ。開いた直後は読まない。
+        .onChange(of: count) { old, new in
+            if announceArmed && old != new { announceSummary(new) }
+        }
+        .onDisappear { performer?.cancel() }
     }
 
     // MARK: - Row
@@ -157,7 +192,7 @@ struct NotificationCheckView: View {
     private func row(_ item: DiagnosticItem, input: DiagnosticInput) -> some View {
         let value = DiagnosticText.value(item, input: input)
         let headline = DiagnosticText.headline(item)
-        let message = DiagnosticText.message(item)
+        let message = DiagnosticText.message(item, input: input)
         VStack(alignment: .leading, spacing: 8) {
             VStack(alignment: .leading, spacing: 8) {
                 LabeledContent {
@@ -239,7 +274,7 @@ struct NotificationCheckView: View {
     private func perform(_ action: DiagnosticAction) {
         switch action {
         case .permission(let a):
-            performer.perform(a)
+            performer?.perform(a)
         case .openNotificationSettings:
             HapticManager.impact(.light)
             PermissionActionPerformer.openNotificationSettings()
@@ -248,7 +283,7 @@ struct NotificationCheckView: View {
             inAppNotificationsEnabled = true
         case .reRegisterGeofences:
             HapticManager.impact(.light)
-            GeofenceRegistrar.reRegisterAll(memos: memos, sharedMemos: sharedMemos)
+            GeofenceReconciler.reconcile(memos: memos, sharedMemos: sharedMemos)
             reload()
         }
     }
@@ -268,6 +303,7 @@ struct NotificationCheckView: View {
 
     private func reload() {
         snapshot = SystemSnapshot.read()
+        recompute()
     }
 
     private func announceSummary(_ count: Int) {
@@ -279,17 +315,22 @@ extension DiagnosticInput {
     /// 画面（通知のチェック・設定の入口）が使う、現在の状態。
     @MainActor
     static func current(
-        locationManager: LocationManager,
+        locationAuthorization: CLAuthorizationStatus,
+        isPreciseLocation: Bool,
         notificationManager: NotificationManager,
         inAppNotificationsEnabled: Bool,
         snapshot: NotificationCheckView.SystemSnapshot,
         memos: [GeoMemo],
         sharedMemos: [SharedMemo]
     ) -> DiagnosticInput {
-        DiagnosticInput(
+        let receivedUnmonitored = sharedMemos
+            .filter { !$0.isMyRequest && $0.status == .active }
+            .filter { !snapshot.monitoredIdentifiers.contains($0.geofenceIdentifier) }
+            .count
+        return DiagnosticInput(
             permissions: PermissionSnapshot(
-                location: LocationAccess(locationManager.authorizationStatus),
-                isPreciseLocation: locationManager.isPreciseLocation,
+                location: LocationAccess(locationAuthorization),
+                isPreciseLocation: isPreciseLocation,
                 notification: NotificationAccess(notificationManager.authorizationStatus)),
             presentation: notificationManager.presentation,
             inAppNotificationsEnabled: inAppNotificationsEnabled,
@@ -297,6 +338,7 @@ extension DiagnosticInput {
             isLowPowerMode: snapshot.isLowPowerMode,
             requiredRegions: GeofenceRegistrar.requiredRegionCount(memos: memos, sharedMemos: sharedMemos),
             monitoredRegions: snapshot.monitoredRegions,
-            isMonitoringAvailable: snapshot.isMonitoringAvailable)
+            isMonitoringAvailable: snapshot.isMonitoringAvailable,
+            receivedUnmonitored: receivedUnmonitored)
     }
 }

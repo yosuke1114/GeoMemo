@@ -8,7 +8,7 @@ private func input(
     location: LocationAccess = .always,
     precise: Bool = true,
     notification: NotificationAccess = .allowed,
-    presentation: NotificationPresentation? = NotificationPresentation(showsAnywhere: true, isInScheduledSummary: false),
+    presentation: NotificationPresentation? = NotificationPresentation(alert: true, lockScreen: true, notificationCenter: true, isInScheduledSummary: false),
     inApp: Bool = true,
     refresh: BackgroundRefreshAccess = .available,
     lowPower: Bool = false,
@@ -103,7 +103,7 @@ struct NotificationDiagnosticsTests {
     @Test("通知の出し方・時刻指定要約: 許可が無いときは重ねて出さない（参考）")
     func presentationNotStacked() {
         for n in [NotificationAccess.denied, .notDetermined] {
-            let i = input(notification: n, presentation: NotificationPresentation(showsAnywhere: false, isInScheduledSummary: true))
+            let i = input(notification: n, presentation: NotificationPresentation(alert: false, lockScreen: false, notificationCenter: false, isInScheduledSummary: true))
             #expect(item(.presentation, i).severity == .info)
             #expect(item(.scheduledSummary, i).severity == .info)
         }
@@ -120,13 +120,57 @@ struct NotificationDiagnosticsTests {
 
     @Test("通知の出し方: すべてオフなら注意、時刻指定要約に入っていれば注意")
     func presentationAndSummary() {
-        let hidden = input(presentation: NotificationPresentation(showsAnywhere: false, isInScheduledSummary: false))
+        let hidden = input(presentation: NotificationPresentation(alert: false, lockScreen: false, notificationCenter: false, isInScheduledSummary: false))
         #expect(item(.presentation, hidden).severity == .warning)
         #expect(item(.presentation, hidden).action == .openNotificationSettings)
         #expect(item(.scheduledSummary, hidden).severity == .ok)
-        let summary = input(presentation: NotificationPresentation(showsAnywhere: true, isInScheduledSummary: true))
+        let summary = input(presentation: NotificationPresentation(alert: true, lockScreen: true, notificationCenter: true, isInScheduledSummary: true))
         #expect(item(.scheduledSummary, summary).severity == .warning)
         #expect(item(.presentation, summary).severity == .ok)
+    }
+
+    @Test("通知の出し方: バナーとロック画面が両方オフなら、通知センターだけオンでも注意。どちらかオンなら問題なし")
+    func presentationSurfaces() {
+        func pres(_ a: Bool, _ l: Bool, _ n: Bool) -> DiagnosticInput {
+            input(presentation: NotificationPresentation(alert: a, lockScreen: l, notificationCenter: n, isInScheduledSummary: false))
+        }
+        #expect(item(.presentation, pres(false, false, true)).severity == .warning)
+        #expect(item(.presentation, pres(true, false, false)).severity == .ok)
+        #expect(item(.presentation, pres(false, true, false)).severity == .ok)
+        // 値の文言は、実際にオンのものから組み立てる
+        let both = DiagnosticText.presentationSummary(NotificationPresentation(alert: true, lockScreen: false, notificationCenter: true, isInScheduledSummary: false))
+        let all = DiagnosticText.presentationSummary(NotificationPresentation(alert: true, lockScreen: true, notificationCenter: true, isInScheduledSummary: false))
+        #expect(both != all)
+    }
+
+    @Test("低電力モード中は、バックグラウンド更新の行を参考にとどめ、ボタンを出さない")
+    func backgroundRefreshInLowPower() {
+        let denied = item(.backgroundRefresh, input(refresh: .denied, lowPower: true))
+        #expect(denied.severity == .info)
+        #expect(denied.action == nil)
+        #expect(item(.backgroundRefresh, input(refresh: .restricted, lowPower: true)).severity == .info)
+        #expect(item(.backgroundRefresh, input(refresh: .available, lowPower: true)).severity == .ok)
+    }
+
+    @Test("上限超過でも、受信した依頼が監視に入っていなければ「登録し直す」を出す")
+    func overLimitWithUnmonitoredReceived() {
+        var i = input(required: 22, monitored: 20)
+        i.receivedUnmonitored = 1
+        #expect(item(.monitoredPlaces, i).action == .reRegisterGeofences)
+        i.receivedUnmonitored = 0
+        #expect(item(.monitoredPlaces, i).action == nil)
+    }
+
+    @Test("テスト通知の結果: 表示の通知を受けていれば届いた。送信より前の通知は数えない")
+    func testNotificationDecision() {
+        let sent = Date(timeIntervalSince1970: 1_000)
+        let before = sent.addingTimeInterval(-60), after = sent.addingTimeInterval(6)
+        #expect(TestNotificationResult.decide(presentedAt: after, deliveredDates: [], sentAt: sent) == .delivered)
+        #expect(TestNotificationResult.decide(presentedAt: nil, deliveredDates: [after], sentAt: sent) == .delivered)
+        // 前回の分が通知センターに残っているだけ
+        #expect(TestNotificationResult.decide(presentedAt: nil, deliveredDates: [before], sentAt: sent) == .scheduledButNotConfirmed)
+        #expect(TestNotificationResult.decide(presentedAt: before, deliveredDates: [], sentAt: sent) == .scheduledButNotConfirmed)
+        #expect(TestNotificationResult.decide(presentedAt: nil, deliveredDates: [], sentAt: sent) == .scheduledButNotConfirmed)
     }
 
     @Test("アプリ内の通知スイッチ: オフは問題、ボタンはオンにする")
@@ -243,6 +287,17 @@ struct DiagnosticsLogTests {
         #expect(log.lastNotificationAt == nil)
         log.recordNotification(at: t.addingTimeInterval(60))
         #expect(log.lastNotificationAt == t.addingTimeInterval(60))
+    }
+
+    @Test("テスト通知の受信記録は、リセットで消え、記録で読める")
+    func probe() {
+        let probe = TestNotificationProbe()
+        #expect(probe.presentedAt == nil)
+        let t = Date(timeIntervalSince1970: 5)
+        probe.markPresented(at: t)
+        #expect(probe.presentedAt == t)
+        probe.reset()
+        #expect(probe.presentedAt == nil)
     }
 
     @Test("書くのは時刻の 2 つのキーだけ")

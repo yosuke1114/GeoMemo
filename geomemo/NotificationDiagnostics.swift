@@ -12,21 +12,30 @@ nonisolated enum BackgroundRefreshAccess: Equatable {
 
 /// 通知の出し方（UNNotificationSettings から画面側で変換して渡す）。
 nonisolated struct NotificationPresentation: Equatable {
-    /// ロック画面・通知センター・バナーのどれかがオン。
-    var showsAnywhere: Bool
+    var alert: Bool              // バナー
+    var lockScreen: Bool
+    var notificationCenter: Bool
     /// 時刻指定要約に入っている（通知があとでまとめて届く）。
     var isInScheduledSummary: Bool
 
-    init(showsAnywhere: Bool, isInScheduledSummary: Bool) {
-        self.showsAnywhere = showsAnywhere
+    init(alert: Bool, lockScreen: Bool, notificationCenter: Bool, isInScheduledSummary: Bool) {
+        self.alert = alert
+        self.lockScreen = lockScreen
+        self.notificationCenter = notificationCenter
         self.isInScheduledSummary = isInScheduledSummary
     }
 
     init(_ settings: UNNotificationSettings) {
-        let shows = [settings.alertSetting, settings.lockScreenSetting, settings.notificationCenterSetting]
-            .contains(.enabled)
-        self.init(showsAnywhere: shows, isInScheduledSummary: settings.scheduledDeliverySetting == .enabled)
+        self.init(alert: settings.alertSetting == .enabled,
+                  lockScreen: settings.lockScreenSetting == .enabled,
+                  notificationCenter: settings.notificationCenterSetting == .enabled,
+                  isInScheduledSummary: settings.scheduledDeliverySetting == .enabled)
     }
+
+    /// 着いたときに目に入る出し方（バナーかロック画面）がオンか。
+    var showsOnArrival: Bool { alert || lockScreen }
+    /// どこにも出ない。
+    var hiddenEverywhere: Bool { !alert && !lockScreen && !notificationCenter }
 }
 
 nonisolated struct DiagnosticInput: Equatable {
@@ -42,6 +51,8 @@ nonisolated struct DiagnosticInput: Equatable {
     var monitoredRegions: Int
     /// この端末が場所の監視（ジオフェンス）に対応しているか。
     var isMonitoringAvailable: Bool = true
+    /// 監視したい受信した依頼のうち、いま監視に入っていない数（上限超過でも、これがあれば登録し直せる）。
+    var receivedUnmonitored: Int = 0
 }
 
 nonisolated enum DiagnosticSeverity: Int, Comparable {
@@ -156,8 +167,9 @@ nonisolated enum NotificationDiagnostics {
             presentationItem = DiagnosticItem(id: .presentation, severity: .info)
             summaryItem = DiagnosticItem(id: .scheduledSummary, severity: .info)
         } else {
-            let pres = input.presentation ?? NotificationPresentation(showsAnywhere: true, isInScheduledSummary: false)
-            presentationItem = pres.showsAnywhere
+            let pres = input.presentation
+                ?? NotificationPresentation(alert: true, lockScreen: true, notificationCenter: true, isInScheduledSummary: false)
+            presentationItem = pres.showsOnArrival
                 ? DiagnosticItem(id: .presentation, severity: .ok)
                 : DiagnosticItem(id: .presentation, severity: .warning, action: .openNotificationSettings)
             summaryItem = pres.isInScheduledSummary
@@ -171,11 +183,17 @@ nonisolated enum NotificationDiagnostics {
             : DiagnosticItem(id: .inAppSwitch, severity: .problem, action: .enableInAppNotifications)
 
         // 7. バックグラウンド更新（制限は利用者が変えられないのでボタンなし）
+        // 低電力モード中は iOS がバックグラウンド更新を止める。設定を変えても直らないので参考にとどめ、ボタンは出さない
         let refreshItem: DiagnosticItem
         switch input.backgroundRefresh {
-        case .available: refreshItem = DiagnosticItem(id: .backgroundRefresh, severity: .ok)
-        case .denied: refreshItem = DiagnosticItem(id: .backgroundRefresh, severity: .warning, action: .permission(.openSettings))
-        case .restricted: refreshItem = DiagnosticItem(id: .backgroundRefresh, severity: .warning)
+        case .available:
+            refreshItem = DiagnosticItem(id: .backgroundRefresh, severity: .ok)
+        case .denied:
+            refreshItem = input.isLowPowerMode
+                ? DiagnosticItem(id: .backgroundRefresh, severity: .info)
+                : DiagnosticItem(id: .backgroundRefresh, severity: .warning, action: .permission(.openSettings))
+        case .restricted:
+            refreshItem = DiagnosticItem(id: .backgroundRefresh, severity: input.isLowPowerMode ? .info : .warning)
         }
 
         // 8. 低電力モード
@@ -192,10 +210,12 @@ nonisolated enum NotificationDiagnostics {
         } else if !p.location.isAuthorized {
             placesItem = DiagnosticItem(id: .monitoredPlaces, severity: .info, places: .notAuthorized)
         } else if input.requiredRegions > limit {
-            // 登録し直しても直らないので、ボタンは出さない
+            // 溢れた分は登録し直しても直らない。ただし、受信した依頼が監視に入っていなければ、
+            // 登録し直すと（受信した依頼が優先されるので）入る
             placesItem = DiagnosticItem(
                 id: .monitoredPlaces, severity: .problem,
-                places: .overLimit(required: input.requiredRegions, unmonitored: input.requiredRegions - limit))
+                places: .overLimit(required: input.requiredRegions, unmonitored: input.requiredRegions - limit),
+                action: input.receivedUnmonitored > 0 ? .reRegisterGeofences : nil)
         } else if input.monitoredRegions < min(input.requiredRegions, limit) {
             placesItem = DiagnosticItem(
                 id: .monitoredPlaces, severity: .warning,
@@ -226,6 +246,17 @@ nonisolated enum TestNotificationResult: Equatable {
     case scheduledButNotConfirmed
     case notAuthorized
     case failed
+}
+
+extension TestNotificationResult {
+    /// テスト通知を送ったあとの結果の判定。
+    /// アプリが表示の通知を受けた（`willPresent` / `didReceive`）時刻を優先し、通知センターに入っているか
+    /// （送信以降の通知だけ。前回の分は送る前に消してあるが、念のため日時も見る）を補助にする。
+    static func decide(presentedAt: Date?, deliveredDates: [Date], sentAt: Date) -> TestNotificationResult {
+        if let presentedAt, presentedAt >= sentAt { return .delivered }
+        if deliveredDates.contains(where: { $0 >= sentAt }) { return .delivered }
+        return .scheduledButNotConfirmed
+    }
 }
 
 // MARK: - 文言の選択
@@ -267,8 +298,8 @@ nonisolated enum DiagnosticText {
         case .notificationPermission:
             return item.severity == .ok ? String(localized: "Allowed") : severityLabel(item.severity)
         case .presentation:
-            return item.severity == .ok
-                ? String(localized: "Shown as banners and on the Lock Screen") : severityLabel(item.severity)
+            guard item.severity == .ok, let pres = input.presentation else { return severityLabel(item.severity) }
+            return presentationSummary(pres)
         case .scheduledSummary:
             return item.severity == .ok ? String(localized: "Off") : severityLabel(item.severity)
         case .lowPowerMode:
@@ -281,6 +312,15 @@ nonisolated enum DiagnosticText {
         }
     }
 
+    /// 実際にオンになっている出し方を並べる（例:「バナー、ロック画面、通知センター」）。
+    static func presentationSummary(_ pres: NotificationPresentation) -> String {
+        var names: [String] = []
+        if pres.alert { names.append(String(localized: "Banners")) }
+        if pres.lockScreen { names.append(String(localized: "Lock Screen")) }
+        if pres.notificationCenter { names.append(String(localized: "Notification Center")) }
+        return names.formatted(.list(type: .and, width: .narrow))
+    }
+
     /// 問題・注意・参考のときに展開して出す見出し（地図のバナーの題）。
     static func headline(_ item: DiagnosticItem) -> String? {
         guard item.severity != .ok || item.id == .focus, let notice = item.notice else { return nil }
@@ -288,7 +328,7 @@ nonisolated enum DiagnosticText {
     }
 
     /// 展開して出す本文。出さない（問題なしで補足も無い）ときは nil。
-    static func message(_ item: DiagnosticItem) -> String? {
+    static func message(_ item: DiagnosticItem, input: DiagnosticInput? = nil) -> String? {
         if item.isChecking { return nil }
         if let notice = item.notice, item.severity != .ok {
             return MapGuidance.permission(notice).message
@@ -302,7 +342,10 @@ nonisolated enum DiagnosticText {
             return item.severity == .info ? String(localized: "Allow location access first.") : nil
         case .presentation:
             switch item.severity {
-            case .warning: return String(localized: "Alerts are hidden everywhere. Turn on Lock Screen, Notification Center, or Banners in Settings.")
+            case .warning:
+                return input?.presentation?.hiddenEverywhere == false
+                    ? String(localized: "Banners and the Lock Screen are off, so alerts only go to Notification Center. Turn them on in Settings to see alerts when you reach a place.")
+                    : String(localized: "Alerts are hidden everywhere. Turn on Lock Screen, Notification Center, or Banners in Settings.")
             case .info: return String(localized: "Allow notifications first.")
             default: return nil
             }
@@ -313,7 +356,11 @@ nonisolated enum DiagnosticText {
             default: return nil
             }
         case .backgroundRefresh:
-            return item.severity == .ok ? nil : String(localized: "Background App Refresh is off. Alerts may not arrive while the app is closed.")
+            switch item.severity {
+            case .ok: return nil
+            case .info: return String(localized: "Background App Refresh is paused while Low Power Mode is on. Turn off Low Power Mode to restore it.")
+            default: return String(localized: "Background App Refresh is off. Alerts may not arrive while the app is closed.")
+            }
         case .lowPowerMode:
             return item.severity == .info ? String(localized: "Low Power Mode is on. Arrival alerts may be late.") : nil
         case .focus:
@@ -330,7 +377,7 @@ nonisolated enum DiagnosticText {
         case .notAuthorized:
             return String(localized: "Not watching because location access is off.")
         case .overLimit(let required, let unmonitored):
-            return String(localized: "You have \(required) places, but iOS can watch only 20. \(unmonitored) won't send alerts. Complete or delete some memos.")
+            return String(localized: "You have \(required) places, but iOS can watch only 20. \(unmonitored) won't send alerts: received requests are watched first, and your oldest memos drop off first. Complete or delete some memos.")
         case .underRegistered(let monitored, let required):
             return String(localized: "\(monitored) of your \(required) places are being watched. Tap to register them again.")
         case .ok(_, let nearUsed?):

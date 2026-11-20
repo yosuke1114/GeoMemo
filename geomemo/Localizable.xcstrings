@@ -5566,6 +5566,24 @@
     },
     "%lld settings may keep alerts from arriving." : {
       "localizations" : {
+        "en" : {
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld setting may keep alerts from arriving."
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld settings may keep alerts from arriving."
+                }
+              }
+            }
+          }
+        },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
@@ -5774,12 +5792,12 @@
         }
       }
     },
-    "You have %lld places, but iOS can watch only 20. %lld won't send alerts. Complete or delete some memos." : {
+    "You have %lld places, but iOS can watch only 20. %lld won't send alerts: received requests are watched first, and your oldest memos drop off first. Complete or delete some memos." : {
       "localizations" : {
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "場所が %1$lld 件あります。iOS が監視できるのは 20 件までで、%2$lld 件は通知されません。メモを完了にするか削除してください。"
+            "value" : "場所が %1$lld 件あります。iOS が監視できるのは 20 件までで、%2$lld 件は通知されません。受信した依頼が優先され、自分のメモは古いものから外れます。メモを完了にするか削除してください。"
           }
         }
       }
@@ -5854,12 +5872,12 @@
         }
       }
     },
-    "Only the time is recorded, not the place. It stays on this device." : {
+    "Only the time is recorded, not the place. GeoMemo never sends it anywhere." : {
       "localizations" : {
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "記録するのは時刻だけです。場所は記録しません。この端末の中にだけ保存します。"
+            "value" : "記録するのは時刻だけです。場所は記録しません。GeoMemo がこの記録を送信することはありません。"
           }
         }
       }
@@ -6050,6 +6068,56 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "取り込んだ依頼: %lld 件"
+          }
+        }
+      }
+    },
+    "Banners" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "バナー"
+          }
+        }
+      }
+    },
+    "Lock Screen" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ロック画面"
+          }
+        }
+      }
+    },
+    "Notification Center" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "通知センター"
+          }
+        }
+      }
+    },
+    "Banners and the Lock Screen are off, so alerts only go to Notification Center. Turn them on in Settings to see alerts when you reach a place." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "バナーとロック画面がオフのため、通知は通知センターにだけ入ります。着いたときに気づけるよう、「設定」でオンにしてください。"
+          }
+        }
+      }
+    },
+    "Background App Refresh is paused while Low Power Mode is on. Turn off Low Power Mode to restore it." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "低電力モードのあいだ、App のバックグラウンド更新は止まります。低電力モードをオフにすると元に戻ります。"
           }
         }
       }

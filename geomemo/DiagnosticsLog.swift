@@ -3,7 +3,7 @@ import Foundation
 /// 「最後に場所への出入りを検知した時刻」と「最後に通知を出した時刻」の端末内の記録（診断用）。
 ///
 /// 記録するのは時刻（timeIntervalSince1970）だけ。メモの ID・領域の識別子・座標は保存しない。
-/// 端末の外には送らない。App Group にはせず（ウィジェットから読まない）、標準の UserDefaults に置く。
+/// アプリはこの記録を送信しない（端末のバックアップには含まれうる）。App Group にはせず（ウィジェットから読まない）、標準の UserDefaults に置く。
 /// 検知から通知までは条件で止まることがあり（完了済み・期限・曜日・アプリ内の通知スイッチなど）、
 /// 2 つを分けて持つことで「検知はあるが通知を出していない」と「検知そのものが無い」を見分けられる。
 nonisolated struct DiagnosticsLog {
@@ -33,5 +33,29 @@ nonisolated struct DiagnosticsLog {
     private func read(_ key: String) -> Date? {
         guard let value = defaults.object(forKey: key) as? Double else { return nil }
         return Date(timeIntervalSince1970: value)
+    }
+}
+
+/// テスト通知を、アプリが表示の通知として受けた時刻（`willPresent` / `didReceive`）。
+/// これらのデリゲートは main 以外のスレッドから呼ばれるので、MainActor には置かず、ロックで守る。
+nonisolated final class TestNotificationProbe: @unchecked Sendable {
+    static let shared = TestNotificationProbe()
+
+    private let lock = NSLock()
+    private var _presentedAt: Date?
+
+    var presentedAt: Date? {
+        lock.lock(); defer { lock.unlock() }
+        return _presentedAt
+    }
+
+    func reset() {
+        lock.lock(); defer { lock.unlock() }
+        _presentedAt = nil
+    }
+
+    func markPresented(at date: Date = Date()) {
+        lock.lock(); defer { lock.unlock() }
+        _presentedAt = date
     }
 }
