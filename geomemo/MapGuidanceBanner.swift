@@ -54,7 +54,7 @@ extension MapGuidance {
                 return String(localized: "Allow notifications to be told when you reach a place.")
             }
         case .monitoringLimit(.overLimit(_, let unmonitored)):
-            return String(localized: "iOS can watch up to 20 places. \(unmonitored) won't send alerts. Complete or delete some memos.")
+            return String(localized: "iOS can watch up to 20 places. \(unmonitored) won't send alerts: received requests are watched first, and your oldest memos drop off first. Complete or delete some memos.")
         case .monitoringLimit(.nearLimit(let used)):
             return String(localized: "\(used) of 20 places are being watched. iOS can't watch more than 20.")
         case .monitoringLimit(.ok):
