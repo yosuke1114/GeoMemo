@@ -79,6 +79,14 @@ struct MemoEditorView: View {
     @ObservedObject private var locationManager = LocationManager.shared
     @State private var showProPaywall = false
 
+    // 文章でメモを作る (L-4)。作成のときだけ使う。
+    @Query(sort: \FavoritePlace.createdAt) private var favoritePlaces: [FavoritePlace]
+    @State private var nlChoices: [NLPlaceChoice] = []
+    @State private var nlSelectedPlaceID: UUID?
+    /// 文章から読み取った場所は、地図で確かめるまで保存させない。
+    @State private var needsPlaceConfirmation = false
+    @State private var showPlaceConfirmationAlert = false
+
     init(mode: MemoEditorMode, onDelete: (() -> Void)? = nil) {
         self.mode = mode
         self.onDelete = onDelete
@@ -143,6 +151,25 @@ struct MemoEditorView: View {
         NavigationStack {
             ScrollView {
                 VStack(spacing: 0) {
+                    // 文章でメモを作る: 端末内モデルが使えるときだけ。使えないときは何も出さない
+                    if case .create = mode {
+                        NaturalLanguageComposerView(
+                            favorites: favoritePlaces.map(PlaceCandidate.init),
+                            origin: nlOrigin,
+                            onOutcome: applyNaturalLanguage
+                        )
+                        if needsPlaceConfirmation || !nlChoices.isEmpty {
+                            NLPlaceConfirmationCard(
+                                choices: nlChoices,
+                                selectedID: nlSelectedPlaceID,
+                                isConfirmed: !needsPlaceConfirmation,
+                                onSelect: selectNaturalLanguageChoice,
+                                onConfirm: { needsPlaceConfirmation = false },
+                                onPickOnMap: { showLocationPicker = true }
+                            )
+                        }
+                    }
+
                     // 基本: 場所・範囲・題・到着／退出。これだけで保存できる
                     MemoBasicsSection(
                         title: $title,
@@ -221,6 +248,11 @@ struct MemoEditorView: View {
 
                 ToolbarItem(placement: .navigationBarTrailing) {
                     Button(action: {
+                        if needsPlaceConfirmation {
+                            HapticManager.notification(.warning)
+                            showPlaceConfirmationAlert = true
+                            return
+                        }
                         HapticManager.notification(.success)
                         saveOrUpdate()
                     }) {
@@ -245,6 +277,9 @@ struct MemoEditorView: View {
                 onLocationSelected: { newCoordinate, newLocationName in
                     currentCoordinate = newCoordinate
                     locationName = newLocationName
+                    // 自分で選び直したので、場所は確認済み
+                    needsPlaceConfirmation = false
+                    nlSelectedPlaceID = nil
                 }
             )
             .presentationDetents([.large])
@@ -261,6 +296,11 @@ struct MemoEditorView: View {
         .sheet(isPresented: $showProPaywall) {
             PaywallView()
         }
+        .alert("Check the place before saving", isPresented: $showPlaceConfirmationAlert) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text("Check the map, then confirm the place or choose another one.")
+        }
         .alert("Delete this memo?", isPresented: $showDeleteAlert) {
             Button("Delete", role: .destructive) {
                 HapticManager.notification(.warning)
@@ -270,6 +310,71 @@ struct MemoEditorView: View {
         } message: {
             Text("This action cannot be undone.")
         }
+    }
+
+    // MARK: - 文章でメモを作る (L-4)
+    /// 場所の検索の起点。現在地があればそれ、無ければ作成の地点。
+    private var nlOrigin: NLPoint {
+        let c = locationManager.location?.coordinate ?? currentCoordinate
+        return NLPoint(latitude: c.latitude, longitude: c.longitude)
+    }
+
+    /// 読み取った結果を画面の状態に写す。保存はしない（場所の確認を挟む）。
+    private func applyNaturalLanguage(_ outcome: NLMemoOutcome) {
+        switch outcome {
+        case .cancelled:
+            return
+        case .fallback(let title):
+            // 断られた・失敗した: 入力文を題として、通常の作成画面のまま続ける
+            if !title.isEmpty { self.title = title }
+            nlChoices = []
+            nlSelectedPlaceID = nil
+            needsPlaceConfirmation = false
+        case .draft(let draft):
+            title = draft.title
+            if let entry = draft.notifyOnEntry { notifyOnEntry = entry }
+            if let exit = draft.notifyOnExit { notifyOnExit = exit }
+            if let window = draft.timeWindow {
+                hasTimeWindow = true
+                timeStart = Self.makeTime(fromMinutes: window.startMinutes) ?? timeStart
+                timeEnd = Self.makeTime(fromMinutes: window.endMinutes) ?? timeEnd
+            } else {
+                hasTimeWindow = false
+            }
+            if let days = draft.activeDays {
+                hasDayFilter = true
+                activeDays = Set(days)
+            } else {
+                hasDayFilter = false
+            }
+            if let date = draft.deadline {
+                hasDeadline = true
+                deadline = date
+            } else {
+                hasDeadline = false
+            }
+            nlChoices = draft.candidates
+            if let first = draft.candidates.first {
+                nlSelectedPlaceID = first.id
+                useChoice(first)
+            } else {
+                nlSelectedPlaceID = nil
+            }
+            // 地図で確かめるまで保存させない
+            needsPlaceConfirmation = true
+        }
+    }
+
+    private func selectNaturalLanguageChoice(_ choice: NLPlaceChoice) {
+        nlSelectedPlaceID = choice.id
+        useChoice(choice)
+        // 候補を自分で選んだので確認済み
+        needsPlaceConfirmation = false
+    }
+
+    private func useChoice(_ choice: NLPlaceChoice) {
+        currentCoordinate = CLLocationCoordinate2D(latitude: choice.place.latitude, longitude: choice.place.longitude)
+        locationName = choice.place.name
     }
 
     // MARK: - 基本・詳細のまとめ
@@ -457,6 +562,8 @@ struct MemoEditorView: View {
             }
             do {
                 let items = try await request.mapItems
+                // 文章から場所が決まっていれば、その名前を上書きしない
+                guard nlSelectedPlaceID == nil, !needsPlaceConfirmation else { return }
                 locationName = Self.locationName(from: items.first)
             } catch {
                 locationName = String(localized: "Unknown Location")

@@ -34,6 +34,46 @@
         }
       }
     },
+    "Check the map, then confirm the place or choose another one." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "地図を見て場所を確認するか、別の場所を選んでください。"
+          }
+        }
+      }
+    },
+    "CHECK THE PLACE" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "場所を確認"
+          }
+        }
+      }
+    },
+    "Check the place before saving" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "保存の前に場所を確認してください"
+          }
+        }
+      }
+    },
+    "Choose on map" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "地図で選ぶ"
+          }
+        }
+      }
+    },
     "Could not add the memo. Check the title and the place." : {
       "localizations" : {
         "ja" : {
@@ -74,12 +114,42 @@
         }
       }
     },
+    "Couldn't read that sentence. It was used as the title." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "文章を読み取れませんでした。入力した文を題にしました。"
+          }
+        }
+      }
+    },
+    "Create from a sentence" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "文章からメモを作る"
+          }
+        }
+      }
+    },
     "Creates a new memo at one of your saved favorite places in GeoMemo" : {
       "localizations" : {
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "GeoMemo に保存したお気に入りの場所のひとつに、新しいメモを追加します"
+          }
+        }
+      }
+    },
+    "e.g. Buy milk when I reach the station" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "例: 駅に着いたら牛乳を買う"
           }
         }
       }
@@ -100,6 +170,46 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "「%1$@」を「%2$@」に追加しました"
+          }
+        }
+      }
+    },
+    "No place found. Choose one on the map." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "場所が見つかりませんでした。地図で選んでください。"
+          }
+        }
+      }
+    },
+    "Read your sentence. Check the place on the map before saving." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "文章を読み取りました。保存する前に、地図で場所を確認してください。"
+          }
+        }
+      }
+    },
+    "Reading…" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "読み取り中…"
+          }
+        }
+      }
+    },
+    "Saved place" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "お気に入りの場所"
           }
         }
       }
@@ -3093,6 +3203,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "このアプリはオープンソースライブラリを使用していません。"
+          }
+        }
+      }
+    },
+    "This place is OK" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "この場所でよい"
           }
         }
       }
