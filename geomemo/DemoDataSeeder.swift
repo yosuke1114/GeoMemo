@@ -5,6 +5,36 @@ import Foundation
 /// スクリーンショット用デモデータ注入
 /// 起動引数 "-seedDemoData" が渡されたときのみ実行
 enum DemoDataSeeder {
+    /// 受け取った依頼の画面確認用。起動引数 "-UITesting -seedReceivedDemo"（DEBUG のみ・インメモリのストアのときだけ）。自分のメモは作らない
+    /// （受信だけの人の簡易表示になる）。`-seedReceivedDemoWithMemo` を足すと自分のメモも 1 件入れる。
+    static func seedReceivedIfNeeded(context: ModelContext) {
+        // UI テスト（インメモリのストア）のときだけ。実データを消さないため
+        guard geomemoApp.isUITesting, CommandLine.arguments.contains("-seedReceivedDemo") else { return }
+        ((try? context.fetch(FetchDescriptor<SharedMemo>())) ?? []).forEach { context.delete($0) }
+        ((try? context.fetch(FetchDescriptor<GeoMemo>())) ?? []).forEach { context.delete($0) }
+        func make(_ name: String, _ title: String, _ place: String, _ lat: Double, _ lon: Double,
+                  status: ShareStatus, deadline: Date? = nil) -> SharedMemo {
+            SharedMemo(ckRecordName: name, memoTitle: title, memoLocationName: place,
+                       memoLatitude: lat, memoLongitude: lon, memoRadius: 150, memoDeadline: deadline,
+                       requesterRecordID: "_demo", requesterName: "母",
+                       recipientRecordID: "", recipientName: "",
+                       autoComplete: false, isMyRequest: false, status: status)
+        }
+        let items = [
+            make("demo-1", "牛乳を買ってきて", "スーパーマルエツ 秋葉原店", 35.6984, 139.7731, status: .active,
+                 deadline: Date().addingTimeInterval(-3600 * 5)),
+            make("demo-2", "薬局で薬を受け取る", "御徒町ドラッグ", 35.7050, 139.7710, status: .fired),
+        ]
+        items.forEach { context.insert($0) }
+        SharedMemoNoteStore.setNote("できれば低脂肪のもの。レジ袋はいらないよ。", for: "demo-1")
+        if CommandLine.arguments.contains("-seedReceivedDemoWithMemo") {
+            context.insert(GeoMemo(title: "自分のメモ", note: "", latitude: 35.7010, longitude: 139.7680, radius: 100,
+                                   locationName: "末広町", notifyOnEntry: true, notifyOnExit: false,
+                                   colorIndex: 0, isFavorite: false, tags: []))
+        }
+        try? context.save()
+    }
+
     static func seedIfNeeded(context: ModelContext) {
         guard CommandLine.arguments.contains("-seedDemoData") else { return }
 

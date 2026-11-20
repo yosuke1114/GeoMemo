@@ -18,6 +18,9 @@ struct OnboardingView: View {
     /// 「常に」のダイアログが出たか（scenePhase で判定）を見張る。
     @State private var dialogProbe = SystemDialogProbe()
     @AccessibilityFocusState private var titleFocused: Bool
+    /// 共有リンクから初めて起動したときは、依頼が届いていることを先に伝える（受け取り画面はこの後に出る）。
+    private var pendingShare = PendingShareQueue.shared
+    private var hasIncomingRequest: Bool { pendingShare.incomingCount > 0 }
 
     private var pageCount: Int { OnboardingStep.allCases.count }
 
@@ -124,6 +127,16 @@ struct OnboardingView: View {
                 .font(.callout)
                 .foregroundColor(Brand.secondaryText)
 
+            if hasIncomingRequest {
+                Text("A request is waiting for you. First, let's set up location and notifications.")
+                    .font(.subheadline.weight(.medium))
+                    .foregroundColor(Brand.primaryText)
+                    .multilineTextAlignment(.center)
+                    .padding(.horizontal, 32)
+                    .padding(.top, 24)
+                    .accessibilityIdentifier("onboarding.incomingRequest")
+            }
+
             Spacer()
         }
     }
@@ -146,7 +159,10 @@ struct OnboardingView: View {
             image: "ph-navigation-arrow-fill",
             title: Text("Notify Even When Closed"),
             message: Text("To tell you when you reach a saved place while the app is closed, GeoMemo needs “Always” location access."),
-            footnote: Text("You can choose on the next screen. You can change it later in Settings.")
+            footnote: Text("You can choose on the next screen. You can change it later in Settings."),
+            extra: hasIncomingRequest
+                ? Text("It's also used to tell the person who sent you a request that you arrived. Your location itself is never sent.")
+                : nil
         )
     }
 
@@ -161,7 +177,7 @@ struct OnboardingView: View {
         )
     }
 
-    private func permissionPage(image: String, title: Text, message: Text, footnote: Text?) -> some View {
+    private func permissionPage(image: String, title: Text, message: Text, footnote: Text?, extra: Text? = nil) -> some View {
         VStack(spacing: 0) {
             HStack {
                 Text("GeoMemo")
@@ -193,6 +209,15 @@ struct OnboardingView: View {
                 .foregroundColor(Brand.secondaryText)
                 .multilineTextAlignment(.center)
                 .padding(.horizontal, 32)
+
+            if let extra {
+                extra
+                    .font(.subheadline)
+                    .foregroundColor(Brand.secondaryText)
+                    .multilineTextAlignment(.center)
+                    .padding(.horizontal, 32)
+                    .padding(.top, 12)
+            }
 
             if let footnote {
                 footnote
