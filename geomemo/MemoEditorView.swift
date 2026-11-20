@@ -488,7 +488,7 @@ struct MemoEditorView: View {
 
 // MARK: - PhotoSectionView
 /// MemoEditorView の body から切り出すことで、UIImage デコードが他の @State 変化時に走らなくなる。
-private struct PhotoSectionView: View {
+struct PhotoSectionView: View {
     @Binding var photoData: Data?
     @State private var selectedPhoto: PhotosPickerItem?
 
