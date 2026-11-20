@@ -257,59 +257,10 @@ struct MapTabView: View {
                 }
             }
         }
-        .onReceive(NotificationCenter.default.publisher(for: Notification.Name.didEnterGeoMemoRegion)) { notification in
-            if let id = notification.object as? String,
-               let memo = memos.first(where: { $0.id.uuidString == id }) {
-                guard memo.notifyOnEntry && !memo.isDone else { return }
-                guard locationManager.shouldNotify(for: memo) else { return }
-                Task {
-                    if let dwell = memo.dwellMinutes {
-                        await NotificationManager.shared.scheduleDwellNotification(
-                            title: memo.title,
-                            body: memo.note,
-                            memoID: id,
-                            dwellMinutes: dwell
-                        )
-                    } else {
-                        await NotificationManager.shared.scheduleImmediateNotification(
-                            title: memo.title,
-                            body: memo.note,
-                            memoID: id
-                        )
-                    }
-                }
-            }
-        }
-        .onReceive(NotificationCenter.default.publisher(for: .didExitGeoMemoRegion)) { notification in
-            if let id = notification.object as? String,
-               let memo = memos.first(where: { $0.id.uuidString == id }) {
-                // キャンセル：滞在タイマー通知（退場前に発火していなければ取り消す）
-                NotificationManager.shared.cancelDwellNotification(memoID: id)
-
-                guard memo.notifyOnExit && !memo.isDone else { return }
-                guard locationManager.shouldNotify(for: memo) else { return }
-                Task {
-                    await NotificationManager.shared.scheduleExitNotification(
-                        title: memo.title,
-                        body: memo.note,
-                        memoID: id,
-                        delayMinutes: memo.exitDelayMinutes
-                    )
-                }
-            }
-        }
-        .onReceive(NotificationCenter.default.publisher(for: .geoMemoMarkDone)) { notification in
-            if let id = notification.object as? String,
-               let memo = memos.first(where: { $0.id.uuidString == id }) {
-                memo.isDone = true
-                recomputeGuidance()
-                HapticManager.notification(.success)
-                if memo.isRouteTrigger {
-                    locationManager.stopMonitoringRoute(memoID: id)
-                } else {
-                    locationManager.stopMonitoring(memoID: id)
-                }
-            }
+        // 完了の保存と監視の停止は `RegionEventService` が行う。ここは表示（触覚・案内）の更新だけ。
+        .onReceive(NotificationCenter.default.publisher(for: .geoMemoMarkDone)) { _ in
+            recomputeGuidance()
+            HapticManager.notification(.success)
         }
     }
     

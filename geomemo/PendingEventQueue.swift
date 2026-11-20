@@ -82,6 +82,9 @@ final class PendingEventQueue {
         }
     }
 
+    /// 指定のイベントだけを外す（同じ依頼の、より新しいイベントは残す）。
+    func dequeue(_ event: PendingShareEvent) { remove(event) }
+
     /// 同じ ckRecordName の単一イベントだけ削除（drain中の個別成功を反映）
     private func remove(_ target: PendingShareEvent) {
         events = events.filter { !Self.areEqual($0, target) }

@@ -137,11 +137,6 @@ struct ContentView: View {
                 }
             }
         }
-        .onReceive(NotificationCenter.default.publisher(for: .didEnterSharedMemoRegion)) { notification in
-            if let identifier = notification.object as? String {
-                Task { await handleSharedMemoFired(geofenceIdentifier: identifier) }
-            }
-        }
         // プロフィールを設定した直後に、既に取り込んだ依頼へ名前を書き込む（claim）。
         .onChange(of: profiles.count) { _, _ in
             Task { await syncSharedMemos() }
@@ -481,44 +476,6 @@ struct ContentView: View {
             try? await CKShareService.shared.claimRecipient(
                 recordID: recordID, name: name, userRecordName: userRecordName)
         }
-    }
-
-    // MARK: - Handle Shared Memo Geofence Fire
-
-    private func handleSharedMemoFired(geofenceIdentifier: String) async {
-        guard let shared = allSharedMemos.first(where: { $0.geofenceIdentifier == geofenceIdentifier }) else { return }
-        // 監視中の依頼だけを発火させる。到着済み・完了・取り消し後の再進入で状態を書き直すと、
-        // 依頼者へ「到着」通知が重ねて届く。
-        guard shared.status == .active else {
-            LocationManager.shared.stopMonitoring(memoID: geofenceIdentifier)
-            return
-        }
-        let now = Date()
-        shared.firedAt = now
-
-        // autoComplete なら fired を飛ばして completed を一度だけ書き込む
-        let finalStatus: ShareStatus = shared.autoComplete ? .completed : .fired
-        shared.status = finalStatus
-        if shared.autoComplete { shared.completedAt = now }
-
-        do {
-            try await CKShareService.shared.updateStatus(recordID: shared.cloudKitRecordID, status: finalStatus, date: now)
-        } catch {
-            let owner = shared.zoneOwnerName
-            let event: PendingShareEvent = shared.autoComplete
-                ? .completed(ckRecordName: shared.ckRecordName, zoneOwnerName: owner, completedAt: now)
-                : .fired(ckRecordName: shared.ckRecordName, zoneOwnerName: owner, firedAt: now)
-            PendingEventQueue.shared.enqueue(event)
-        }
-
-        await NotificationManager.shared.scheduleSharedMemoFiredNotification(
-            memoTitle:     shared.memoTitle,
-            requesterName: shared.requesterName,
-            sharedID:      shared.id.uuidString
-        )
-
-        LocationManager.shared.stopMonitoring(memoID: geofenceIdentifier)
-        try? modelContext.save()
     }
 }
 
