@@ -49,6 +49,7 @@ struct ShowFavoritesIntent: AppIntent {
 struct ListNearbyMemosIntent: AppIntent {
     static let title: LocalizedStringResource = "Nearby Memos"
     static let description: IntentDescription = "Lists GeoMemo memos near your current location"
+    static let authenticationPolicy: IntentAuthenticationPolicy = .requiresAuthentication
 
     func perform() async throws -> some IntentResult & ProvidesDialog {
         let allEntities: [GeoMemoEntity]
@@ -114,6 +115,7 @@ struct AddGeoMemoIntent: AppIntent {
     static let description: IntentDescription = "Creates a new memo at your current location in GeoMemo"
 
     static var openAppWhenRun: Bool { false }
+    static let authenticationPolicy: IntentAuthenticationPolicy = .requiresAuthentication
 
     @Parameter(title: "Title")
     var title: String
@@ -169,6 +171,82 @@ struct AddGeoMemoIntent: AppIntent {
             group.cancelAll()
             return first ?? nil
         }
+    }
+}
+
+// MARK: - Add Memo At Favorite Place Intent
+
+enum AddPlaceError: Error, CustomLocalizedStringResourceConvertible {
+    case storeUnavailable
+
+    var localizedStringResource: LocalizedStringResource {
+        "Could not open your memos. Try again after unlocking your device."
+    }
+}
+
+/// 現在地ではなく、保存済みの「お気に入りの場所」を指定してメモを追加する。
+/// 無料版の件数の上限は、現在地への追加（`AddGeoMemoIntent`）や Watch のクイック追加と同じく、ここでは掛けない。
+struct AddGeoMemoAtPlaceIntent: AppIntent {
+    static let title: LocalizedStringResource = "Add Memo at Favorite Place"
+    static let description: IntentDescription = "Creates a new memo at one of your saved favorite places in GeoMemo"
+
+    static var openAppWhenRun: Bool { false }
+    // ロック中の Siri から場所の名前・住所が出ないようにする
+    static let authenticationPolicy: IntentAuthenticationPolicy = .requiresAuthentication
+
+    @Parameter(title: "Favorite Place")
+    var place: FavoritePlaceEntity
+
+    @Parameter(title: "Title")
+    var title: String
+
+    @Parameter(title: "Note", default: "")
+    var note: String
+
+    static var parameterSummary: some ParameterSummary {
+        Summary("Add \(\.$title) at \(\.$place)") {
+            \.$note
+        }
+    }
+
+    func perform() async throws -> some IntentResult & ProvidesDialog {
+        // ショートカットに残った古い値ではなく、保存されている最新の場所（編集・削除を反映）を使う。
+        // 保存先を開けない失敗は「場所が無い」と区別して投げ、ショートカットの後続を止める。
+        let candidates: [PlaceCandidate]
+        do {
+            candidates = try GeoMemoStore.fetchFavoritePlaceCandidates()
+        } catch {
+            throw AddPlaceError.storeUnavailable
+        }
+        guard let current = candidates.first(where: { $0.id == place.id }) else {
+            return .result(dialog: "That favorite place no longer exists.")
+        }
+        guard let draft = PlaceMemoDraft.make(title: title, note: note, place: current) else {
+            return .result(dialog: "Could not add the memo. Check the title and the place.")
+        }
+
+        try GeoMemoStore.insert(
+            title: draft.title,
+            note: draft.note,
+            latitude: draft.latitude,
+            longitude: draft.longitude,
+            locationName: draft.locationName,
+            radius: draft.radius
+        )
+
+        // 画面が開いていなくても、追加したメモの領域を登録する（上限・優先順は GeofenceReconciler に任せる）。
+        await MainActor.run { Self.reconcileGeofences() }
+
+        return .result(dialog: "Memo \"\(draft.title)\" added at \(draft.locationName)")
+    }
+
+    @MainActor
+    private static func reconcileGeofences() {
+        guard let container = try? GeoMemoStore.sharedContainer() else { return }
+        let context = ModelContext(container)
+        let memos = (try? context.fetch(FetchDescriptor<GeoMemo>())) ?? []
+        let shared = (try? context.fetch(FetchDescriptor<SharedMemo>())) ?? []
+        GeofenceReconciler.reconcile(memos: memos, sharedMemos: shared)
     }
 }
 

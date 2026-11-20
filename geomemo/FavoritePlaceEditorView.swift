@@ -1,5 +1,6 @@
 import SwiftUI
 import SwiftData
+import AppIntents
 import MapKit
 
 struct FavoritePlaceEditorView: View {
@@ -164,6 +165,9 @@ struct FavoritePlaceEditorView: View {
             place.longitude = longitude
             place.iconName = iconName
         }
+        // ショートカット・Siri の場所の候補を最新にする
+        try? modelContext.save()
+        GeoMemoShortcuts.updateAppShortcutParameters()
         dismiss()
     }
 

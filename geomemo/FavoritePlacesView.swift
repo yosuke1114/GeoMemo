@@ -1,5 +1,6 @@
 import SwiftUI
 import SwiftData
+import AppIntents
 
 struct FavoritePlacesView: View {
     @Environment(\.dismiss) private var dismiss
@@ -133,6 +134,9 @@ struct FavoritePlacesView: View {
         .swipeActions(edge: .trailing, allowsFullSwipe: true) {
             Button(role: .destructive) {
                 modelContext.delete(place)
+                // ショートカット・Siri の場所の候補を最新にする
+                try? modelContext.save()
+                GeoMemoShortcuts.updateAppShortcutParameters()
             } label: {
                 Label(String(localized: "Delete"), systemImage: "trash")
             }
