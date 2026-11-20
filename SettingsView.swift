@@ -8,6 +8,7 @@
 import SwiftUI
 import SwiftData
 import CoreLocation
+import Combine
 import UserNotifications
 import UniformTypeIdentifiers
 // Phosphor icons loaded from local Assets.xcassets
@@ -39,6 +40,14 @@ struct SettingsView: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(\.modelContext) private var modelContext
     @Query private var memos: [GeoMemo]
+    @Query private var sharedMemos: [SharedMemo]
+    // LocationManager 全体は監視しない（位置・方位の更新のたびに設定画面が描き直されるため）。
+    private let locationManager = LocationManager.shared
+    @ObservedObject private var notificationManager = NotificationManager.shared
+    @Environment(\.scenePhase) private var scenePhase
+    @State private var diagnosticsIssueCount = 0
+    @State private var diagnosticsLocationAuthorization: CLAuthorizationStatus = LocationManager.shared.authorizationStatus
+    @State private var diagnosticsPrecise = LocationManager.shared.isPreciseLocation
 
     @AppStorage("appearanceMode") private var appearanceMode: String = AppearanceMode.system.rawValue
     @AppStorage("notificationsEnabled") private var notificationsEnabled = true
@@ -153,6 +162,20 @@ struct SettingsView: View {
 
             // MARK: - PERMISSIONS
             Section {
+                NavigationLink {
+                    NotificationCheckView()
+                } label: {
+                    LabeledContent {
+                        Text(DiagnosticText.entryValue(issueCount: diagnosticsIssueCount))
+                            .foregroundColor(Brand.secondaryText)
+                            .multilineTextAlignment(.trailing)
+                    } label: {
+                        Text("Notification Check")
+                            .foregroundColor(Brand.primaryText)
+                    }
+                }
+                .accessibilityIdentifier("settings.notificationCheck")
+
                 Button {
                     openSettings()
                 } label: {
@@ -176,6 +199,8 @@ struct SettingsView: View {
                 }
             } header: {
                 Text("PERMISSIONS")
+            } footer: {
+                Text("If alerts aren't arriving, check the cause here.")
             }
 
             // MARK: - DATA
@@ -457,6 +482,23 @@ struct SettingsView: View {
         .task {
             await updatePermissionStatuses()
         }
+        .onAppear { refreshDiagnostics() }
+        .onReceive(locationManager.$authorizationStatus.removeDuplicates().receive(on: DispatchQueue.main)) { status in
+            diagnosticsLocationAuthorization = status
+            refreshDiagnostics()
+        }
+        .onReceive(locationManager.$isPreciseLocation.removeDuplicates().receive(on: DispatchQueue.main)) { precise in
+            diagnosticsPrecise = precise
+            refreshDiagnostics()
+        }
+        .onChange(of: notificationManager.authorizationStatus) { _, _ in refreshDiagnostics() }
+        .onChange(of: notificationManager.presentation) { _, _ in refreshDiagnostics() }
+        .onChange(of: notificationsEnabled) { _, _ in refreshDiagnostics() }
+        .onChange(of: sharedMemos.count) { _, _ in refreshDiagnostics() }
+        .onChange(of: memos.count) { _, _ in refreshDiagnostics() }
+        .onChange(of: scenePhase) { _, phase in
+            if phase == .active { Task { await updatePermissionStatuses() } }
+        }
         // memos が変化したら export ファイルキャッシュを破棄してステイル共有を防ぐ。
         .onChange(of: memos) { _, _ in
             exportURL = nil
@@ -523,7 +565,19 @@ struct SettingsView: View {
         }
     }
 
+    /// 入口の右側に出す「要確認 n 件」。材料が変わったときだけ計算する。
+    private func refreshDiagnostics() {
+        let input = DiagnosticInput.current(
+            locationAuthorization: diagnosticsLocationAuthorization, isPreciseLocation: diagnosticsPrecise,
+            notificationManager: notificationManager,
+            inAppNotificationsEnabled: notificationsEnabled, snapshot: NotificationCheckView.SystemSnapshot.read(),
+            memos: memos, sharedMemos: sharedMemos)
+        diagnosticsIssueCount = NotificationDiagnostics.issueCount(NotificationDiagnostics.evaluate(input))
+    }
+
     private func updatePermissionStatuses() async {
+        notificationManager.checkAuthorizationStatus()
+        refreshDiagnostics()
         // Location
         let locStatus = CLLocationManager().authorizationStatus
         let locText: String

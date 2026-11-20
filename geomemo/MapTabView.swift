@@ -21,7 +21,7 @@ struct MapTabView: View {
     /// 今出す案内。body のたびには計算せず、材料が変わったとき（recomputeGuidance）だけ更新する。
     @State private var currentGuidance: MapGuidance?
     /// 「常に」のダイアログが出たかを見張る（出なかったときだけ設定アプリを開く）。
-    @State private var alwaysDialogProbe = SystemDialogProbe()
+    @State private var permissionPerformer = PermissionActionPerformer()
     @Binding var isSearching: Bool
     @Binding var deepLinkMemoID: UUID?
     @Binding var showList: Bool
@@ -87,7 +87,7 @@ struct MapTabView: View {
         .animation(.easeInOut(duration: 0.25), value: currentGuidance)
         // 設定アプリから戻った直後に、通知の許可状態を読み直す。
         .onChange(of: scenePhase) { _, phase in
-            alwaysDialogProbe.scenePhaseChanged(phase)
+            permissionPerformer.scenePhaseChanged(phase)
             if phase == .active { notificationManager.checkAuthorizationStatus() }
         }
         // 許可を変えた後（設定アプリから戻った・ダイアログで許可した）に、監視を張り直す。
@@ -146,7 +146,7 @@ struct MapTabView: View {
         }
         .onDisappear {
             locationManager.stopHeading()
-            alwaysDialogProbe.cancel()
+            permissionPerformer.cancel()
         }
         .onChange(of: locationManager.location) { oldValue, newValue in
             guard let userLocation = newValue?.coordinate else { return }
@@ -630,14 +630,9 @@ struct MapTabView: View {
     /// Re-register geofences for all memos on app launch
     // MARK: - Permission / limit guidance
 
-    /// 監視したいジオフェンスの数（ルートは経由地ごとに 1 件、受信した有効な依頼も 1 件）。
-    /// 経由地が 2 未満のルートは登録されない（LocationManager.startMonitoringRoute）ので数えない。
+    /// 監視したいジオフェンスの数（`GeofenceRegistrar` に置いた。「通知のチェック」と共有）。
     private var requiredRegionCount: Int {
-        let own = memos.filter { !$0.isDone }.reduce(0) {
-            $0 + MonitoringLimitState.regionCount(isRoute: $1.isRouteTrigger, waypointCount: $1.routeWaypoints.count)
-        }
-        let received = mapSharedMemos.filter { !$0.isMyRequest && $0.status == .active }.count
-        return own + received
+        GeofenceRegistrar.requiredRegionCount(memos: memos, sharedMemos: mapSharedMemos)
     }
 
     /// 監視の登録に影響する材料。変わったときだけ差分で合わせ直す。
@@ -661,31 +656,10 @@ struct MapTabView: View {
         )
     }
 
-    /// 許可ダイアログは、バナーのボタンを押したときにだけ出す。
+    /// 許可ダイアログは、バナーのボタンを押したときにだけ出す。動作は `PermissionActionPerformer`。
     private func performGuidanceAction(_ guidance: MapGuidance) {
         guard case .permission(let notice) = guidance, let action = notice.action else { return }
-        HapticManager.impact(.light)
-        switch action {
-        case .requestLocation:
-            locationManager.requestWhenInUseAuthorization()
-        case .requestAlways:
-            // 「あとで」を選んだ人にも、まず「常に」のダイアログを出す。iOS は 1 回しか出さないので、
-            // 出なかった（scene が inactive にならなかった）ときだけ設定アプリを開く。
-            let requested = locationManager.requestAlwaysAuthorization()
-            alwaysDialogProbe.begin(requested: requested) { dialogShown in
-                if !dialogShown { openSettings() }
-            }
-        case .requestNotifications:
-            Task { _ = await notificationManager.requestAuthorization() }
-        case .openSettings:
-            openSettings()
-        }
-    }
-
-    private func openSettings() {
-        if let url = URL(string: UIApplication.openSettingsURLString) {
-            UIApplication.shared.open(url)
-        }
+        permissionPerformer.perform(action)
     }
 
     private func dismissGuidance(_ guidance: MapGuidance) {
@@ -696,35 +670,6 @@ struct MapTabView: View {
     }
 
     private func reRegisterAllGeofences() {
-        locationManager.stopAllMonitoring()
-        var registeredRegionCount = 0
-        // 上限（20 件）を超えると後ろは登録されない。受信した依頼を先に、自分のメモを後に登録する。
-        let receivedActive = mapSharedMemos.filter { !$0.isMyRequest && $0.status == .active }
-        let ownActive = GeofenceReconciler.ownByPriority(memos)
-        for entry in GeofenceRegistrationOrder.prioritized(received: receivedActive, own: ownActive) {
-            switch entry {
-            case .received(let shared):
-                locationManager.startMonitoring(region: shared.monitoringRegion)
-                registeredRegionCount += 1
-            case .own(let memo):
-                if memo.isRouteTrigger {
-                    locationManager.startMonitoringRoute(for: memo)
-                    registeredRegionCount += memo.routeWaypoints.count
-                } else {
-                    let region = CLCircularRegion(
-                        center: CLLocationCoordinate2D(latitude: memo.latitude, longitude: memo.longitude),
-                        radius: memo.radius,
-                        identifier: memo.id.uuidString
-                    )
-                    region.notifyOnEntry = memo.notifyOnEntry
-                    region.notifyOnExit = memo.notifyOnExit
-                    locationManager.startMonitoring(region: region)
-                    registeredRegionCount += 1
-                }
-            }
-        }
-        if registeredRegionCount > 20 {
-            print("⚠️ Geofencing limit warning: \(registeredRegionCount) regions registered (iOS limit is 20)")
-        }
+        GeofenceRegistrar.reRegisterAll(memos: memos, sharedMemos: mapSharedMemos)
     }
 }

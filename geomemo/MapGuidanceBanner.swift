@@ -3,7 +3,7 @@ import SwiftUI
 // 地図の上部に出す、許可の不足・監視上限の案内バナー。
 // 何を出すかは PermissionGuidance.swift の MapGuidance が決める（この View は表示だけ）。
 
-extension MapGuidance {
+nonisolated extension MapGuidance {
     var iconName: String {
         switch self {
         case .permission(let notice):
@@ -65,7 +65,14 @@ extension MapGuidance {
     /// ボタンの文言。ボタンが無い案内は nil。
     var actionTitle: String? {
         guard case .permission(let notice) = self, let action = notice.action else { return nil }
-        switch action {
+        return action.title
+    }
+}
+
+nonisolated extension PermissionNotice.Action {
+    /// ボタンの文言（地図のバナーと「通知のチェック」で共通）。
+    var title: String {
+        switch self {
         case .openSettings: return String(localized: "Open Settings")
         case .requestAlways: return String(localized: "Change Location Access")
         case .requestLocation, .requestNotifications: return String(localized: "Allow")
