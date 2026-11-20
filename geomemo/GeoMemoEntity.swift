@@ -68,8 +68,9 @@ enum GeoMemoStore {
         try context.save()
     }
 
-    /// 新しいメモを挿入する（AppIntentsからの作成用）
-    nonisolated static func insert(title: String, note: String, latitude: Double, longitude: Double, locationName: String) throws {
+    /// 新しいメモを挿入する（AppIntentsからの作成用）。追加したメモの ID を返す。
+    @discardableResult
+    nonisolated static func insert(title: String, note: String, latitude: Double, longitude: Double, locationName: String, radius: Double = 100) throws -> UUID {
         let container = try sharedContainer()
         let context = ModelContext(container)
         let memo = GeoMemo(
@@ -77,11 +78,12 @@ enum GeoMemoStore {
             note: note,
             latitude: latitude,
             longitude: longitude,
-            radius: 100
+            radius: radius
         )
         memo.locationName = locationName
         context.insert(memo)
         try context.save()
+        return memo.id
     }
 
     enum StoreError: Error {

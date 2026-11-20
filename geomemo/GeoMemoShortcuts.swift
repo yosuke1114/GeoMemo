@@ -63,6 +63,16 @@ struct GeoMemoShortcuts: AppShortcutsProvider {
         )
 
         AppShortcut(
+            intent: AddGeoMemoAtPlaceIntent(),
+            phrases: [
+                "Add memo at \(\.$place) in \(.applicationName)",
+                "\(.applicationName)で\(\.$place)にメモを追加"
+            ],
+            shortTitle: "Add Memo at Place",
+            systemImageName: "mappin.circle"
+        )
+
+        AppShortcut(
             intent: GetNearbyMemosIntent(),
             phrases: [
                 "Get nearby memos from \(.applicationName)",
