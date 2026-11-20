@@ -5513,6 +5513,536 @@
           }
         }
       }
+    },
+    "Notification Check" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "通知のチェック"
+          }
+        }
+      }
+    },
+    "All good" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "問題なし"
+          }
+        }
+      }
+    },
+    "%lld to review" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "要確認 %lld 件"
+          }
+        }
+      }
+    },
+    "If alerts aren't arriving, check the cause here." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "通知が届かないときは、ここで原因を確かめられます。"
+          }
+        }
+      }
+    },
+    "Your alerts are set up to arrive." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "通知が届く設定になっています。"
+          }
+        }
+      }
+    },
+    "%lld settings may keep alerts from arriving." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%lld 件の設定で、通知が届かないことがあります。"
+          }
+        }
+      }
+    },
+    "Location Access" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "位置情報の許可"
+          }
+        }
+      }
+    },
+    "Precise Location" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正確な位置情報"
+          }
+        }
+      }
+    },
+    "Notification Permission" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "通知の許可"
+          }
+        }
+      }
+    },
+    "How Alerts Appear" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "通知の出し方"
+          }
+        }
+      }
+    },
+    "Shown as banners and on the Lock Screen" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "バナーとロック画面に表示"
+          }
+        }
+      }
+    },
+    "Alerts are hidden everywhere. Turn on Lock Screen, Notification Center, or Banners in Settings." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "通知がどこにも表示されない設定です。「設定」でロック画面・通知センター・バナーのいずれかをオンにしてください。"
+          }
+        }
+      }
+    },
+    "Scheduled Summary" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "時刻指定要約"
+          }
+        }
+      }
+    },
+    "GeoMemo is in your Scheduled Summary, so alerts arrive later in a batch, not when you reach a place." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "GeoMemo が時刻指定要約に入っています。通知は着いたときではなく、あとでまとめて届きます。"
+          }
+        }
+      }
+    },
+    "Open Notification Settings" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "通知の設定を開く"
+          }
+        }
+      }
+    },
+    "Notifications in GeoMemo" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "GeoMemo 内の通知"
+          }
+        }
+      }
+    },
+    "The Notifications switch in GeoMemo's settings is off, so no alerts are sent." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "GeoMemo の設定で「通知」がオフです。どの通知も出しません。"
+          }
+        }
+      }
+    },
+    "Turn On" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "オンにする"
+          }
+        }
+      }
+    },
+    "Background App Refresh" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "App のバックグラウンド更新"
+          }
+        }
+      }
+    },
+    "Background App Refresh is off. Alerts may not arrive while the app is closed." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "App のバックグラウンド更新がオフです。アプリを閉じているあいだ、通知が届かないことがあります。"
+          }
+        }
+      }
+    },
+    "Low Power Mode" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "低電力モード"
+          }
+        }
+      }
+    },
+    "Low Power Mode is on. Arrival alerts may be late." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "低電力モードがオンです。到着の通知が遅れることがあります。"
+          }
+        }
+      }
+    },
+    "Focus" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "集中モード"
+          }
+        }
+      }
+    },
+    "GeoMemo can't see whether a Focus is on. While a Focus is on, alerts go to Notification Center without a banner or sound. To always see them, add GeoMemo to the Focus's allowed apps." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "集中モードがオンかどうかは、GeoMemo からは分かりません。オンのあいだ、通知はバナーや音なしで通知センターに入ります。必ず見たい場合は、集中モードの「許可する App」に GeoMemo を追加してください。"
+          }
+        }
+      }
+    },
+    "Places Being Watched" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "監視中の場所"
+          }
+        }
+      }
+    },
+    "%lld of 20" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "20 件中 %lld 件"
+          }
+        }
+      }
+    },
+    "You have %lld places, but iOS can watch only 20. %lld won't send alerts. Complete or delete some memos." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "場所が %1$lld 件あります。iOS が監視できるのは 20 件までで、%2$lld 件は通知されません。メモを完了にするか削除してください。"
+          }
+        }
+      }
+    },
+    "%lld of your %lld places are being watched. Tap to register them again." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%2$lld 件のうち %1$lld 件だけ監視しています。登録し直してください。"
+          }
+        }
+      }
+    },
+    "Not watching because location access is off." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "位置情報が許可されていないため、監視していません。"
+          }
+        }
+      }
+    },
+    "This device can't watch places." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "この端末は場所の監視に対応していません。"
+          }
+        }
+      }
+    },
+    "Register Again" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "登録し直す"
+          }
+        }
+      }
+    },
+    "Last time a place was detected" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "最後に場所への出入りを検知"
+          }
+        }
+      }
+    },
+    "Last alert sent" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "最後に通知を出した"
+          }
+        }
+      }
+    },
+    "Not yet" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "まだありません"
+          }
+        }
+      }
+    },
+    "Only the time is recorded, not the place. It stays on this device." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "記録するのは時刻だけです。場所は記録しません。この端末の中にだけ保存します。"
+          }
+        }
+      }
+    },
+    "Send a Test Alert" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "テスト通知を送る"
+          }
+        }
+      }
+    },
+    "A test alert will arrive in 5 seconds. Lock the screen or go to the Home Screen to see how it appears." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "5 秒後にテスト通知が届きます。画面をロックするかホーム画面に戻ると、実際の出方を確かめられます。"
+          }
+        }
+      }
+    },
+    "GeoMemo test alert" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "GeoMemo のテスト通知"
+          }
+        }
+      }
+    },
+    "If you can see this, alerts are set up to arrive." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "これが見えていれば、通知は届く設定です。"
+          }
+        }
+      }
+    },
+    "The test alert was delivered. If you didn't see a banner or hear a sound, a Focus or your notification settings may be silencing it." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "テスト通知を出しました。バナーや音が出なかった場合は、集中モードか通知の設定で止められています。"
+          }
+        }
+      }
+    },
+    "The test alert was sent, but it hasn't been confirmed yet. Check Notification Center." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "テスト通知を送りましたが、届いたことを確認できませんでした。通知センターを確かめてください。"
+          }
+        }
+      }
+    },
+    "Allow notifications first." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "先に通知を許可してください。"
+          }
+        }
+      }
+    },
+    "The test alert couldn't be sent." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "テスト通知を送れませんでした。"
+          }
+        }
+      }
+    },
+    "Allow location access first." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "先に位置情報を許可してください。"
+          }
+        }
+      }
+    },
+    "For reference" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "参考"
+          }
+        }
+      }
+    },
+    "Caution" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "注意"
+          }
+        }
+      }
+    },
+    "Problem" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "問題あり"
+          }
+        }
+      }
+    },
+    "Always Allowed" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "常に許可"
+          }
+        }
+      }
+    },
+    "On" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "オン"
+          }
+        }
+      }
+    },
+    "Off" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "オフ"
+          }
+        }
+      }
+    },
+    "Allowed" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "許可"
+          }
+        }
+      }
+    },
+    "Checking…" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "確認中"
+          }
+        }
+      }
+    },
+    "Can't be checked" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "確認できません"
+          }
+        }
+      }
     }
   },
   "version" : "1.1"

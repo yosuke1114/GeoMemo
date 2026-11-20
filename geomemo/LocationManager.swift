@@ -263,6 +263,14 @@ class LocationManager: NSObject, ObservableObject {
         routeWaypointCounts = counts
     }
 
+    /// 実際に登録されている監視中の領域の数（「通知のチェック」で使う）。
+    var monitoredRegionCount: Int { manager.monitoredRegions.count }
+
+    /// この端末が場所の監視（ジオフェンス）に対応しているか。
+    nonisolated static var isGeofencingAvailable: Bool {
+        CLLocationManager.isMonitoringAvailable(for: CLCircularRegion.self)
+    }
+
     /// Stop all currently monitored regions.
     func stopAllMonitoring() {
         for region in manager.monitoredRegions {
@@ -364,6 +372,7 @@ extension LocationManager: @MainActor CLLocationManagerDelegate {
     @MainActor
     private func didEnterRegionMainActor(_ region: CLRegion) {
         guard let circularRegion = region as? CLCircularRegion else { return }
+        DiagnosticsLog.shared.recordRegionEvent()
         let identifier = circularRegion.identifier
 
         if let separatorRange = identifier.range(of: "|wp|") {
@@ -413,6 +422,7 @@ extension LocationManager: @MainActor CLLocationManagerDelegate {
 
     func locationManager(_ manager: CLLocationManager, didExitRegion region: CLRegion) {
         guard let circularRegion = region as? CLCircularRegion else { return }
+        DiagnosticsLog.shared.recordRegionEvent()
         let identifier = circularRegion.identifier
         // ルートウェイポイントと共有メモの退出は無視
         guard !identifier.contains("|wp|") && !identifier.hasPrefix(SharedMemo.geofencePrefix) else { return }

@@ -19,6 +19,8 @@ class NotificationManager: NSObject, ObservableObject {
 
     /// 通知の許可状態。システムから読み込むまでは nil（「未設定」と取り違えないため）。
     @Published var authorizationStatus: UNAuthorizationStatus?
+    /// 通知の出し方（バナー・ロック画面・時刻指定要約）。読み込むまでは nil。「通知のチェック」で使う。
+    @Published var presentation: NotificationPresentation?
 
     override init() {
         super.init()
@@ -84,8 +86,45 @@ class NotificationManager: NSObject, ObservableObject {
     func checkAuthorizationStatus() {
         Task {
             let settings = await UNUserNotificationCenter.current().notificationSettings()
-            await MainActor.run { self.authorizationStatus = settings.authorizationStatus }
+            let presentation = NotificationPresentation(settings)
+            await MainActor.run {
+                self.authorizationStatus = settings.authorizationStatus
+                self.presentation = presentation
+            }
         }
+    }
+
+    // MARK: - Diagnostic test notification
+
+    static let testNotificationID = "geomemo-diagnostic-test"
+
+    /// 「通知のチェック」のテスト通知。5 秒後に 1 通だけ届ける。
+    /// アプリ内の通知スイッチ（isNotificationsEnabled）は見ない（OS 側の経路を確かめるため）。
+    /// カテゴリ・userInfo は付けない（「完了」「5 分後」のアクションを出さず、タップしても何も起きない）。
+    /// 「最後に通知を出した時刻」には記録しない。
+    func sendTestNotification() async -> TestNotificationResult {
+        let center = UNUserNotificationCenter.current()
+        let settings = await center.notificationSettings()
+        guard NotificationAccess(settings.authorizationStatus) == .allowed else { return .notAuthorized }
+
+        let content = UNMutableNotificationContent()
+        content.title = String(localized: "GeoMemo test alert")
+        content.body = String(localized: "If you can see this, alerts are set up to arrive.")
+        content.sound = .default
+        let request = UNNotificationRequest(
+            identifier: Self.testNotificationID, content: content,
+            trigger: UNTimeIntervalNotificationTrigger(timeInterval: 5, repeats: false))
+        do {
+            try await center.add(request)
+        } catch {
+            print("Error scheduling test notification: \(error.localizedDescription)")
+            return .failed
+        }
+        // 届いたら通知センターに入る（集中モード中でも入る）。バナーが出たかどうかはアプリからは分からない。
+        try? await Task.sleep(for: .seconds(7))
+        let delivered = await center.deliveredNotifications()
+        return delivered.contains { $0.request.identifier == Self.testNotificationID }
+            ? .delivered : .scheduledButNotConfirmed
     }
 
     /// ユーザがアプリ内で通知を有効にしているか。未設定は true（オプトアウト方式）。
@@ -177,6 +216,7 @@ class NotificationManager: NSObject, ObservableObject {
     private func addRequest(_ request: UNNotificationRequest) async {
         do {
             try await UNUserNotificationCenter.current().add(request)
+            DiagnosticsLog.shared.recordNotification()
         } catch {
             print("Error scheduling notification: \(error.localizedDescription)")
         }

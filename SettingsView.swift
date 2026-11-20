@@ -39,6 +39,11 @@ struct SettingsView: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(\.modelContext) private var modelContext
     @Query private var memos: [GeoMemo]
+    @Query private var sharedMemos: [SharedMemo]
+    @ObservedObject private var locationManager = LocationManager.shared
+    @ObservedObject private var notificationManager = NotificationManager.shared
+    @Environment(\.scenePhase) private var scenePhase
+    @State private var diagnosticsSnapshot = NotificationCheckView.SystemSnapshot.read()
 
     @AppStorage("appearanceMode") private var appearanceMode: String = AppearanceMode.system.rawValue
     @AppStorage("notificationsEnabled") private var notificationsEnabled = true
@@ -153,6 +158,20 @@ struct SettingsView: View {
 
             // MARK: - PERMISSIONS
             Section {
+                NavigationLink {
+                    NotificationCheckView()
+                } label: {
+                    LabeledContent {
+                        Text(DiagnosticText.entryValue(issueCount: diagnosticsIssueCount))
+                            .foregroundColor(Brand.secondaryText)
+                            .multilineTextAlignment(.trailing)
+                    } label: {
+                        Text("Notification Check")
+                            .foregroundColor(Brand.primaryText)
+                    }
+                }
+                .accessibilityIdentifier("settings.notificationCheck")
+
                 Button {
                     openSettings()
                 } label: {
@@ -176,6 +195,8 @@ struct SettingsView: View {
                 }
             } header: {
                 Text("PERMISSIONS")
+            } footer: {
+                Text("If alerts aren't arriving, check the cause here.")
             }
 
             // MARK: - DATA
@@ -457,6 +478,10 @@ struct SettingsView: View {
         .task {
             await updatePermissionStatuses()
         }
+        .onAppear { diagnosticsSnapshot = NotificationCheckView.SystemSnapshot.read() }
+        .onChange(of: scenePhase) { _, phase in
+            if phase == .active { Task { await updatePermissionStatuses() } }
+        }
         // memos が変化したら export ファイルキャッシュを破棄してステイル共有を防ぐ。
         .onChange(of: memos) { _, _ in
             exportURL = nil
@@ -523,7 +548,18 @@ struct SettingsView: View {
         }
     }
 
+    /// 入口の右側に出す「要確認 n 件」。
+    private var diagnosticsIssueCount: Int {
+        let input = DiagnosticInput.current(
+            locationManager: locationManager, notificationManager: notificationManager,
+            inAppNotificationsEnabled: notificationsEnabled, snapshot: diagnosticsSnapshot,
+            memos: memos, sharedMemos: sharedMemos)
+        return NotificationDiagnostics.issueCount(NotificationDiagnostics.evaluate(input))
+    }
+
     private func updatePermissionStatuses() async {
+        diagnosticsSnapshot = NotificationCheckView.SystemSnapshot.read()
+        notificationManager.checkAuthorizationStatus()
         // Location
         let locStatus = CLLocationManager().authorizationStatus
         let locText: String
