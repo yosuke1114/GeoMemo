@@ -28,6 +28,14 @@ struct ContentView: View {
     @State private var deepLinkMemoID: UUID?
     @State private var intentShowFavorites = false
     @State private var showWatchDashboard = false
+    /// 受諾した共有に対して今出すもの（受け取り画面・一覧・通常の詳細）。`MapTabView` が出せるときに出す。
+    @State private var arrival: ArrivalPresentation?
+    /// 受諾したが、まだ何を出すか決めていない共有。
+    @State private var awaitingArrivals: [AcceptedShareInfo] = []
+    @State private var isResolvingArrival = false
+    /// 同期で新しく取り込んだ依頼・取り消し済みで取り込まなかった依頼（受諾との突き合わせに使う）。
+    @State private var newlyInserted: Set<String> = []
+    @State private var skippedCancelled: [String: String] = [:]
 
     /// ルートの現在幅。折りたたみ/展開やウインドウリサイズのたびに更新される。
     @State private var containerWidth: CGFloat = 0
@@ -51,7 +59,8 @@ struct ContentView: View {
             // マップは常に描画しておく（compact: 背景 / regular: 左ペイン）
             VStack(spacing: 0) {
                 CustomNavigationBar(memoCount: memos.count, showSettings: $showSettings, isSearching: $isSearching, showWatchDashboard: $showWatchDashboard)
-                MapTabView(memos: memos, isSearching: $isSearching, deepLinkMemoID: $deepLinkMemoID, showList: $showList)
+                MapTabView(memos: memos, isSearching: $isSearching, deepLinkMemoID: $deepLinkMemoID, showList: $showList,
+                           arrival: arrivalBinding)
             }
             .background(Brand.background)
             .ignoresSafeArea(edges: .bottom)
@@ -126,21 +135,87 @@ struct ContentView: View {
         }
         .onReceive(NotificationCenter.default.publisher(for: .didAcceptSharedMemo)) { _ in
             processPendingShares()
-            Task { await syncSharedMemos() }
+            Task {
+                await syncSharedMemos()
+                await resolveArrivals()
+            }
         }
         // 表示されたとき: 表示前に受諾した共有（共有リンクからの初回起動など）を処理し、一度同期する。
         // scenePhase の変化を待たない（初回起動では .active への変化が起きないことがある）。
         .task {
+            // 既読の記録の初期化は、最初の同期より前に行う（この版で初めて取り込む依頼を「新着」にするため）
+            ReceivedRequestSeenStore.shared.seedIfNeeded(
+                existing: allSharedMemos.filter { !$0.isMyRequest }.map(\.ckRecordName))
             processPendingShares()
+            #if DEBUG
+            // 受け取り画面の見た目確認用（DemoDataSeeder の受け取った依頼を受け取り画面で出す）
+            if CommandLine.arguments.contains("-demoArrival") {
+                try? await Task.sleep(for: .seconds(1))
+                arrival = .arrival(recordName: "demo-1")
+            }
+            #endif
             await syncSharedMemos()
+            await resolveArrivals()
         }
+    }
+
+    /// 設定・見守り・リストを開いている間は渡さない（閉じてから出す）。
+    private var arrivalBinding: Binding<ArrivalPresentation?> {
+        Binding(
+            get: { (showSettings || showWatchDashboard || showList) ? nil : arrival },
+            set: { arrival = $0 }
+        )
     }
 
     /// 保留キューにある受諾済みの共有をフレンド登録する。
     private func processPendingShares() {
         for info in PendingShareQueue.shared.drain() {
             registerFriendIfNeeded(info: info)
+            awaitingArrivals.append(info)
         }
+    }
+
+    // MARK: - 受諾 → 受け取り画面
+
+    /// 受諾した共有に対応する依頼を探し、受け取り画面などを出す。取り込みに時間がかかるときは、
+    /// 2 秒後・5 秒後に同期をやり直す（計 3 回）。それでも見つからなければトーストで知らせ、
+    /// 後で取り込まれたらバッジの「新着」で気づける。
+    private func resolveArrivals() async {
+        guard !awaitingArrivals.isEmpty, !isResolvingArrival else { return }
+        isResolvingArrival = true
+        defer { isResolvingArrival = false }
+        let delays: [Duration] = [.zero, .seconds(2), .seconds(5)]
+        for (index, delay) in delays.enumerated() {
+            if index > 0 {
+                try? await Task.sleep(for: delay)
+                await syncSharedMemos()
+            }
+            guard !awaitingArrivals.isEmpty else { return }
+            let received = allSharedMemos.filter { !$0.isMyRequest }.map(\.summary)
+            if let result = ArrivalResolver.resolve(
+                accepted: awaitingArrivals.map(\.key),
+                received: received,
+                newlyInserted: newlyInserted,
+                skippedCancelled: skippedCancelled
+            ) {
+                awaitingArrivals.removeAll()
+                switch result {
+                case .cancelledBeforeOpen:
+                    announce(String(localized: "The person who sent this request canceled it."))
+                default:
+                    arrival = result
+                }
+                return
+            }
+        }
+        awaitingArrivals.removeAll()
+        announce(String(localized: "Request received. Find it under “Requests” at the top of the map."))
+    }
+
+    /// トーストを出し、VoiceOver にも読み上げさせる。
+    private func announce(_ message: String) {
+        ToastCenter.shared.show(.info(message, duration: 4))
+        AccessibilityNotification.Announcement(message).post()
     }
 
     // MARK: - Friend Auto-Registration
@@ -253,6 +328,7 @@ struct ContentView: View {
         // プロフィール（表示名）が無くても取り込む。受信者としての名前の書き込みだけ、プロフィールがあるときに行う
         let me = profiles.first
         var importedCount = 0
+        var newlyCancelled: [SharedMemo] = []
         do {
             let received = try await CKShareService.shared.fetchReceivedSharedMemos()
             var didChange = false
@@ -274,8 +350,10 @@ struct ContentView: View {
                         existing.requesterRecordID = zoneOwner
                         didChange = true
                     }
+                    let wasActive = existing.isActive
                     if existing.apply(data) {
                         didChange = true
+                        if wasActive && data.status == .cancelled && !existing.isMyRequest { newlyCancelled.append(existing) }
                         // 取り消し・完了になった依頼は位置の監視をやめる
                         if !existing.isActive {
                             LocationManager.shared.stopMonitoring(memoID: existing.geofenceIdentifier)
@@ -288,7 +366,8 @@ struct ContentView: View {
                         claimRecipient(data.ckRecordID, me: me)
                     }
                 } else if data.status == .cancelled {
-                    // まだ取り込んでいない依頼が既に取り消されていれば取り込まない
+                    // まだ取り込んでいない依頼が既に取り消されていれば取り込まない（受諾した人には文で知らせる）
+                    skippedCancelled[recordName] = zoneOwner
                     continue
                 } else {
                     let claimingMe = shouldClaim ? me : nil
@@ -317,6 +396,7 @@ struct ContentView: View {
                     modelContext.insert(shared)
                     didChange = true
                     importedCount += 1
+                    newlyInserted.insert(recordName)
                     if let claimingMe {
                         claimRecipient(data.ckRecordID, me: claimingMe)
                     }
@@ -326,7 +406,13 @@ struct ContentView: View {
                 }
             }
             if didChange { try? modelContext.save() }
-            if importedCount > 0 {
+            // 今ある依頼に無い既読の記録は捨てる
+            ReceivedRequestSeenStore.shared.prune(
+                keeping: Set(allSharedMemos.filter { !$0.isMyRequest }.map(\.ckRecordName)).union(newlyInserted))
+            for cancelled in newlyCancelled {
+                announce(String(format: String(localized: "%@ canceled the request"), cancelled.requesterName))
+            }
+            if importedCount > 0 && awaitingArrivals.isEmpty && !isResolvingArrival {
                 // 旧版で受諾済みだった依頼が、この版で初めてまとめて取り込まれることがある
                 ToastCenter.shared.show(.info(String(localized: "Received requests added: \(importedCount)")))
             }

@@ -25,6 +25,8 @@ struct MapTabView: View {
     @Binding var isSearching: Bool
     @Binding var deepLinkMemoID: UUID?
     @Binding var showList: Bool
+    /// 受諾した共有に対して出すもの（`ContentView` が決める）。出せるときに出し、出したら nil に戻す。
+    @Binding var arrival: ArrivalPresentation?
 
     private var currentMapStyle: GeoMapStyle {
         GeoMapStyle(rawValue: mapStyleRaw) ?? .mono
@@ -53,6 +55,13 @@ struct MapTabView: View {
     private var receivedPins: [SharedMemo] {
         mapSharedMemos.filter { !$0.isMyRequest && ($0.status == .active || $0.status == .fired) }
     }
+    /// 受け取り画面（受諾した直後）。
+    @State private var arrivalMemo: SharedMemo?
+    /// 「受信した依頼」の一覧シート。
+    @State private var showReceivedList = false
+    /// 既読の記録を読み直すための印（詳細・一覧を閉じたときに増やす）。
+    @State private var seenTick = 0
+    @State private var arrivalTask: Task<Void, Never>?
     @State private var activeDetailMemo: GeoMemo?
     @State private var pendingDetailMemo: GeoMemo?
     /// 遅延して `activeDetailMemo` をセットする Task。新しい遅延が始まる前に cancel する。
@@ -67,15 +76,29 @@ struct MapTabView: View {
         ZStack(alignment: .top) {
             mapView
             locationButton
-            addMemoButton
+            if homeMode == .receiverOnly {
+                receivedCardArea
+            } else {
+                addMemoButton
+            }
 
-            if !isSearching, let guidance = currentGuidance {
-                MapGuidanceBanner(
-                    guidance: guidance,
-                    onAction: { performGuidanceAction(guidance) },
-                    onDismiss: { dismissGuidance(guidance) }
-                )
-                .transition(.move(edge: .top).combined(with: .opacity))
+            // 許可の案内のバナーの下に、受け取った依頼のバッジを縦に並べる（検索中は隠す）
+            if !isSearching {
+                VStack(alignment: .leading, spacing: 0) {
+                    if let guidance = currentGuidance {
+                        MapGuidanceBanner(
+                            guidance: guidance,
+                            onAction: { performGuidanceAction(guidance) },
+                            onDismiss: { dismissGuidance(guidance) }
+                        )
+                        .transition(.move(edge: .top).combined(with: .opacity))
+                    }
+                    ReceivedRequestsBadge(state: badgeState) { showReceivedList = true }
+                        .padding(.leading, 16)
+                        .padding(.top, 8)
+                        .transition(.opacity)
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
             }
 
             if isSearching {
@@ -85,6 +108,11 @@ struct MapTabView: View {
         }
         .animation(.easeInOut(duration: 0.25), value: isSearching)
         .animation(.easeInOut(duration: 0.25), value: currentGuidance)
+        .animation(.easeInOut(duration: 0.25), value: badgeState)
+        .onChange(of: arrival) { _, _ in presentArrivalWhenReady() }
+        .onChange(of: isAnotherSheetPresented) { _, presented in
+            if !presented { presentArrivalWhenReady() }
+        }
         // 設定アプリから戻った直後に、通知の許可状態を読み直す。
         .onChange(of: scenePhase) { _, phase in
             permissionPerformer.scenePhaseChanged(phase)
@@ -110,12 +138,23 @@ struct MapTabView: View {
             GeofenceReconciler.reconcile(memos: memos, sharedMemos: mapSharedMemos)
             recomputeGuidance()
         }
-        .sheet(item: $mapSelectedReceived) { shared in
+        .sheet(item: $mapSelectedReceived, onDismiss: { seenTick += 1 }) { shared in
             ReceivedSharedMemoDetailView(
                 shared: shared,
                 onDelete: { deleteReceivedSharedMemo(shared, in: modelContext) },
                 onComplete: { completeReceivedSharedMemo(shared, in: modelContext) }
             )
+        }
+        .sheet(item: $arrivalMemo, onDismiss: { seenTick += 1; handleSheetDismiss() }) { shared in
+            ReceivedSharedMemoDetailView(
+                shared: shared,
+                onDelete: { deleteReceivedSharedMemo(shared, in: modelContext) },
+                onComplete: { completeReceivedSharedMemo(shared, in: modelContext) },
+                isArrival: true
+            )
+        }
+        .sheet(isPresented: $showReceivedList, onDismiss: { seenTick += 1; handleSheetDismiss() }) {
+            ReceivedRequestsView()
         }
         .sheet(item: $activeSheet, onDismiss: handleSheetDismiss) { sheet in
             sheetContent(for: sheet)
@@ -166,6 +205,11 @@ struct MapTabView: View {
         .onChange(of: deepLinkMemoID) { _, newID in
             guard let id = newID else { return }
             deepLinkMemoID = nil
+            // 到着の通知をタップしたとき: 受け取った依頼の詳細を開く（自分のメモに無ければ受け取った依頼から探す）
+            if memos.first(where: { $0.id == id }) == nil,
+               let shared = mapSharedMemos.first(where: { $0.id == id && !$0.isMyRequest }) {
+                mapSelectedReceived = shared
+            }
             if let memo = memos.first(where: { $0.id == id }) {
                 calloutMemo = memo
                 withAnimation {
@@ -407,11 +451,27 @@ struct MapTabView: View {
                     }
                     .accessibilityIdentifier("listViewButton")
                     .accessibilityLabel(String(localized: "List"))
+
+                    // 受け取るだけの人は「ADD MEMO」が無いので、メモの作成は小さい「＋」に残す
+                    if homeMode == .receiverOnly {
+                        Button(action: startNewMemo) {
+                            Image("ph-plus-bold")
+                                .resizable()
+                                .frame(width: 20, height: 20)
+                                .foregroundColor(Brand.primaryText)
+                                .frame(width: 48, height: 48)
+                                .background(Brand.background)
+                                .clipShape(Circle())
+                                .overlay(Circle().stroke(Brand.border, lineWidth: 1))
+                        }
+                        .accessibilityLabel(String(localized: "Add Memo"))
+                        .accessibilityIdentifier("addMemoPlusButton")
+                    }
                 }
                 .padding(.trailing, 16)
-                // ADD MEMO ボタン (高さ ~72pt + bottom 16pt) と重ならないように、
+                // ADD MEMO ボタン (高さ ~72pt + bottom 16pt) や受信した依頼のカードと重ならないように、
                 // 下端をその上に十分余裕を持って配置する。
-                .padding(.bottom, 112)
+                .padding(.bottom, homeMode == .receiverOnly ? 168 : 112)
             }
         }
     }
@@ -420,22 +480,7 @@ struct MapTabView: View {
     private var addMemoButton: some View {
         VStack {
             Spacer()
-            Button(action: {
-                HapticManager.impact(.medium)
-                // Free プランかつ上限に達している場合はペイウォールを表示
-                if !store.isPro && memos.count >= GeoMemoLimits.freeMemoLimit {
-                    showPaywall = true
-                    return
-                }
-                let defaultTokyo = CLLocationCoordinate2D(latitude: 35.6812, longitude: 139.7671)
-                let coordinate = newMemoCoordinate
-                    ?? locationManager.location?.coordinate
-                    ?? visibleRegion?.center
-                    ?? defaultTokyo
-                newMemoCoordinate = coordinate
-                calloutMemo = nil
-                activeSheet = .memoEditor(coordinate: coordinate)
-            }) {
+            Button(action: startNewMemo) {
                 HStack(spacing: 8) {
                     Image("ph-plus-bold")
                         .resizable()
@@ -463,6 +508,91 @@ struct MapTabView: View {
         }
     }
     
+    /// メモの作成を始める（「ADD MEMO」と、受け取るだけの人の「＋」で共通）。
+    private func startNewMemo() {
+        HapticManager.impact(.medium)
+        // Free プランかつ上限に達している場合はペイウォールを表示
+        if !store.isPro && memos.count >= GeoMemoLimits.freeMemoLimit {
+            showPaywall = true
+            return
+        }
+        let defaultTokyo = CLLocationCoordinate2D(latitude: 35.6812, longitude: 139.7671)
+        let coordinate = newMemoCoordinate
+            ?? locationManager.location?.coordinate
+            ?? visibleRegion?.center
+            ?? defaultTokyo
+        newMemoCoordinate = coordinate
+        calloutMemo = nil
+        activeSheet = .memoEditor(coordinate: coordinate)
+    }
+
+    // MARK: - 受け取った依頼（バッジ・カード・受け取り画面）
+
+    private var receivedSharedMemos: [SharedMemo] { mapSharedMemos.filter { !$0.isMyRequest } }
+
+    /// 地図の下部に何を出すか。受信だけの人は「ADD MEMO」の代わりに受信した依頼のカードを出す。
+    private var homeMode: HomeMode {
+        HomeMode.resolve(
+            ownMemoCount: memos.count,
+            sentRequestCount: mapSharedMemos.filter(\.isMyRequest).count,
+            receivedRequestCount: receivedSharedMemos.count)
+    }
+
+    private var badgeState: ReceivedBadgeState {
+        _ = seenTick
+        return ReceivedBadgeState.resolve(receivedSharedMemos.map(\.summary), seen: ReceivedRequestSeenStore.shared.all)
+    }
+
+    /// 受け取った依頼を表示している最中か、ほかのシートが出ている間は、受け取り画面を出さずに待つ。
+    private var isAnotherSheetPresented: Bool {
+        activeSheet != nil || activeDetailMemo != nil || mapSelectedReceived != nil
+            || showPaywall || showReceivedList || arrivalMemo != nil
+    }
+
+    /// 受諾した共有に対する表示を、ほかのシートが閉じてから出す（閉じるアニメーションと重ならないよう少し待つ）。
+    private func presentArrivalWhenReady() {
+        guard arrival != nil else { return }
+        arrivalTask?.cancel()
+        arrivalTask = Task {
+            try? await Task.sleep(for: .seconds(0.5))
+            guard !Task.isCancelled, let pending = arrival, !isAnotherSheetPresented else { return }
+            switch pending {
+            case .arrival(let name):
+                arrivalMemo = receivedSharedMemos.first { $0.ckRecordName == name }
+            case .existing(let name):
+                mapSelectedReceived = receivedSharedMemos.first { $0.ckRecordName == name }
+            case .list:
+                showReceivedList = true
+            case .cancelledBeforeOpen:
+                break
+            }
+            arrival = nil
+        }
+    }
+
+    private var receivedCardArea: some View {
+        let items = receivedSharedMemos
+        let highlightName = ReceivedHighlight.pick(items.map(\.summary))
+        let open = items.filter { $0.isActive }
+        return VStack {
+            Spacer()
+            ReceivedRequestCard(
+                highlight: items.first { $0.ckRecordName == highlightName },
+                otherCount: max(0, open.count - 1),
+                onOpenDetail: { mapSelectedReceived = items.first { $0.ckRecordName == highlightName } },
+                onOpenList: { showReceivedList = true },
+                onComplete: {
+                    if let shared = items.first(where: { $0.ckRecordName == highlightName }) {
+                        completeReceivedSharedMemo(shared, in: modelContext)
+                    }
+                }
+            )
+            .frame(maxWidth: 480)
+            .padding(.horizontal, 40)
+            .padding(.bottom, 16)
+        }
+    }
+
     // MARK: - Sheet Handling
     private func handleSheetDismiss() {
         recomputeGuidance() // 詳細画面で完了・削除された分を上限の数え方に反映する

@@ -11,6 +11,7 @@ import AppIntents
 import CoreSpotlight
 import StoreKit
 import CloudKit
+import os
 
 // MARK: - CKShare Acceptance Delegate
 
@@ -56,6 +57,9 @@ final class GeoMemoAppDelegate: NSObject, UIApplicationDelegate {
     /// CKShare 受諾の共通処理（起動中 / コールドスタートの両経路から呼ばれる）。
     static func acceptCloudKitShare(_ metadata: CKShare.Metadata) {
         Task { @MainActor in
+            // 受諾の通信中も「届いている」と数える（初回起動のオンボーディングに、依頼が届いていることを出すため）
+            PendingShareQueue.shared.beginIncoming()
+            ToastCenter.shared.show(.info(String(localized: "Getting the request…"), duration: 2))
             do {
                 try await CKShareService.shared.acceptShare(metadata: metadata)
                 // share の所有者をフレンドとして登録（既存なら何もしない）
@@ -68,14 +72,37 @@ final class GeoMemoAppDelegate: NSObject, UIApplicationDelegate {
                 PendingShareQueue.shared.enqueue(AcceptedShareInfo(
                     ownerRecordID: ownerRecordID,
                     ownerName: ownerName,
-                    shareRecordID: metadata.share.recordID
+                    shareRecordID: metadata.share.recordID,
+                    rootRecordName: metadata.hierarchicalRootRecordID?.recordName
                 ))
                 NotificationCenter.default.post(name: .didAcceptSharedMemo, object: nil)
             } catch {
-                ToastCenter.shared.show(.error(
-                    String(localized: "共有メモの受諾に失敗しました。通信状況を確認して再度お試しください。")
-                ))
+                PendingShareQueue.shared.failIncoming()
+                // CKError のコードで分類する。分からないものは汎用の文にする（原因を決め打ちしない）。
+                let failure = ShareAcceptFailure.classify(error: error)
+                CKShareService.logger.error("accept share failed: \(error.localizedDescription, privacy: .public)")
+                let message = failure.message
+                ToastCenter.shared.show(.error(message, duration: 5))
+                AccessibilityNotification.Announcement(message).post()
             }
+        }
+    }
+}
+
+extension ShareAcceptFailure {
+    /// 受諾に失敗したときに出す文。
+    nonisolated var message: String {
+        switch self {
+        case .notSignedIn:
+            return String(localized: "Sign in to iCloud, then open the link again.")
+        case .network:
+            return String(localized: "Couldn't connect. Open the link again when you're online.")
+        case .goneOrCancelled:
+            return String(localized: "This request was canceled or no longer exists.")
+        case .notInvited:
+            return String(localized: "Only the invited person can open this link.")
+        case .other:
+            return String(localized: "共有メモの受諾に失敗しました。通信状況を確認して再度お試しください。")
         }
     }
 }
@@ -103,22 +130,39 @@ struct AcceptedShareInfo {
     let ownerRecordID: String
     let ownerName: String
     let shareRecordID: CKRecord.ID
+    /// 共有のルートのレコード名（`SharedMemo.ckRecordName` と一致する想定）。取れなかったときは nil。
+    var rootRecordName: String? = nil
+
+    var key: AcceptedShareKey { AcceptedShareKey(rootRecordName: rootRecordName, ownerRecordID: ownerRecordID) }
 }
 
 /// 受諾した共有の保留キュー。コールドスタートの受諾は、ContentView が表示される前
 /// （オンボーディング中など）に起きて、通知を受ける側がいない。ここに積んでおき、
 /// ContentView が表示されたとき・通知を受けたときに取り出して処理する。
-@MainActor
+@MainActor @Observable
 final class PendingShareQueue {
     static let shared = PendingShareQueue()
 
     private var items: [AcceptedShareInfo] = []
 
+    /// 受諾の通信中と、積まれたまま未処理の数。オンボーディングに「依頼が届いています」を出す判断に使う。
+    private(set) var incomingCount = 0
+
+    /// 受諾を始めた（通信中）。
+    func beginIncoming() { incomingCount += 1 }
+
+    /// 受諾に失敗した。
+    func failIncoming() { incomingCount = max(0, incomingCount - 1) }
+
+    /// 受諾に成功して積む（`beginIncoming` で数えた 1 件が、積まれた 1 件になる）。
     func enqueue(_ info: AcceptedShareInfo) { items.append(info) }
 
     /// 積まれているものを順に取り出す（取り出したら空になる）。
     func drain() -> [AcceptedShareInfo] {
-        defer { items.removeAll() }
+        defer {
+            incomingCount = max(0, incomingCount - items.count)
+            items.removeAll()
+        }
         return items
     }
 }
@@ -187,6 +231,7 @@ struct geomemoApp: App {
                     let seedRequested = CommandLine.arguments.contains("-seedDemoData")
                     if !Self.isUITesting || seedRequested {
                         DemoDataSeeder.seedIfNeeded(context: sharedModelContainer.mainContext)
+                        DemoDataSeeder.seedReceivedIfNeeded(context: sharedModelContainer.mainContext)
                     }
                 }
                 #endif

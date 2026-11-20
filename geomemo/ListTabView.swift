@@ -590,49 +590,10 @@ struct ListTabView: View {
 
     @ViewBuilder
     private func receivedMemoRow(_ shared: SharedMemo) -> some View {
-        HStack(spacing: 12) {
-            // ステータスアイコン
-            Group {
-                if shared.status == .fired {
-                    Image(systemName: "location.fill")
-                        .foregroundStyle(Brand.warning)
-                } else {
-                    Image(systemName: "clock")
-                        .foregroundStyle(Brand.blue)
-                }
-            }
-            .font(.body)
-            .frame(width: 24)
-
-            VStack(alignment: .leading, spacing: 4) {
-                Text(shared.memoTitle.isEmpty ? String(localized: "（タイトルなし）") : shared.memoTitle)
-                    .font(.subheadline.weight(.semibold))
-                    .foregroundStyle(Brand.primaryText)
-                    .lineLimit(1)
-                Text(String(localized: "依頼: ") + shared.requesterName)
-                    .font(.caption)
-                    .foregroundStyle(Brand.secondaryText)
-            }
-
-            Spacer()
-
-            // 手動完了ボタン（発火後のみ表示）
-            if shared.status == .fired {
-                Button {
-                    HapticManager.notification(.success)
-                    completeReceivedSharedMemo(shared, in: modelContext)
-                } label: {
-                    Text(String(localized: "完了"))
-                        .font(.footnote.weight(.semibold))
-                        .foregroundStyle(Brand.onAccent)
-                        .padding(.horizontal, 12)
-                        .padding(.vertical, 6)
-                        .background(Brand.blue)
-                        .clipShape(Capsule())
-                }
-                .buttonStyle(.plain)
-            }
-        }
+        ReceivedRequestRow(
+            shared: shared,
+            onComplete: { completeReceivedSharedMemo(shared, in: modelContext) },
+            showsDetails: false)
     }
 
     // MARK: - Actions
