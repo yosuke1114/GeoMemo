@@ -44,6 +44,16 @@
         }
       }
     },
+    "Could not open your memos. Try again after unlocking your device." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "メモを開けませんでした。端末のロックを解除してからもう一度お試しください。"
+          }
+        }
+      }
+    },
     "Creates a new memo at one of your saved favorite places in GeoMemo" : {
       "localizations" : {
         "ja" : {

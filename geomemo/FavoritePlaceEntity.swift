@@ -20,7 +20,9 @@ struct FavoritePlaceEntity: AppEntity {
         DisplayRepresentation(
             title: "\(name)",
             subtitle: subtitle.isEmpty ? nil : "\(subtitle)",
-            image: .init(systemName: iconName)
+            image: .init(systemName: iconName),
+            // 名前を付けていなくても「自宅」「職場」などの呼び名で引けるよう、アイコン由来の別名を渡す
+            synonyms: PlaceResolver.aliases(forIcon: iconName).map { LocalizedStringResource(stringLiteral: $0) }
         )
     }
 
@@ -69,9 +71,13 @@ struct FavoritePlaceEntityQuery: EntityQuery, EntityStringQuery {
         try GeoMemoStore.fetchFavoritePlaceCandidates().prefix(20).map(FavoritePlaceEntity.init(from:))
     }
 
-    /// 「自宅」「じたく」などの語から引く（名前・アイコン由来の別名・住所）。
+    /// 語から引く（名前・アイコン由来の別名・住所。全角半角・大小文字・ひらがなカタカナの違いは無視）。
+    /// 最も強い一致が 1 件ならその 1 件だけを返し、同じ強さで複数あればそれらを返す。
     func entities(matching string: String) async throws -> [FavoritePlaceEntity] {
-        PlaceResolver.matching(string, in: try GeoMemoStore.fetchFavoritePlaceCandidates())
-            .map(FavoritePlaceEntity.init(from:))
+        switch PlaceResolver.resolve(string, in: try GeoMemoStore.fetchFavoritePlaceCandidates()) {
+        case .resolved(let place): return [FavoritePlaceEntity(from: place)]
+        case .ambiguous(let places): return places.map(FavoritePlaceEntity.init(from:))
+        case .notFound: return []
+        }
     }
 }
