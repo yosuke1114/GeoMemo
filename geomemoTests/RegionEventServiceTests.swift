@@ -85,6 +85,8 @@ private final class FakeEffects: RegionEventEffects {
     var dequeued: [PendingShareEvent] = []
     var drainCount = 0
     var widgetReloads = 0
+    var locationRefreshes = 0
+    var reconciles: [(memos: Int, shared: Int)] = []
     /// 書き込みの時点でキューに積まれていたか（保存と同時に積むことの確認）
     var pendingAtWrite = 0
 
@@ -107,6 +109,10 @@ private final class FakeEffects: RegionEventEffects {
     }
     func drainPending() async { drainCount += 1 }
     func reloadWidgets() { widgetReloads += 1 }
+    func refreshLocationForRotation() async { locationRefreshes += 1 }
+    func reconcileGeofences(memos: [GeoMemo], sharedMemos: [SharedMemo]) {
+        reconciles.append((memos.count, sharedMemos.count))
+    }
 
     private static func same(_ a: PendingShareEvent, _ b: PendingShareEvent) -> Bool {
         switch (a, b) {
@@ -168,6 +174,30 @@ struct RegionEventServiceTests {
         context.insert(s)
         try? context.save()
         return s
+    }
+
+    @Test("入れ替え: 現在地を取ってから、メモと依頼を読み直して入れ替える（画面なし）")
+    func rotate() async throws {
+        let (service, fx, ctx) = try makeService()
+        _ = memo(ctx); _ = memo(ctx); _ = shared(ctx)
+        await service.rotate()
+        #expect(fx.locationRefreshes == 1)
+        #expect(fx.reconciles.count == 1 && fx.reconciles[0].memos == 2 && fx.reconciles[0].shared == 1)
+    }
+
+    @Test("入れ替え: バックグラウンドの実行時間を確保し、終わったら返す。進行中の重複は走らせない")
+    func rotationTrigger() async throws {
+        let (service, fx, ctx) = try makeService()
+        _ = memo(ctx)
+        let bg = FakeBackgroundTasks()
+        service.backgroundTasks = bg
+        service.handleRotationTrigger()
+        service.handleRotationTrigger()   // 進行中なので無視
+        #expect(bg.begun == ["geomemo-region-event"])
+        try await Task.sleep(for: .milliseconds(300))
+        #expect(fx.reconciles.count == 1)
+        #expect(bg.ended.count == 1)
+        #expect(!service.isRotating)
     }
 
     @Test("入った: 即通知が出る（画面なし）")

@@ -47,8 +47,12 @@ nonisolated struct DiagnosticInput: Equatable {
     var isLowPowerMode: Bool
     /// 監視したい数。
     var requiredRegions: Int
-    /// 実際に登録されている数。
+    /// 実際に登録されている数（入れ替え用の円を含む）。
     var monitoredRegions: Int
+    /// 監視したい受信した依頼の領域の数（入れ替えられない分）。
+    var receivedRegions: Int = 0
+    /// 入れ替え用の円が登録されているか。
+    var hasRotationCircle: Bool = false
     /// この端末が場所の監視（ジオフェンス）に対応しているか。
     var isMonitoringAvailable: Bool = true
     /// 監視したい受信した依頼のうち、いま監視に入っていない数（上限超過でも、これがあれば登録し直せる）。
@@ -79,7 +83,10 @@ nonisolated enum MonitoredPlacesState: Equatable {
     case notAuthorized
     /// `nearLimitUsed` は上限に近いときだけ入る（補足を出す）。
     case ok(monitored: Int, nearLimitUsed: Int?)
+    /// 受信した依頼だけで上限を超えている（入れ替えられないので、溢れた分は通知されない）。
     case overLimit(required: Int, unmonitored: Int)
+    /// 20 件を超える分は、近い順に入れ替えて監視している。`monitored` は監視中の場所の数（入れ替え用の円を除く）、`total` は全部の数。
+    case rotating(monitored: Int, total: Int)
     case underRegistered(monitored: Int, required: Int)
 }
 
@@ -209,13 +216,26 @@ nonisolated enum NotificationDiagnostics {
             placesItem = DiagnosticItem(id: .monitoredPlaces, severity: .problem, places: .unsupported)
         } else if !p.location.isAuthorized {
             placesItem = DiagnosticItem(id: .monitoredPlaces, severity: .info, places: .notAuthorized)
-        } else if input.requiredRegions > limit {
-            // 溢れた分は登録し直しても直らない。ただし、受信した依頼が監視に入っていなければ、
+        } else if input.receivedRegions > limit {
+            // 受信した依頼だけで上限を超えると、入れ替えられず溢れる。ただし、監視に入っていない依頼があれば、
             // 登録し直すと（受信した依頼が優先されるので）入る
             placesItem = DiagnosticItem(
                 id: .monitoredPlaces, severity: .problem,
-                places: .overLimit(required: input.requiredRegions, unmonitored: input.requiredRegions - limit),
+                places: .overLimit(required: input.receivedRegions, unmonitored: input.receivedRegions - limit),
                 action: input.receivedUnmonitored > 0 ? .reRegisterGeofences : nil)
+        } else if input.requiredRegions > limit {
+            // 20 件を超える分は近い順に入れ替える。項目の枠は円の分を引いた 19 件（円を張れていなければ、現在地が分からない間）。
+            let placesMonitored = input.monitoredRegions - (input.hasRotationCircle ? NearestRotation.reservedSlots : 0)
+            if placesMonitored < limit - NearestRotation.reservedSlots {
+                placesItem = DiagnosticItem(
+                    id: .monitoredPlaces, severity: .warning,
+                    places: .underRegistered(monitored: input.monitoredRegions, required: input.requiredRegions),
+                    action: .reRegisterGeofences)
+            } else {
+                placesItem = DiagnosticItem(
+                    id: .monitoredPlaces, severity: .ok,
+                    places: .rotating(monitored: placesMonitored, total: input.requiredRegions))
+            }
         } else if input.monitoredRegions < min(input.requiredRegions, limit) {
             placesItem = DiagnosticItem(
                 id: .monitoredPlaces, severity: .warning,
@@ -223,7 +243,7 @@ nonisolated enum NotificationDiagnostics {
                 action: .reRegisterGeofences)
         } else {
             var nearUsed: Int?
-            if case .nearLimit(let used) = MonitoringLimitState.resolve(requiredRegions: input.requiredRegions, limit: limit) {
+            if case .nearLimit(let used) = MonitoringLimitState.resolve(requiredRegions: input.receivedRegions, limit: limit) {
                 nearUsed = used
             }
             placesItem = DiagnosticItem(id: .monitoredPlaces, severity: .ok,
@@ -308,6 +328,7 @@ nonisolated enum DiagnosticText {
             return String(localized: "Can't be checked")
         case .monitoredPlaces:
             if case .ok(let monitored, _) = item.places { return String(localized: "\(monitored) of 20") }
+            if case .rotating(let monitored, let total) = item.places { return String(localized: "Nearest \(monitored) of \(total)") }
             return severityLabel(item.severity)
         }
     }
@@ -377,7 +398,9 @@ nonisolated enum DiagnosticText {
         case .notAuthorized:
             return String(localized: "Not watching because location access is off.")
         case .overLimit(let required, let unmonitored):
-            return String(localized: "You have \(required) places, but iOS can watch only 20. \(unmonitored) won't send alerts: received requests are watched first, and your oldest memos drop off first. Complete or delete some memos.")
+            return String(localized: "You have \(required) received requests, but iOS can watch only 20. \(unmonitored) won't send alerts. Complete or delete some requests.")
+        case .rotating(let monitored, let total):
+            return String(localized: "Watching the nearest \(monitored) of your \(total) places. They switch automatically as you move.")
         case .underRegistered(let monitored, let required):
             return String(localized: "\(monitored) of your \(required) places are being watched. Tap to register them again.")
         case .ok(_, let nearUsed?):

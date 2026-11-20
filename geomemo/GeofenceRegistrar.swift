@@ -14,38 +14,15 @@ enum GeofenceRegistrar {
         return own + received
     }
 
-    /// 全部外して登録し直す。上限（20 件）を超えると後ろは登録されないので、
-    /// 受信した依頼を先に、自分のメモを後に登録する（`GeofenceRegistrationOrder`）。
+    /// 入れ替えられない（上限に直接数える）領域の数。受信した有効な依頼は 1 件ずつ、いつも先に登録される。
+    /// 自分のメモは近い順に入れ替わるので、20 件を超えても「溢れる」ものとして数えない。
+    static func fixedRegionCount(sharedMemos: [SharedMemo]) -> Int {
+        sharedMemos.filter { !$0.isMyRequest && $0.status == .active }.count
+    }
+
+    /// 全部外して登録し直す。受信した依頼を先に、自分のメモは現在地に近い順に（20 件を超えるときは入れ替え用の円も）登録する。
     static func reRegisterAll(memos: [GeoMemo], sharedMemos: [SharedMemo]) {
-        let locationManager = LocationManager.shared
-        locationManager.stopAllMonitoring()
-        var registeredRegionCount = 0
-        let receivedActive = sharedMemos.filter { !$0.isMyRequest && $0.status == .active }
-        let ownActive = GeofenceReconciler.ownByPriority(memos)
-        for entry in GeofenceRegistrationOrder.prioritized(received: receivedActive, own: ownActive) {
-            switch entry {
-            case .received(let shared):
-                locationManager.startMonitoring(region: shared.monitoringRegion)
-                registeredRegionCount += 1
-            case .own(let memo):
-                if memo.isRouteTrigger {
-                    locationManager.startMonitoringRoute(for: memo)
-                    registeredRegionCount += memo.routeWaypoints.count
-                } else {
-                    let region = CLCircularRegion(
-                        center: CLLocationCoordinate2D(latitude: memo.latitude, longitude: memo.longitude),
-                        radius: memo.radius,
-                        identifier: memo.id.uuidString
-                    )
-                    region.notifyOnEntry = memo.notifyOnEntry
-                    region.notifyOnExit = memo.notifyOnExit
-                    locationManager.startMonitoring(region: region)
-                    registeredRegionCount += 1
-                }
-            }
-        }
-        if registeredRegionCount > LocationManager.maxMonitoredRegions {
-            print("⚠️ Geofencing limit warning: \(registeredRegionCount) regions registered (iOS limit is 20)")
-        }
+        LocationManager.shared.stopAllMonitoring()
+        GeofenceReconciler.reconcile(memos: memos, sharedMemos: sharedMemos)
     }
 }

@@ -209,7 +209,9 @@ class LocationManager: NSObject, ObservableObject {
     /// 領域の識別子（共有メモの ID を含む）は `.private` で出す。
     nonisolated static let logger = Logger(subsystem: "com.yokuro.geomemo", category: "location")
 
-    func startMonitoring(region: CLCircularRegion) {
+    /// `checkInitialState` が true なら、登録の直後に内側にいるかを確かめる（入れ替えで登録した領域の取りこぼし対策）。
+    /// すでに領域の中にいる状態で登録すると、進入のイベントは出ない。
+    func startMonitoring(region: CLCircularRegion, checkInitialState: Bool = false) {
         guard CLLocationManager.isMonitoringAvailable(for: CLCircularRegion.self) else {
             print("Geofencing is not available on this device")
             return
@@ -220,12 +222,17 @@ class LocationManager: NSObject, ObservableObject {
             return
         }
         manager.startMonitoring(for: region)
+        if checkInitialState {
+            pendingStateChecks.insert(region.identifier)
+            manager.requestState(for: region)
+        }
     }
 
     func stopMonitoring(memoID: String) {
         if let region = manager.monitoredRegions.first(where: { $0.identifier == memoID }) {
             manager.stopMonitoring(for: region)
         }
+        forgetInside(memoID)
     }
 
     /// 今登録されている領域の識別子（差分での登録に使う）。
@@ -288,6 +295,129 @@ class LocationManager: NSObject, ObservableObject {
         for region in manager.monitoredRegions {
             manager.stopMonitoring(for: region)
         }
+        insideLedger = InsideLedger()
+        pendingStateChecks.removeAll()
+    }
+
+    // MARK: - 近い順の入れ替え（20 件を超えるとき）
+
+    /// 入れ替え用の円を張る（現在地中心。出たら入れ替える）。前の円は外す。
+    /// 円の中心と時刻だけを端末の中に保存する（位置の履歴は持たない。CloudKit には載せない）。
+    func startRotationCircle(center: CLLocationCoordinate2D, radius: Double) {
+        stopRotationCircle()
+        guard CLLocationManager.isMonitoringAvailable(for: CLCircularRegion.self) else { return }
+        guard manager.monitoredRegions.count < Self.maxMonitoredRegions else {
+            // 張れないときは保存も消す（円が無いものとして扱い、位置の更新のたびに入れ替えを繰り返さない）
+            Self.logger.warning("20-region limit reached; cannot place the rotation circle")
+            return
+        }
+        let region = CLCircularRegion(center: center, radius: radius, identifier: NearestRotation.circleIdentifier)
+        region.notifyOnEntry = false
+        region.notifyOnExit = true
+        manager.startMonitoring(for: region)
+        rotationCircle = RotationCircle(
+            latitude: center.latitude, longitude: center.longitude, radius: radius, rotatedAt: Date())
+    }
+
+    func stopRotationCircle() {
+        for region in manager.monitoredRegions where region.identifier == NearestRotation.circleIdentifier {
+            manager.stopMonitoring(for: region)
+        }
+        rotationCircle = nil
+    }
+
+    /// 大きな移動のときだけ起きる位置の更新（円の補助。円の退出は遅れることがあるため）。
+    /// 「常に許可」のときだけ始める。
+    func setSignificantChangeMonitoring(_ enabled: Bool) {
+        if enabled {
+            guard manager.authorizationStatus == .authorizedAlways,
+                  CLLocationManager.significantLocationChangeMonitoringAvailable() else { return }
+            manager.startMonitoringSignificantLocationChanges()
+        } else {
+            manager.stopMonitoringSignificantLocationChanges()
+        }
+    }
+
+    /// 最後に張った入れ替え用の円。
+    var rotationCircle: RotationCircle? {
+        get {
+            guard let data = UserDefaults.standard.data(forKey: Self.rotationCircleKey) else { return nil }
+            return try? JSONDecoder().decode(RotationCircle.self, from: data)
+        }
+        set {
+            if let newValue, let data = try? JSONEncoder().encode(newValue) {
+                UserDefaults.standard.set(data, forKey: Self.rotationCircleKey)
+            } else {
+                UserDefaults.standard.removeObject(forKey: Self.rotationCircleKey)
+            }
+        }
+    }
+
+    /// iOS が監視できる円の最大の半径（m）。
+    var maximumRegionRadius: Double { manager.maximumRegionMonitoringDistance }
+
+    private static let rotationCircleKey = "geomemo.rotation.circle"
+    private static let insideLedgerKey = "geomemo.rotation.inside"
+
+    /// 入れ替えのとき、内側として扱った領域の控え（重複通知の防止）。
+    private var insideLedger: InsideLedger {
+        get {
+            if let cached = _insideLedger { return cached }
+            let loaded = UserDefaults.standard.data(forKey: Self.insideLedgerKey)
+                .flatMap { try? JSONDecoder().decode(InsideLedger.self, from: $0) } ?? InsideLedger()
+            _insideLedger = loaded
+            return loaded
+        }
+        set {
+            _insideLedger = newValue
+            if let data = try? JSONEncoder().encode(newValue) {
+                UserDefaults.standard.set(data, forKey: Self.insideLedgerKey)
+            }
+        }
+    }
+    private var _insideLedger: InsideLedger?
+    /// 登録の直後に内側かを確かめている領域。
+    private var pendingStateChecks: Set<String> = []
+
+    private func markInside(_ id: String) {
+        var ledger = insideLedger
+        ledger.insert(id)
+        insideLedger = ledger
+    }
+
+    private func forgetInside(_ id: String) {
+        guard insideLedger.contains(id) else { return }
+        var ledger = insideLedger
+        ledger.remove(id)
+        insideLedger = ledger
+    }
+
+    /// 現在地を取る。直近（`maxAge` 秒以内）のものがあればそれを返し、なければ 1 回だけ要求する。
+    /// 取れなければ（時間切れ・失敗）最後に分かっている現在地。
+    func freshLocation(maxAge: TimeInterval = 30) async -> CLLocation? {
+        if let location, abs(location.timestamp.timeIntervalSinceNow) <= maxAge { return location }
+        guard manager.authorizationStatus == .authorizedWhenInUse || manager.authorizationStatus == .authorizedAlways else {
+            return location
+        }
+        return await withCheckedContinuation { continuation in
+            locationWaiters.append(continuation)
+            if locationWaiters.count == 1 {
+                manager.requestLocation()
+                // 取れないまま待ち続けない（バックグラウンドの実行時間は限られる）
+                Task { @MainActor [weak self] in
+                    try? await Task.sleep(for: .seconds(15))
+                    self?.resumeLocationWaiters()
+                }
+            }
+        }
+    }
+
+    private var locationWaiters: [CheckedContinuation<CLLocation?, Never>] = []
+
+    private func resumeLocationWaiters() {
+        let waiters = locationWaiters
+        locationWaiters = []
+        for waiter in waiters { waiter.resume(returning: location) }
     }
 
     /// Check whether a memo's trigger conditions are currently satisfied.
@@ -307,10 +437,36 @@ extension LocationManager: @MainActor CLLocationManagerDelegate {
         guard let latest = locations.last else { return }
         location = latest
         evaluateProximity(to: latest)
+        resumeLocationWaiters()
+        // 入れ替え用の円の外に出ていたら入れ替える（円の退出のイベントが遅れても、ここで拾う）。
+        // 円が無い（入れ替えが要らない）ときは何もしない。
+        if let circle = rotationCircle, NearestRotation.isOutside(circle, location: latest) {
+            eventHandler.handleRotationTrigger()
+        }
     }
 
     func locationManager(_ manager: CLLocationManager, didFailWithError error: Error) {
         print("Location request failed: \(error.localizedDescription)")
+        resumeLocationWaiters()
+    }
+
+    /// 登録の直後の状態確認（`requestState`）の結果。内側にいれば、進入として扱う（進入のイベントは出ないため）。
+    func locationManager(_ manager: CLLocationManager, didDetermineState state: CLRegionState, for region: CLRegion) {
+        let identifier = region.identifier
+        guard pendingStateChecks.remove(identifier) != nil else { return }
+        let isInside = state == .inside
+        guard NearestRotation.shouldTreatAsEntry(isInside: isInside, alreadyInside: insideLedger.contains(identifier)) else {
+            if isInside { markInside(identifier) }
+            return
+        }
+        markInside(identifier)
+        // 進入のイベントと同じ流れ。期間・時間帯・曜日・完了済みの判定は `RegionEventService` がする。
+        if identifier.hasPrefix(SharedMemo.geofencePrefix) {
+            eventHandler.handleSharedEntered(identifier: identifier)
+        } else if !identifier.contains("|wp|") {
+            eventHandler.handleEntered(memoID: identifier)
+            triggerLiveActivity(identifier)
+        }
     }
 
     func locationManagerDidChangeAuthorization(_ manager: CLLocationManager) {
@@ -361,6 +517,7 @@ extension LocationManager: @MainActor CLLocationManagerDelegate {
 
     func locationManager(_ manager: CLLocationManager, didEnterRegion region: CLRegion) {
         guard let circularRegion = region as? CLCircularRegion else { return }
+        markInside(circularRegion.identifier)
         // ウィジェットで完了にしたのに監視が残っていた場合に備え、通知・Live Activity より先に取り込む
         WidgetCompletion.drainPending()
         DiagnosticsLog.shared.recordRegionEvent()
@@ -413,6 +570,12 @@ extension LocationManager: @MainActor CLLocationManagerDelegate {
 
     func locationManager(_ manager: CLLocationManager, didExitRegion region: CLRegion) {
         guard let circularRegion = region as? CLCircularRegion else { return }
+        // 入れ替え用の円から出た: 通知ではなく、監視の入れ替え（アプリが終了していても、ここで起動される）
+        if circularRegion.identifier == NearestRotation.circleIdentifier {
+            eventHandler.handleRotationTrigger()
+            return
+        }
+        forgetInside(circularRegion.identifier)
         WidgetCompletion.drainPending()
         DiagnosticsLog.shared.recordRegionEvent()
         let identifier = circularRegion.identifier
