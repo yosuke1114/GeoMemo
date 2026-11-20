@@ -28,9 +28,9 @@ nonisolated extension MapGuidance {
             case .notificationsNotDetermined: return String(localized: "Notifications aren't set up yet")
             }
         case .monitoringLimit(.overLimit):
-            return String(localized: "Too many places to watch")
+            return String(localized: "Too many received requests to watch")
         case .monitoringLimit:
-            return String(localized: "Nearing the 20-place limit")
+            return String(localized: "Received requests are using most of the 20 places")
         }
     }
 
@@ -54,9 +54,9 @@ nonisolated extension MapGuidance {
                 return String(localized: "Allow notifications to be told when you reach a place.")
             }
         case .monitoringLimit(.overLimit(_, let unmonitored)):
-            return String(localized: "iOS can watch up to 20 places. \(unmonitored) won't send alerts: received requests are watched first, and your oldest memos drop off first. Complete or delete some memos.")
+            return String(localized: "iOS can watch up to 20 places, and received requests are watched first. \(unmonitored) of them won't send alerts. Complete or delete some requests.")
         case .monitoringLimit(.nearLimit(let used)):
-            return String(localized: "\(used) of 20 places are being watched. iOS can't watch more than 20.")
+            return String(localized: "Received requests use \(used) of the 20 places iOS can watch. Your own memos take turns in the rest, nearest first.")
         case .monitoringLimit(.ok):
             return ""
         }

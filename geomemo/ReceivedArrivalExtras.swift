@@ -26,7 +26,7 @@ struct ReceivedArrivalExtras: View {
                 isPreciseLocation: locationManager.isPreciseLocation,
                 notification: NotificationAccess(notificationManager.authorizationStatus)),
             hasProfile: !profiles.isEmpty,
-            requiredRegions: GeofenceRegistrar.requiredRegionCount(memos: ownMemos, sharedMemos: allShared))
+            requiredRegions: GeofenceRegistrar.fixedRegionCount(sharedMemos: allShared))
     }
 
     var body: some View {

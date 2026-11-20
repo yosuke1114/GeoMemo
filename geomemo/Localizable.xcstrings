@@ -5994,42 +5994,42 @@
         }
       }
     },
-    "Too many places to watch" : {
+    "Too many received requests to watch" : {
       "localizations" : {
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "監視できる場所の上限を超えています"
+            "value" : "監視しきれない受信した依頼があります"
           }
         }
       }
     },
-    "Nearing the 20-place limit" : {
+    "Received requests are using most of the 20 places" : {
       "localizations" : {
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "監視できる場所が上限の20件に近づいています"
+            "value" : "受信した依頼が監視の枠の大半を使っています"
           }
         }
       }
     },
-    "iOS can watch up to 20 places. %lld won't send alerts: received requests are watched first, and your oldest memos drop off first. Complete or delete some memos." : {
+    "iOS can watch up to 20 places, and received requests are watched first. %lld of them won't send alerts. Complete or delete some requests." : {
       "localizations" : {
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "iOS が監視できる場所は20件までです。%lld件は通知されません。受信した依頼が優先され、自分のメモは古いものから外れます。完了済みにするか、削除してください。"
+            "value" : "iOS が監視できる場所は20件までで、受信した依頼が優先されます。そのうち%lld件は通知されません。依頼を完了するか、削除してください。"
           }
         }
       }
     },
-    "%lld of 20 places are being watched. iOS can't watch more than 20." : {
+    "Received requests use %lld of the 20 places iOS can watch. Your own memos take turns in the rest, nearest first." : {
       "localizations" : {
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "20件のうち%lld件を監視中です。iOS は21件以上は監視できません。"
+            "value" : "受信した依頼が、iOS が監視できる20件のうち%lld件を使っています。自分のメモは、残りの枠で近いものから順に入れ替わります。"
           }
         }
       }
@@ -6372,12 +6372,12 @@
         }
       }
     },
-    "You have %lld places, but iOS can watch only 20. %lld won't send alerts: received requests are watched first, and your oldest memos drop off first. Complete or delete some memos." : {
+    "You have %lld received requests, but iOS can watch only 20. %lld won't send alerts. Complete or delete some requests." : {
       "localizations" : {
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "場所が %1$lld 件あります。iOS が監視できるのは 20 件までで、%2$lld 件は通知されません。受信した依頼が優先され、自分のメモは古いものから外れます。メモを完了にするか削除してください。"
+            "value" : "受信した依頼が%lld件ありますが、iOS が監視できるのは20件までです。%lld件は通知されません。依頼を完了するか、削除してください。"
           }
         }
       }
@@ -6928,6 +6928,36 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "通りかかり"
+          }
+        }
+      }
+    },
+    "Watching the nearest %lld of your %lld places. They switch automatically as you move." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "全%2$lld件のうち、近い%1$lld件を監視中です。移動に合わせて自動で入れ替わります。"
+          }
+        }
+      }
+    },
+    "Nearest %lld of %lld" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "近い%1$lld件 / 全%2$lld件"
+          }
+        }
+      }
+    },
+    "Received requests are using all 20 places, so %lld of your own memos won't send alerts. Complete some requests." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "受信した依頼が20件の枠を使っているため、自分のメモ%lld件は通知されません。依頼を完了してください。"
           }
         }
       }

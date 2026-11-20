@@ -213,6 +213,8 @@ struct MapTabView: View {
             guard let userLocation = newValue?.coordinate else { return }
             if oldValue == nil {
                 cameraPosition = .region(streetLevelRegion(userLocation))
+                // 現在地が最初に分かったら、近い順に監視を入れ替える（起動直後は現在地が無く、作成日の順で登録している）
+                GeofenceReconciler.reconcile(memos: memos, sharedMemos: mapSharedMemos)
             } else if shouldJumpToLocation {
                 shouldJumpToLocation = false
                 withAnimation { cameraPosition = .region(streetLevelRegion(userLocation)) }
@@ -771,9 +773,9 @@ struct MapTabView: View {
     /// Re-register geofences for all memos on app launch
     // MARK: - Permission / limit guidance
 
-    /// 監視したいジオフェンスの数（`GeofenceRegistrar` に置いた。「通知のチェック」と共有）。
-    private var requiredRegionCount: Int {
-        GeofenceRegistrar.requiredRegionCount(memos: memos, sharedMemos: mapSharedMemos)
+    /// 入れ替えられずに上限に数える領域の数（受信した依頼。自分のメモは近い順に入れ替わる）。
+    private var fixedRegionCount: Int {
+        GeofenceRegistrar.fixedRegionCount(sharedMemos: mapSharedMemos)
     }
 
     /// 監視の登録に影響する材料。変わったときだけ差分で合わせ直す。
@@ -792,7 +794,7 @@ struct MapTabView: View {
                 isPreciseLocation: locationManager.isPreciseLocation,
                 notification: NotificationAccess(notificationManager.authorizationStatus)
             ),
-            requiredRegions: requiredRegionCount,
+            requiredRegions: fixedRegionCount,
             dismissals: MapGuidance.decodeDismissals(guidanceDismissalsJSON)
         )
     }

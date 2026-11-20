@@ -85,6 +85,9 @@ private final class FakeEffects: RegionEventEffects {
     var dequeued: [PendingShareEvent] = []
     var drainCount = 0
     var widgetReloads = 0
+    var locationRefreshes = 0
+    var stateWaits = 0
+    var reconciles: [(memos: Int, shared: Int)] = []
     /// 書き込みの時点でキューに積まれていたか（保存と同時に積むことの確認）
     var pendingAtWrite = 0
 
@@ -107,6 +110,11 @@ private final class FakeEffects: RegionEventEffects {
     }
     func drainPending() async { drainCount += 1 }
     func reloadWidgets() { widgetReloads += 1 }
+    func refreshLocationForRotation() async { locationRefreshes += 1 }
+    func waitForPendingStateChecks() async { stateWaits += 1 }
+    func reconcileGeofences(memos: [GeoMemo], sharedMemos: [SharedMemo]) {
+        reconciles.append((memos.count, sharedMemos.count))
+    }
 
     private static func same(_ a: PendingShareEvent, _ b: PendingShareEvent) -> Bool {
         switch (a, b) {
@@ -135,6 +143,8 @@ private final class FakeHandler: RegionEventHandling {
     var entered: [String] = []
     var exited: [String] = []
     var shared: [String] = []
+    var rotations = 0
+    func handleRotationTrigger() { rotations += 1 }
     func handleEntered(memoID: String) { entered.append(memoID) }
     func handleExited(memoID: String) { exited.append(memoID) }
     func handleSharedEntered(identifier: String) { shared.append(identifier) }
@@ -168,6 +178,32 @@ struct RegionEventServiceTests {
         context.insert(s)
         try? context.save()
         return s
+    }
+
+    @Test("入れ替え: 現在地を取ってから、メモと依頼を読み直して入れ替える（画面なし）")
+    func rotate() async throws {
+        let (service, fx, ctx) = try makeService()
+        _ = memo(ctx); _ = memo(ctx); _ = shared(ctx)
+        await service.rotate()
+        #expect(fx.locationRefreshes == 1)
+        #expect(fx.reconciles.count == 1 && fx.reconciles[0].memos == 2 && fx.reconciles[0].shared == 1)
+    }
+
+    @Test("入れ替え: バックグラウンドの実行時間を確保し、終わったら返す。進行中の重複は走らせない")
+    func rotationTrigger() async throws {
+        let (service, fx, ctx) = try makeService()
+        _ = memo(ctx)
+        let bg = FakeBackgroundTasks()
+        service.backgroundTasks = bg
+        service.handleRotationTrigger()
+        service.handleRotationTrigger()   // 進行中なので無視
+        #expect(bg.begun == ["geomemo-region-event"])
+        await service.lastRunTask?.value
+        #expect(fx.reconciles.count == 1)
+        // 登録直後の状態確認の結果を待ってから、実行時間を返す
+        #expect(fx.stateWaits == 1)
+        #expect(bg.ended.count == 1)
+        #expect(!service.isRotating)
     }
 
     @Test("入った: 即通知が出る（画面なし）")
@@ -367,6 +403,7 @@ struct RegionDispatchTests {
     }
 
     private func cleanUp() {
+        UserDefaults.standard.removeObject(forKey: "geomemo.rotation.inside")
         UserDefaults.standard.removeObject(forKey: "routeProgress")
         UserDefaults.standard.removeObject(forKey: "routeWaypointCounts")
     }
@@ -379,6 +416,116 @@ struct RegionDispatchTests {
         lm.locationManager(CLLocationManager(), didEnterRegion: region(id))
         lm.locationManager(CLLocationManager(), didExitRegion: region(id))
         #expect(handler.entered == [id] && handler.exited == [id])
+    }
+
+    @Test("入れ替えの状態確認: 内側なら進入として渡す。控えがあれば重複させない。外・確認していない領域は何もしない")
+    func stateCheckInside() {
+        defer { cleanUp() }
+        let (lm, handler) = makeManager()
+        let id = UUID().uuidString, outside = UUID().uuidString, unchecked = UUID().uuidString
+        lm.pendingStateChecks = [id, outside]
+        lm.locationManager(CLLocationManager(), didDetermineState: .inside, for: region(id))
+        lm.locationManager(CLLocationManager(), didDetermineState: .outside, for: region(outside))
+        lm.locationManager(CLLocationManager(), didDetermineState: .inside, for: region(unchecked))
+        #expect(handler.entered == [id])
+        #expect(lm.pendingStateChecks.isEmpty)
+        // 控えがあるので、もう一度確認しても通知しない
+        lm.pendingStateChecks = [id]
+        lm.locationManager(CLLocationManager(), didDetermineState: .inside, for: region(id))
+        #expect(handler.entered == [id])
+        // 出たら控えが消え、次に内側で登録されたときは通知する
+        lm.locationManager(CLLocationManager(), didExitRegion: region(id))
+        lm.pendingStateChecks = [id]
+        lm.locationManager(CLLocationManager(), didDetermineState: .inside, for: region(id))
+        #expect(handler.entered == [id, id])
+    }
+
+    @Test("入れ替えの状態確認: 直後の進入イベントは同じ進入として捨てる。時間が経てば通知する")
+    func stateCheckThenEnterEvent() {
+        defer { cleanUp() }
+        let (lm, handler) = makeManager()
+        var clock = Date(timeIntervalSince1970: 1_000_000)
+        lm.now = { clock }
+        let id = UUID().uuidString
+        lm.pendingStateChecks = [id]
+        lm.locationManager(CLLocationManager(), didDetermineState: .inside, for: region(id))
+        lm.locationManager(CLLocationManager(), didEnterRegion: region(id))
+        #expect(handler.entered == [id])   // 二重にならない
+        // 捨てるのは 1 回だけ（次の進入は通常どおり）
+        lm.locationManager(CLLocationManager(), didEnterRegion: region(id))
+        #expect(handler.entered == [id, id])
+        // 時間が経っていれば、状態確認のあとの進入も通知する
+        let other = UUID().uuidString
+        lm.pendingStateChecks = [other]
+        lm.locationManager(CLLocationManager(), didDetermineState: .inside, for: region(other))
+        clock = clock.addingTimeInterval(RecentEntries.window + 1)
+        lm.locationManager(CLLocationManager(), didEnterRegion: region(other))
+        #expect(handler.entered == [id, id, other, other])
+    }
+
+    @Test("入れ替えの状態確認: 受信した依頼は識別子で、登録に失敗した領域は確認から外す")
+    func stateCheckSharedAndFailure() {
+        defer { cleanUp() }
+        let (lm, handler) = makeManager()
+        let shared = "\(SharedMemo.geofencePrefix)\(UUID().uuidString)"
+        lm.pendingStateChecks = [shared]
+        lm.locationManager(CLLocationManager(), didDetermineState: .inside, for: region(shared))
+        #expect(handler.shared == [shared] && handler.entered.isEmpty)
+        let failed = UUID().uuidString
+        lm.pendingStateChecks = [failed]
+        lm.locationManager(CLLocationManager(), monitoringDidFailFor: region(failed), withError: NSError(domain: "t", code: 1))
+        #expect(lm.pendingStateChecks.isEmpty)
+        lm.stopMonitoring(memoID: failed)
+        lm.pendingStateChecks = [failed]
+        lm.stopMonitoring(memoID: failed)
+        #expect(lm.pendingStateChecks.isEmpty)
+    }
+
+    @Test("入れ替え用の円: 張った直後に外にいたら 1 回だけ入れ替える（短い間隔で繰り返さない）")
+    func circleRecheck() {
+        defer { cleanUp() }
+        let (lm, handler) = makeManager()
+        var clock = Date(timeIntervalSince1970: 1_000_000)
+        lm.now = { clock }
+        let circle = NearestRotation.circleIdentifier
+        lm.pendingStateChecks = [circle]
+        lm.locationManager(CLLocationManager(), didDetermineState: .outside, for: region(circle))
+        lm.pendingStateChecks = [circle]
+        lm.locationManager(CLLocationManager(), didDetermineState: .outside, for: region(circle))
+        #expect(handler.rotations == 1)
+        clock = clock.addingTimeInterval(61)
+        lm.pendingStateChecks = [circle]
+        lm.locationManager(CLLocationManager(), didDetermineState: .outside, for: region(circle))
+        #expect(handler.rotations == 2)
+        // 内側ならそのまま
+        lm.pendingStateChecks = [circle]
+        lm.locationManager(CLLocationManager(), didDetermineState: .inside, for: region(circle))
+        #expect(handler.rotations == 2 && handler.entered.isEmpty)
+        // 円から出たら入れ替え（通知ではない）
+        lm.locationManager(CLLocationManager(), didExitRegion: region(circle))
+        #expect(handler.rotations == 3 && handler.exited.isEmpty)
+    }
+
+    @Test("現在地: 取れたらすぐ返す。取れなければ時間切れで返し、古い時間切れが次の待ちを早く終わらせない")
+    func freshLocationTimeouts() async {
+        let (lm, _) = makeManager()
+        defer { cleanUp() }
+        let fix = CLLocation(latitude: 35.68, longitude: 139.76)
+        lm.isLocationAuthorized = { true }
+        // 要求の中で位置が届く
+        lm.locationTimeout = .milliseconds(100)
+        lm.performLocationRequest = { [unowned lm] in lm.locationManager(CLLocationManager(), didUpdateLocations: [fix]) }
+        let first = await lm.freshLocation(maxAge: 0)
+        #expect(first?.coordinate.latitude == 35.68)
+        // 次の待ちは、位置が届かない。最初の時間切れ（100 ms）では終わらない
+        lm.performLocationRequest = {}
+        lm.locationTimeout = .milliseconds(600)
+        let start = ContinuousClock.now
+        _ = await lm.freshLocation(maxAge: 0)
+        #expect(ContinuousClock.now - start >= .milliseconds(500))
+        // 許可が無ければ待たずに最後の位置
+        lm.isLocationAuthorized = { false }
+        #expect(await lm.freshLocation(maxAge: 0)?.coordinate.latitude == 35.68)
     }
 
     @Test("受信した依頼の領域: 入ったら識別子で渡し、出たときは何もしない")

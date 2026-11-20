@@ -373,21 +373,3 @@ nonisolated enum SharedImportPolicy {
         return recipientRecordID.isEmpty && status == .active
     }
 }
-
-// MARK: - 監視の登録順
-
-nonisolated enum GeofenceRegistrationOrder {
-    enum Entry<Received, Own> {
-        case received(Received)
-        case own(Own)
-    }
-
-    /// iOS の監視は 20 件までで、`LocationManager.startMonitoring` は上限に達すると黙って登録しない。
-    /// 受信した依頼は、場所に着いたことが依頼者に伝わらなくなると相手の用が果たせないので、先に登録する。
-    /// 溢れるのは自分のメモの後ろ（それぞれの並びは入力のまま）。
-    nonisolated static func prioritized<Received, Own>(
-        received: [Received], own: [Own]
-    ) -> [Entry<Received, Own>] {
-        received.map { .received($0) } + own.map { .own($0) }
-    }
-}

@@ -2,7 +2,7 @@ import Foundation
 import CoreLocation
 
 // 監視（ジオフェンス）の差分での登録。iOS が同時に監視できるのは 20 件までで、
-// 受信した依頼を優先し、溢れるのは自分のメモの古いものから、という決まりを実行中にも保つ。
+// 受信した依頼を優先し、自分のメモは並びの前（現在地に近い順。`NearestRotation`）から登録する、という決まりを実行中にも保つ。
 // 全部を登録し直すとルートの進み具合が 0 に戻るので、ここでは足りない分・溢れた分だけを動かす。
 
 /// 優先順に並べた 1 件分（メモ 1 件・依頼 1 件）。ルートは経由地ごとに領域を持つ。
@@ -61,7 +61,10 @@ nonisolated func isAppRegionIdentifier(_ id: String) -> Bool {
 
 @MainActor
 enum GeofenceReconciler {
-    /// 自分のメモの優先順（新しいものが先。溢れるのは古いものから）。
+    /// 呼ぶ契機。入れ替え（円の退出・大きな移動）のときだけ、新しく登録した領域の内側にいるかを確かめる。
+    enum Reason { case sync, rotation }
+
+    /// 自分のメモの優先順の基本（新しいものが先）。現在地が分かるときは `NearestRotation.order` が近い順に並べ直す。
     static func ownByPriority(_ memos: [GeoMemo]) -> [GeoMemo] {
         memos.filter { !$0.isDone }.sorted { $0.createdAt > $1.createdAt }
     }
@@ -74,28 +77,67 @@ enum GeofenceReconciler {
         return [memo.id.uuidString]
     }
 
-    /// 受信した有効な依頼の変化・自分のメモの増減のあとに呼ぶ。足りない領域を登録し、溢れた分を外す。
-    static func reconcile(memos: [GeoMemo], sharedMemos: [SharedMemo]) {
+    /// 入れ替えの対象（受信した有効な依頼・未完了の自分のメモ）。
+    static func places(memos: [GeoMemo], sharedMemos: [SharedMemo], routeProgress: (String) -> Int = { _ in 0 }) -> [RotationPlace] {
+        var places: [RotationPlace] = []
+        for s in sharedMemos where !s.isMyRequest && s.status == .active {
+            places.append(RotationPlace(
+                key: s.geofenceIdentifier, regionIDs: [s.geofenceIdentifier], centers: [s.coordinate],
+                radius: max(50, s.memoRadius), createdAt: s.createdAt, isReceived: true))
+        }
+        for m in ownByPriority(memos) {
+            let ids = ownRegionIDs(m)
+            let centers = m.isRouteTrigger ? m.routeWaypoints.map(\.coordinate) : [m.coordinate]
+            let key = m.id.uuidString
+            places.append(RotationPlace(
+                key: key, regionIDs: ids, centers: centers, radius: m.radius, createdAt: m.createdAt, isReceived: false,
+                isPinned: m.isRouteTrigger && routeProgress(key) >= 1))
+        }
+        return places
+    }
+
+    /// 近い順の入れ替えで、同時に監視に入りうる領域の数（診断で「これ以上入る項目が無い」を見分けるのに使う）。
+    static func selectableRegionCount(memos: [GeoMemo], sharedMemos: [SharedMemo]) -> Int {
+        let all = places(memos: memos, sharedMemos: sharedMemos)
+        let decision = NearestRotation.decide(places: all, anchor: nil, monitoredKeys: [], maxRadius: -1)
+        return decision.ordered.filter { decision.selected.contains($0.key) }.reduce(0) { $0 + $1.regionIDs.count }
+    }
+
+    /// 受信した有効な依頼の変化・自分のメモの増減・現在地の大きな変化のあとに呼ぶ。
+    /// 受信した依頼を先に、自分のメモは現在地に近い順に、足りない領域を登録し、溢れた分を外す。
+    /// 監視したい領域が 20 件を超えるときは、19 件＋入れ替え用の円 1 件にする。
+    /// 現在地が分からないときは、登録済みの円の中心を基準にし、それも無ければ登録済みの並びを変えない。
+    static func reconcile(
+        memos: [GeoMemo], sharedMemos: [SharedMemo], reason: Reason = .sync, retryOnUnreliable: Bool = true
+    ) {
         let lm = LocationManager.shared
         guard LocationAccess(lm.authorizationStatus).isAuthorized else { return }
-        let received = sharedMemos.filter { !$0.isMyRequest && $0.status == .active }
-        let own = ownByPriority(memos)
 
+        let all = places(memos: memos, sharedMemos: sharedMemos, routeProgress: { lm.routeProgressValue(memoID: $0) })
         var sharedByKey: [String: SharedMemo] = [:]
         var ownByKey: [String: GeoMemo] = [:]
-        var items: [GeofenceItem] = []
-        for s in received {
-            sharedByKey[s.geofenceIdentifier] = s
-            items.append(GeofenceItem(key: s.geofenceIdentifier, regionIDs: [s.geofenceIdentifier]))
-        }
-        for m in own {
-            ownByKey[m.id.uuidString] = m
-            items.append(GeofenceItem(key: m.id.uuidString, regionIDs: ownRegionIDs(m)))
-        }
+        for s in sharedMemos where !s.isMyRequest && s.status == .active { sharedByKey[s.geofenceIdentifier] = s }
+        for m in memos where !m.isDone { ownByKey[m.id.uuidString] = m }
 
-        let plan = GeofenceReconcilePlanner.plan(items: items, monitored: lm.monitoredRegionIdentifiers)
-        guard !plan.isEmpty else { return }
-        // 先に外して枠を空けてから登録する
+        let monitored = lm.monitoredRegionIdentifiers.subtracting([NearestRotation.circleIdentifier])
+        let knownIDs = Set(all.flatMap(\.regionIDs))
+        // 他の機能の領域（このアプリの形式でないもの）は枠を使っているものとして数える（planner と同じ）
+        let foreign = monitored.subtracting(knownIDs).filter { !isAppRegionIdentifier($0) }.count
+        let monitoredKeys = Set(all.filter { $0.regionIDs.contains(where: monitored.contains) }.map(\.key))
+
+        let location = lm.location
+        let anchor = location ?? lm.rotationCircle?.location
+        let decision = NearestRotation.decide(
+            places: all, anchor: anchor, monitoredKeys: monitoredKeys, foreignRegions: foreign,
+            maxRadius: lm.maximumRegionRadius)
+        let items = decision.ordered.map { GeofenceItem(key: $0.key, regionIDs: $0.regionIDs) }
+        let plan = GeofenceReconcilePlanner.plan(items: items, monitored: monitored, limit: decision.itemLimit)
+
+        // 先に外して枠を空けてから登録する。入れ替えが要らなくなったら円も外す
+        if !decision.rotationNeeded {
+            lm.stopRotationCircle()
+            lm.setSignificantChangeMonitoring(false)
+        }
         for id in plan.stopRegionIDs {
             if let range = id.range(of: "|wp|") {
                 lm.stopMonitoringRoute(memoID: String(id[..<range.lowerBound]))
@@ -110,9 +152,10 @@ enum GeofenceReconciler {
                 if memo.isRouteTrigger { lm.stopMonitoringRoute(memoID: key) } else { lm.stopMonitoring(memoID: key) }
             }
         }
+        let check = reason == .rotation
         for key in plan.start {
             if let s = sharedByKey[key] {
-                lm.startMonitoring(region: s.monitoringRegion)
+                lm.startMonitoring(region: s.monitoringRegion, checkInitialState: check)
             } else if let memo = ownByKey[key] {
                 if memo.isRouteTrigger {
                     lm.startMonitoringRoute(for: memo)
@@ -122,9 +165,29 @@ enum GeofenceReconciler {
                         radius: memo.radius, identifier: key)
                     region.notifyOnEntry = memo.notifyOnEntry
                     region.notifyOnExit = memo.notifyOnExit
-                    lm.startMonitoring(region: region)
+                    lm.startMonitoring(region: region, checkInitialState: check)
                 }
             }
         }
+
+        // 入れ替え用の円: 本物の現在地があるときだけ張り直す（円だけが基準のときは、いまの円のまま）。
+        // 古い・精度の粗い位置では張らず、取り直してもう 1 回だけやり直す。
+        guard decision.rotationNeeded else { return }
+        lm.setSignificantChangeMonitoring(true)
+        guard let location else { return }
+        guard let radius = decision.circleRadius else {
+            lm.stopRotationCircle()
+            return
+        }
+        guard NearestRotation.isReliable(location, radius: radius) else {
+            if retryOnUnreliable {
+                Task { @MainActor in
+                    guard await lm.freshLocation(maxAge: 0) != nil else { return }
+                    reconcile(memos: memos, sharedMemos: sharedMemos, reason: reason, retryOnUnreliable: false)
+                }
+            }
+            return
+        }
+        lm.startRotationCircle(center: location.coordinate, radius: radius)
     }
 }

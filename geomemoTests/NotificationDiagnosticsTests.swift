@@ -14,6 +14,9 @@ private func input(
     lowPower: Bool = false,
     required: Int = 3,
     monitored: Int = 3,
+    received: Int = 0,
+    circle: Bool = false,
+    selectable: Int = .max,
     available: Bool = true
 ) -> DiagnosticInput {
     DiagnosticInput(
@@ -24,6 +27,9 @@ private func input(
         isLowPowerMode: lowPower,
         requiredRegions: required,
         monitoredRegions: monitored,
+        receivedRegions: received,
+        hasRotationCircle: circle,
+        selectableRegions: selectable,
         isMonitoringAvailable: available)
 }
 
@@ -152,9 +158,9 @@ struct NotificationDiagnosticsTests {
         #expect(item(.backgroundRefresh, input(refresh: .available, lowPower: true)).severity == .ok)
     }
 
-    @Test("上限超過でも、受信した依頼が監視に入っていなければ「登録し直す」を出す")
+    @Test("受信した依頼だけで上限超過でも、監視に入っていなければ「登録し直す」を出す")
     func overLimitWithUnmonitoredReceived() {
-        var i = input(required: 22, monitored: 20)
+        var i = input(required: 22, monitored: 20, received: 22)
         i.receivedUnmonitored = 1
         #expect(item(.monitoredPlaces, i).action == .reRegisterGeofences)
         i.receivedUnmonitored = 0
@@ -216,16 +222,52 @@ struct NotificationDiagnosticsTests {
         let zero = item(.monitoredPlaces, input(required: 0, monitored: 0))
         #expect(zero.places == .ok(monitored: 0, nearLimitUsed: nil))
         #expect(zero.severity == .ok)
-        let nineteen = item(.monitoredPlaces, input(required: 19, monitored: 19))
+        let nineteen = item(.monitoredPlaces, input(required: 19, monitored: 19, received: 19))
         #expect(nineteen.severity == .ok)
         #expect(nineteen.places == .ok(monitored: 19, nearLimitUsed: 19))
-        let twenty = item(.monitoredPlaces, input(required: 20, monitored: 20))
+        let twenty = item(.monitoredPlaces, input(required: 20, monitored: 20, received: 20))
         #expect(twenty.severity == .ok)
         #expect(twenty.places == .ok(monitored: 20, nearLimitUsed: 20))
-        let over = item(.monitoredPlaces, input(required: 21, monitored: 20))
-        #expect(over.severity == .problem)
-        #expect(over.places == .overLimit(required: 21, unmonitored: 1))
-        #expect(over.action == nil)   // 登録し直しても直らない
+        // 自分のメモが 21 件以上: 19 件＋入れ替え用の円。問題にしない
+        let over = item(.monitoredPlaces, input(required: 21, monitored: 20, circle: true))
+        #expect(over.severity == .ok)
+        #expect(over.places == .rotating(monitored: 19, total: 21))
+        #expect(over.action == nil)
+        // 受信した依頼だけで 21 件以上は、入れ替えられず溢れる
+        let overReceived = item(.monitoredPlaces, input(required: 21, monitored: 20, received: 21))
+        #expect(overReceived.severity == .problem)
+        #expect(overReceived.places == .overLimit(required: 21, unmonitored: 1))
+        #expect(overReceived.action == nil)   // 登録し直しても直らない
+    }
+
+    @Test("監視中の場所: 受信した依頼がちょうど 20 件で、自分のメモがあれば、自分のメモは入らない（問題）")
+    func fullOfReceived() {
+        let full = item(.monitoredPlaces, input(required: 23, monitored: 20, received: 20))
+        #expect(full.severity == .problem)
+        #expect(full.places == .fullOfReceived(unmonitored: 3))
+        // 自分のメモが無ければ問題ではない
+        #expect(item(.monitoredPlaces, input(required: 20, monitored: 20, received: 20)).severity == .ok)
+    }
+
+    @Test("監視中の場所: ルートだけで枠に収まらないときは、登録が足りなくても注意にしない。円を除いた数を出す")
+    func routeOnlyNoPermanentWarning() {
+        // 25 経由地のルート 1 件: 入れ替えが要るが、19 枠には収まらず 0 件しか入らない
+        let none = item(.monitoredPlaces, input(required: 25, monitored: 1, circle: true, selectable: 0))
+        #expect(none.severity == .ok)
+        #expect(none.places == .rotating(monitored: 0, total: 25))
+        // 収まる項目があるのに少なければ注意。数は円を除く
+        let under = item(.monitoredPlaces, input(required: 30, monitored: 6, circle: true, selectable: 19))
+        #expect(under.severity == .warning)
+        #expect(under.places == .underRegistered(monitored: 5, required: 30))
+    }
+
+    @Test("監視中の場所: 入れ替え中に登録が足りなければ注意（現在地が分からず円が無い間も 19 件は登録済み）")
+    func rotatingUnderRegistered() {
+        let noCircle = item(.monitoredPlaces, input(required: 30, monitored: 19))
+        #expect(noCircle.places == .rotating(monitored: 19, total: 30))
+        let under = item(.monitoredPlaces, input(required: 30, monitored: 11, circle: true))
+        #expect(under.severity == .warning)
+        #expect(under.action == .reRegisterGeofences)
     }
 
     @Test("監視中の場所: 登録が足りなければ注意で「登録し直す」。多い分には問題にしない")
@@ -235,7 +277,7 @@ struct NotificationDiagnosticsTests {
         #expect(under.places == .underRegistered(monitored: 3, required: 5))
         #expect(under.action == .reRegisterGeofences)
         // 上限を超えているときの足りなさは、上限（20）までの登録で足りる
-        #expect(item(.monitoredPlaces, input(required: 25, monitored: 20)).places == .overLimit(required: 25, unmonitored: 5))
+        #expect(item(.monitoredPlaces, input(required: 25, monitored: 20, circle: true)).places == .rotating(monitored: 19, total: 25))
         // 消したメモの領域が残っているなど、登録のほうが多い
         let extra = item(.monitoredPlaces, input(required: 2, monitored: 4))
         #expect(extra.severity == .ok)

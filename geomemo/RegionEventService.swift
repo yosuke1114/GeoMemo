@@ -105,6 +105,18 @@ protocol RegionEventEffects {
     /// 溜まっている未送信イベントを送る（領域イベントのたびに試す）。
     func drainPending() async
     func reloadWidgets()
+    /// 入れ替えの前に現在地を取る（直近のものがあればそれ）。
+    func refreshLocationForRotation() async
+    /// 近い順に監視を入れ替える（`GeofenceReconciler.reconcile`）。
+    func reconcileGeofences(memos: [GeoMemo], sharedMemos: [SharedMemo])
+    /// 登録直後の状態確認（`requestState`）の結果が届くのを、短い上限まで待つ。
+    func waitForPendingStateChecks() async
+}
+
+extension RegionEventEffects {
+    func waitForPendingStateChecks() async {}
+    func refreshLocationForRotation() async {}
+    func reconcileGeofences(memos: [GeoMemo], sharedMemos: [SharedMemo]) {}
 }
 
 @MainActor
@@ -148,6 +160,15 @@ struct LiveRegionEventEffects: RegionEventEffects {
     func reloadWidgets() {
         WidgetCenter.shared.reloadAllTimelines()
     }
+    func refreshLocationForRotation() async {
+        _ = await LocationManager.shared.freshLocation()
+    }
+    func reconcileGeofences(memos: [GeoMemo], sharedMemos: [SharedMemo]) {
+        GeofenceReconciler.reconcile(memos: memos, sharedMemos: sharedMemos, reason: .rotation)
+    }
+    func waitForPendingStateChecks() async {
+        await LocationManager.shared.waitForStateChecks()
+    }
 }
 
 /// `LocationManager` が領域の入退出を渡す先。テストで差し替える。
@@ -156,6 +177,12 @@ protocol RegionEventHandling {
     func handleEntered(memoID: String)
     func handleExited(memoID: String)
     func handleSharedEntered(identifier: String)
+    /// 入れ替え用の円から出た・大きく動いた。
+    func handleRotationTrigger()
+}
+
+extension RegionEventHandling {
+    func handleRotationTrigger() {}
 }
 
 /// バックグラウンドの実行時間の確保（UIKit の `beginBackgroundTask` を包む。テストで差し替える）。
@@ -303,22 +330,53 @@ final class RegionEventService: RegionEventHandling {
     func handleExited(memoID: String) { run { await self.memoExited(id: memoID) } }
     func handleSharedEntered(identifier: String) { run { await self.sharedEntered(identifier: identifier) } }
 
+    /// 入れ替え用の円の退出・大きな位置の変化。進行中ならもう 1 回は走らせない。
+    func handleRotationTrigger() {
+        guard !isRotating else { return }
+        isRotating = true
+        run { await self.rotate() }
+    }
+
+    private(set) var isRotating = false
+
+    // MARK: 近い順の入れ替え
+
+    /// 現在地を取り、メモと依頼を読み直して、監視を近い順に入れ替える。画面に頼らない（アプリが終了していても動く）。
+    func rotate() async {
+        defer { isRotating = false }
+        // ウィジェットで完了にした分を先に取り込む（完了したメモを登録し直さない）
+        WidgetCompletion.drainPending()
+        await effects.refreshLocationForRotation()
+        guard let context = mainContext else { return }
+        let memos = (try? context.fetch(FetchDescriptor<GeoMemo>())) ?? []
+        let shared = (try? context.fetch(FetchDescriptor<SharedMemo>())) ?? []
+        effects.reconcileGeofences(memos: memos, sharedMemos: shared)
+        // 登録したばかりの領域の「内側にいるか」の結果（進入の通知）が届くまで、実行時間を返さない
+        await effects.waitForPendingStateChecks()
+    }
+
     // MARK: バックグラウンドでの実行
 
     /// 位置イベントのコールバックから呼ぶ。非同期の処理が終わるまで、バックグラウンドの実行時間を確保する。
     /// 処理のあとに、溜まっている未送信イベント（到着・完了）も送ってみる。
-    func run(_ work: @escaping @MainActor () async -> Void) {
+    @discardableResult
+    func run(_ work: @escaping @MainActor () async -> Void) -> Task<Void, Never> {
         let box = BackgroundTaskBox(controller: backgroundTasks)
         box.id = backgroundTasks.begin(name: "geomemo-region-event") {
             // 時間切れ: これ以上は待てない
             box.end()
         }
-        Task { @MainActor in
+        let task = Task { @MainActor in
             await work()
             await effects.drainPending()
             box.end()
         }
+        lastRunTask = task
+        return task
     }
+
+    /// 最後に始めた処理（テストが完了を待つ）。
+    private(set) var lastRunTask: Task<Void, Never>?
 }
 
 @MainActor
