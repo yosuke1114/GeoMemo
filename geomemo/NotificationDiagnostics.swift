@@ -53,6 +53,8 @@ nonisolated struct DiagnosticInput: Equatable {
     var receivedRegions: Int = 0
     /// 入れ替え用の円が登録されているか。
     var hasRotationCircle: Bool = false
+    /// 入れ替えで同時に監視に入りうる領域の数（ルートが収まらないなど、これ以上入る項目が無い場合の見分けに使う）。
+    var selectableRegions: Int = .max
     /// この端末が場所の監視（ジオフェンス）に対応しているか。
     var isMonitoringAvailable: Bool = true
     /// 監視したい受信した依頼のうち、いま監視に入っていない数（上限超過でも、これがあれば登録し直せる）。
@@ -87,6 +89,8 @@ nonisolated enum MonitoredPlacesState: Equatable {
     case overLimit(required: Int, unmonitored: Int)
     /// 20 件を超える分は、近い順に入れ替えて監視している。`monitored` は監視中の場所の数（入れ替え用の円を除く）、`total` は全部の数。
     case rotating(monitored: Int, total: Int)
+    /// 受信した依頼だけで 20 件の枠が埋まっていて、自分のメモは監視に入らない。
+    case fullOfReceived(unmonitored: Int)
     case underRegistered(monitored: Int, required: Int)
 }
 
@@ -223,13 +227,21 @@ nonisolated enum NotificationDiagnostics {
                 id: .monitoredPlaces, severity: .problem,
                 places: .overLimit(required: input.receivedRegions, unmonitored: input.receivedRegions - limit),
                 action: input.receivedUnmonitored > 0 ? .reRegisterGeofences : nil)
+        } else if input.receivedRegions >= limit && input.requiredRegions > input.receivedRegions {
+            // 受信した依頼で枠が埋まっていて、自分のメモは入れ替えの対象にもならない
+            placesItem = DiagnosticItem(
+                id: .monitoredPlaces, severity: .problem,
+                places: .fullOfReceived(unmonitored: input.requiredRegions - input.receivedRegions),
+                action: input.receivedUnmonitored > 0 ? .reRegisterGeofences : nil)
         } else if input.requiredRegions > limit {
             // 20 件を超える分は近い順に入れ替える。項目の枠は円の分を引いた 19 件（円を張れていなければ、現在地が分からない間）。
             let placesMonitored = input.monitoredRegions - (input.hasRotationCircle ? NearestRotation.reservedSlots : 0)
-            if placesMonitored < limit - NearestRotation.reservedSlots {
+            // 収まる項目がもう無い（ルートだけで 19 件に収まらないなど）ときは、足りなくても注意にしない
+            let reachable = min(limit - NearestRotation.reservedSlots, input.selectableRegions)
+            if placesMonitored < reachable {
                 placesItem = DiagnosticItem(
                     id: .monitoredPlaces, severity: .warning,
-                    places: .underRegistered(monitored: input.monitoredRegions, required: input.requiredRegions),
+                    places: .underRegistered(monitored: placesMonitored, required: input.requiredRegions),
                     action: .reRegisterGeofences)
             } else {
                 placesItem = DiagnosticItem(
@@ -399,6 +411,8 @@ nonisolated enum DiagnosticText {
             return String(localized: "Not watching because location access is off.")
         case .overLimit(let required, let unmonitored):
             return String(localized: "You have \(required) received requests, but iOS can watch only 20. \(unmonitored) won't send alerts. Complete or delete some requests.")
+        case .fullOfReceived(let unmonitored):
+            return String(localized: "Received requests are using all 20 places, so \(unmonitored) of your own memos won't send alerts. Complete some requests.")
         case .rotating(let monitored, let total):
             return String(localized: "Watching the nearest \(monitored) of your \(total) places. They switch automatically as you move.")
         case .underRegistered(let monitored, let required):

@@ -16,6 +16,7 @@ private func input(
     monitored: Int = 3,
     received: Int = 0,
     circle: Bool = false,
+    selectable: Int = .max,
     available: Bool = true
 ) -> DiagnosticInput {
     DiagnosticInput(
@@ -28,6 +29,7 @@ private func input(
         monitoredRegions: monitored,
         receivedRegions: received,
         hasRotationCircle: circle,
+        selectableRegions: selectable,
         isMonitoringAvailable: available)
 }
 
@@ -236,6 +238,27 @@ struct NotificationDiagnosticsTests {
         #expect(overReceived.severity == .problem)
         #expect(overReceived.places == .overLimit(required: 21, unmonitored: 1))
         #expect(overReceived.action == nil)   // 登録し直しても直らない
+    }
+
+    @Test("監視中の場所: 受信した依頼がちょうど 20 件で、自分のメモがあれば、自分のメモは入らない（問題）")
+    func fullOfReceived() {
+        let full = item(.monitoredPlaces, input(required: 23, monitored: 20, received: 20))
+        #expect(full.severity == .problem)
+        #expect(full.places == .fullOfReceived(unmonitored: 3))
+        // 自分のメモが無ければ問題ではない
+        #expect(item(.monitoredPlaces, input(required: 20, monitored: 20, received: 20)).severity == .ok)
+    }
+
+    @Test("監視中の場所: ルートだけで枠に収まらないときは、登録が足りなくても注意にしない。円を除いた数を出す")
+    func routeOnlyNoPermanentWarning() {
+        // 25 経由地のルート 1 件: 入れ替えが要るが、19 枠には収まらず 0 件しか入らない
+        let none = item(.monitoredPlaces, input(required: 25, monitored: 1, circle: true, selectable: 0))
+        #expect(none.severity == .ok)
+        #expect(none.places == .rotating(monitored: 0, total: 25))
+        // 収まる項目があるのに少なければ注意。数は円を除く
+        let under = item(.monitoredPlaces, input(required: 30, monitored: 6, circle: true, selectable: 19))
+        #expect(under.severity == .warning)
+        #expect(under.places == .underRegistered(monitored: 5, required: 30))
     }
 
     @Test("監視中の場所: 入れ替え中に登録が足りなければ注意（現在地が分からず円が無い間も 19 件は登録済み）")

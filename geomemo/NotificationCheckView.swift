@@ -340,6 +340,7 @@ extension DiagnosticInput {
             monitoredRegions: snapshot.monitoredRegions,
             receivedRegions: GeofenceRegistrar.fixedRegionCount(sharedMemos: sharedMemos),
             hasRotationCircle: snapshot.monitoredIdentifiers.contains(NearestRotation.circleIdentifier),
+            selectableRegions: GeofenceReconciler.selectableRegionCount(memos: memos, sharedMemos: sharedMemos),
             isMonitoringAvailable: snapshot.isMonitoringAvailable,
             receivedUnmonitored: receivedUnmonitored)
     }

@@ -77,45 +77,64 @@ enum GeofenceReconciler {
         return [memo.id.uuidString]
     }
 
-    /// 受信した有効な依頼の変化・自分のメモの増減・現在地の大きな変化のあとに呼ぶ。
-    /// 受信した依頼を先に、自分のメモは現在地に近い順に、足りない領域を登録し、溢れた分を外す。
-    /// 監視したい領域が 20 件を超えるときは、19 件＋入れ替え用の円 1 件にする。
-    static func reconcile(memos: [GeoMemo], sharedMemos: [SharedMemo], reason: Reason = .sync) {
-        let lm = LocationManager.shared
-        guard LocationAccess(lm.authorizationStatus).isAuthorized else { return }
-        let received = sharedMemos.filter { !$0.isMyRequest && $0.status == .active }
-        let own = ownByPriority(memos)
-
-        var sharedByKey: [String: SharedMemo] = [:]
-        var ownByKey: [String: GeoMemo] = [:]
+    /// 入れ替えの対象（受信した有効な依頼・未完了の自分のメモ）。
+    static func places(memos: [GeoMemo], sharedMemos: [SharedMemo], routeProgress: (String) -> Int = { _ in 0 }) -> [RotationPlace] {
         var places: [RotationPlace] = []
-        for s in received {
-            sharedByKey[s.geofenceIdentifier] = s
+        for s in sharedMemos where !s.isMyRequest && s.status == .active {
             places.append(RotationPlace(
                 key: s.geofenceIdentifier, regionIDs: [s.geofenceIdentifier], centers: [s.coordinate],
                 radius: max(50, s.memoRadius), createdAt: s.createdAt, isReceived: true))
         }
-        for m in own {
-            ownByKey[m.id.uuidString] = m
+        for m in ownByPriority(memos) {
+            let ids = ownRegionIDs(m)
             let centers = m.isRouteTrigger ? m.routeWaypoints.map(\.coordinate) : [m.coordinate]
+            let key = m.id.uuidString
             places.append(RotationPlace(
-                key: m.id.uuidString, regionIDs: ownRegionIDs(m), centers: centers,
-                radius: m.radius, createdAt: m.createdAt, isReceived: false))
+                key: key, regionIDs: ids, centers: centers, radius: m.radius, createdAt: m.createdAt, isReceived: false,
+                isPinned: m.isRouteTrigger && routeProgress(key) >= 1))
         }
+        return places
+    }
+
+    /// 近い順の入れ替えで、同時に監視に入りうる領域の数（診断で「これ以上入る項目が無い」を見分けるのに使う）。
+    static func selectableRegionCount(memos: [GeoMemo], sharedMemos: [SharedMemo]) -> Int {
+        let all = places(memos: memos, sharedMemos: sharedMemos)
+        let decision = NearestRotation.decide(places: all, anchor: nil, monitoredKeys: [], maxRadius: -1)
+        return decision.ordered.filter { decision.selected.contains($0.key) }.reduce(0) { $0 + $1.regionIDs.count }
+    }
+
+    /// 受信した有効な依頼の変化・自分のメモの増減・現在地の大きな変化のあとに呼ぶ。
+    /// 受信した依頼を先に、自分のメモは現在地に近い順に、足りない領域を登録し、溢れた分を外す。
+    /// 監視したい領域が 20 件を超えるときは、19 件＋入れ替え用の円 1 件にする。
+    /// 現在地が分からないときは、登録済みの円の中心を基準にし、それも無ければ登録済みの並びを変えない。
+    static func reconcile(
+        memos: [GeoMemo], sharedMemos: [SharedMemo], reason: Reason = .sync, retryOnUnreliable: Bool = true
+    ) {
+        let lm = LocationManager.shared
+        guard LocationAccess(lm.authorizationStatus).isAuthorized else { return }
+
+        let all = places(memos: memos, sharedMemos: sharedMemos, routeProgress: { lm.routeProgressValue(memoID: $0) })
+        var sharedByKey: [String: SharedMemo] = [:]
+        var ownByKey: [String: GeoMemo] = [:]
+        for s in sharedMemos where !s.isMyRequest && s.status == .active { sharedByKey[s.geofenceIdentifier] = s }
+        for m in memos where !m.isDone { ownByKey[m.id.uuidString] = m }
+
+        let monitored = lm.monitoredRegionIdentifiers.subtracting([NearestRotation.circleIdentifier])
+        let knownIDs = Set(all.flatMap(\.regionIDs))
+        // 他の機能の領域（このアプリの形式でないもの）は枠を使っているものとして数える（planner と同じ）
+        let foreign = monitored.subtracting(knownIDs).filter { !isAppRegionIdentifier($0) }.count
+        let monitoredKeys = Set(all.filter { $0.regionIDs.contains(where: monitored.contains) }.map(\.key))
 
         let location = lm.location
-        let ordered = NearestRotation.order(places, from: location)
-        let totalRegions = places.reduce(0) { $0 + $1.regionIDs.count }
-        let rotationNeeded = NearestRotation.isNeeded(totalRegions: totalRegions)
-        let itemLimit = NearestRotation.itemLimit(totalRegions: totalRegions)
-        let items = ordered.map { GeofenceItem(key: $0.key, regionIDs: $0.regionIDs) }
-
-        // 入れ替え用の円は項目の差分の外で扱う（枠は itemLimit で空けてある）
-        let monitored = lm.monitoredRegionIdentifiers.subtracting([NearestRotation.circleIdentifier])
-        let plan = GeofenceReconcilePlanner.plan(items: items, monitored: monitored, limit: itemLimit)
+        let anchor = location ?? lm.rotationCircle?.location
+        let decision = NearestRotation.decide(
+            places: all, anchor: anchor, monitoredKeys: monitoredKeys, foreignRegions: foreign,
+            maxRadius: lm.maximumRegionRadius)
+        let items = decision.ordered.map { GeofenceItem(key: $0.key, regionIDs: $0.regionIDs) }
+        let plan = GeofenceReconcilePlanner.plan(items: items, monitored: monitored, limit: decision.itemLimit)
 
         // 先に外して枠を空けてから登録する。入れ替えが要らなくなったら円も外す
-        if !rotationNeeded {
+        if !decision.rotationNeeded {
             lm.stopRotationCircle()
             lm.setSignificantChangeMonitoring(false)
         }
@@ -151,16 +170,24 @@ enum GeofenceReconciler {
             }
         }
 
-        // 入れ替え用の円: 現在地を中心に、外れた項目のうち最も近いものの手前までの大きさ。現在地が無ければ張り直さない
-        guard rotationNeeded else { return }
+        // 入れ替え用の円: 本物の現在地があるときだけ張り直す（円だけが基準のときは、いまの円のまま）。
+        // 古い・精度の粗い位置では張らず、取り直してもう 1 回だけやり直す。
+        guard decision.rotationNeeded else { return }
         lm.setSignificantChangeMonitoring(true)
         guard let location else { return }
-        let selected = NearestRotation.selectedKeys(ordered: ordered, limit: itemLimit)
-        if let radius = NearestRotation.circleRadius(
-            ordered: ordered, selected: selected, from: location, maxRadius: lm.maximumRegionRadius) {
-            lm.startRotationCircle(center: location.coordinate, radius: radius)
-        } else {
+        guard let radius = decision.circleRadius else {
             lm.stopRotationCircle()
+            return
         }
+        guard NearestRotation.isReliable(location, radius: radius) else {
+            if retryOnUnreliable {
+                Task { @MainActor in
+                    guard await lm.freshLocation(maxAge: 0) != nil else { return }
+                    reconcile(memos: memos, sharedMemos: sharedMemos, reason: reason, retryOnUnreliable: false)
+                }
+            }
+            return
+        }
+        lm.startRotationCircle(center: location.coordinate, radius: radius)
     }
 }

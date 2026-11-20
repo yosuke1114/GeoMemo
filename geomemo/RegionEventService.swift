@@ -109,9 +109,12 @@ protocol RegionEventEffects {
     func refreshLocationForRotation() async
     /// 近い順に監視を入れ替える（`GeofenceReconciler.reconcile`）。
     func reconcileGeofences(memos: [GeoMemo], sharedMemos: [SharedMemo])
+    /// 登録直後の状態確認（`requestState`）の結果が届くのを、短い上限まで待つ。
+    func waitForPendingStateChecks() async
 }
 
 extension RegionEventEffects {
+    func waitForPendingStateChecks() async {}
     func refreshLocationForRotation() async {}
     func reconcileGeofences(memos: [GeoMemo], sharedMemos: [SharedMemo]) {}
 }
@@ -162,6 +165,9 @@ struct LiveRegionEventEffects: RegionEventEffects {
     }
     func reconcileGeofences(memos: [GeoMemo], sharedMemos: [SharedMemo]) {
         GeofenceReconciler.reconcile(memos: memos, sharedMemos: sharedMemos, reason: .rotation)
+    }
+    func waitForPendingStateChecks() async {
+        await LocationManager.shared.waitForStateChecks()
     }
 }
 
@@ -345,24 +351,32 @@ final class RegionEventService: RegionEventHandling {
         let memos = (try? context.fetch(FetchDescriptor<GeoMemo>())) ?? []
         let shared = (try? context.fetch(FetchDescriptor<SharedMemo>())) ?? []
         effects.reconcileGeofences(memos: memos, sharedMemos: shared)
+        // 登録したばかりの領域の「内側にいるか」の結果（進入の通知）が届くまで、実行時間を返さない
+        await effects.waitForPendingStateChecks()
     }
 
     // MARK: バックグラウンドでの実行
 
     /// 位置イベントのコールバックから呼ぶ。非同期の処理が終わるまで、バックグラウンドの実行時間を確保する。
     /// 処理のあとに、溜まっている未送信イベント（到着・完了）も送ってみる。
-    func run(_ work: @escaping @MainActor () async -> Void) {
+    @discardableResult
+    func run(_ work: @escaping @MainActor () async -> Void) -> Task<Void, Never> {
         let box = BackgroundTaskBox(controller: backgroundTasks)
         box.id = backgroundTasks.begin(name: "geomemo-region-event") {
             // 時間切れ: これ以上は待てない
             box.end()
         }
-        Task { @MainActor in
+        let task = Task { @MainActor in
             await work()
             await effects.drainPending()
             box.end()
         }
+        lastRunTask = task
+        return task
     }
+
+    /// 最後に始めた処理（テストが完了を待つ）。
+    private(set) var lastRunTask: Task<Void, Never>?
 }
 
 @MainActor

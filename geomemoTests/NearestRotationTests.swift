@@ -14,12 +14,12 @@ private func east(_ meters: Double) -> CLLocationCoordinate2D {
 
 private func place(
     _ key: String, at meters: Double = 0, radius: Double = 100, age: TimeInterval = 0,
-    received: Bool = false, waypoints: [Double]? = nil
+    received: Bool = false, waypoints: [Double]? = nil, pinned: Bool = false
 ) -> RotationPlace {
     let centers = (waypoints ?? [meters]).map(east)
     let ids = waypoints == nil ? [key] : (0..<centers.count).map { "\(key)|wp|\($0)" }
     return RotationPlace(key: key, regionIDs: ids, centers: centers, radius: radius,
-                         createdAt: Date(timeIntervalSince1970: 1_000_000 - age), isReceived: received)
+                         createdAt: Date(timeIntervalSince1970: 1_000_000 - age), isReceived: received, isPinned: pinned)
 }
 
 @Suite("NearestRotation")
@@ -92,7 +92,7 @@ struct NearestRotationTests {
     func outside() {
         #expect(NearestRotation.isOutside(nil, location: tokyo))
         let circle = RotationCircle(latitude: tokyo.coordinate.latitude, longitude: tokyo.coordinate.longitude,
-                                    radius: 1_000, rotatedAt: Date())
+                                    radius: 1_000)
         let inside = CLLocation(latitude: east(900).latitude, longitude: east(900).longitude)
         let out = CLLocation(latitude: east(1_100).latitude, longitude: east(1_100).longitude)
         #expect(!NearestRotation.isOutside(circle, location: inside))
@@ -106,15 +106,112 @@ struct NearestRotationTests {
         #expect(!NearestRotation.shouldTreatAsEntry(isInside: false, alreadyInside: false))
     }
 
-    @Test("内側の控え: 追加・削除・監視中のものだけに絞る。保存・復元できる")
+    @Test("内側の控え: 追加・削除。保存・復元できる")
     func ledger() throws {
         var l = InsideLedger()
-        l.insert("a"); l.insert("b"); l.insert("c")
+        l.insert("a"); l.insert("b")
         l.remove("a")
-        l.retain(only: ["b", "x"])
-        #expect(l.contains("b") && !l.contains("a") && !l.contains("c"))
+        #expect(l.contains("b") && !l.contains("a"))
         let restored = try JSONDecoder().decode(InsideLedger.self, from: JSONEncoder().encode(l))
         #expect(restored == l)
+    }
+
+    @Test("進入の記録: 窓の中だけ「直後」。忘れれば消える")
+    func recentEntries() {
+        var r = RecentEntries()
+        let t = Date(timeIntervalSince1970: 1_000)
+        r.record("a", at: t)
+        #expect(r.isRecent("a", now: t.addingTimeInterval(RecentEntries.window - 1)))
+        #expect(!r.isRecent("a", now: t.addingTimeInterval(RecentEntries.window)))
+        #expect(!r.isRecent("b", now: t))
+        r.forget("a")
+        #expect(!r.isRecent("a", now: t))
+    }
+
+    @Test("円に使える位置: 新しく、精度が半径に対して粗くない")
+    func reliable() {
+        let now = Date(timeIntervalSince1970: 1_000_000)
+        func fix(age: TimeInterval, accuracy: Double) -> CLLocation {
+            CLLocation(coordinate: tokyo.coordinate, altitude: 0, horizontalAccuracy: accuracy, verticalAccuracy: 5,
+                       timestamp: now.addingTimeInterval(-age))
+        }
+        #expect(NearestRotation.isReliable(fix(age: 10, accuracy: 50), radius: 500, now: now))
+        #expect(!NearestRotation.isReliable(fix(age: 600, accuracy: 50), radius: 500, now: now))   // 古い
+        #expect(!NearestRotation.isReliable(fix(age: 10, accuracy: 400), radius: 500, now: now))   // 粗い
+        #expect(NearestRotation.isReliable(fix(age: 10, accuracy: 400), radius: 13_000, now: now)) // 半径が大きければ許す
+        #expect(!NearestRotation.isReliable(fix(age: 10, accuracy: -1), radius: 500, now: now))    // 無効
+    }
+
+    // MARK: 判断（現在地が無いとき・受信した依頼・ルート）
+
+    /// 近くの古い 5 件と、遠い新しい 20 件。
+    private var nearOldFarNew: [RotationPlace] {
+        (0..<5).map { place("near\($0)", at: Double($0) * 300 + 500, age: 100_000 + Double($0)) }
+            + (0..<20).map { place("far\($0)", at: 20_000 + Double($0) * 300, age: Double($0)) }
+    }
+
+    @Test("現在地が無くても、登録済みの円の中心を基準にすれば近い 5 件が残る（遠い新しい 20 件に入れ替わらない）")
+    func nilLocationUsesCircleCenter() {
+        let d = NearestRotation.decide(places: nearOldFarNew, anchor: tokyo, monitoredKeys: [], maxRadius: -1)
+        #expect(d.rotationNeeded && d.itemLimit == 19)
+        #expect(d.selected.count == 19)
+        #expect((0..<5).allSatisfy { d.selected.contains("near\($0)") })
+        #expect(d.circleRadius != nil)
+    }
+
+    @Test("現在地も円も無いときは、登録済みの項目を先に残し、増減した分だけ反映する")
+    func noAnchorKeepsMonitored() {
+        let places = nearOldFarNew
+        let monitored = Set((0..<5).map { "near\($0)" } + (0..<14).map { "far\($0)" })
+        let d = NearestRotation.decide(places: places, anchor: nil, monitoredKeys: monitored, maxRadius: -1)
+        #expect(d.selected == monitored)
+        #expect(d.circleRadius == nil)   // 基準が無いので円は張り直さない
+        // 登録済みのうち 1 件が消えたら（完了した）、空いた枠に新しい順の次が入る
+        let remaining = places.filter { $0.key != "near0" }
+        let d2 = NearestRotation.decide(places: remaining, anchor: nil, monitoredKeys: monitored, maxRadius: -1)
+        #expect(d2.selected.isSuperset(of: monitored.subtracting(["near0"])))
+        #expect(d2.selected.count == 19 && !d2.selected.contains("near0"))
+        // 何も登録されていなければ、従来どおり作成日の新しい順
+        let cold = NearestRotation.decide(places: places, anchor: nil, monitoredKeys: [], maxRadius: -1)
+        #expect(cold.selected.contains("far0") && !cold.selected.contains("near4"))
+    }
+
+    @Test("受信した依頼が 20 件以上: 円は使わない。20 件ちょうどでも 1 件も余分に外さない")
+    func receivedFillsSlots() {
+        let received = (0..<20).map { place("r\($0)", at: Double($0) * 10, received: true) }
+        let own = [place("own", at: 100)]
+        let d = NearestRotation.decide(places: received + own, anchor: tokyo, monitoredKeys: [], maxRadius: -1)
+        #expect(!d.rotationNeeded && d.itemLimit == 20 && d.circleRadius == nil)
+        #expect(received.allSatisfy { d.selected.contains($0.key) } && !d.selected.contains("own"))
+        // 19 件なら円の枠は取れる（受信 19＋円 1）
+        let d19 = NearestRotation.decide(places: Array(received.prefix(19)) + own + [place("own2", at: 200)], anchor: tokyo, monitoredKeys: [], maxRadius: -1)
+        #expect(d19.rotationNeeded && d19.itemLimit == 19)
+        #expect(Array(received.prefix(19)).allSatisfy { d19.selected.contains($0.key) })
+        // 受信だけで 21 件でも、円は張らない
+        let over = NearestRotation.decide(places: received + [place("r20", received: true)], anchor: tokyo, monitoredKeys: [], maxRadius: -1)
+        #expect(!over.rotationNeeded)
+        #expect(!NearestRotation.isNeeded(totalRegions: 25, receivedRegions: 20))
+        #expect(NearestRotation.isNeeded(totalRegions: 25, receivedRegions: 19))
+    }
+
+    @Test("進み具合のあるルートは外さない（遠くても、受信した依頼の次に並ぶ）")
+    func pinnedRoute() {
+        let route = place("route", waypoints: [30_000, 30_500, 31_000], pinned: true)
+        let near = (0..<25).map { place("n\($0)", at: Double($0) * 200 + 500) }
+        let d = NearestRotation.decide(places: near + [route], anchor: tokyo, monitoredKeys: [], maxRadius: -1)
+        #expect(d.selected.contains("route"))
+        #expect(d.ordered.first?.key == "route")
+        #expect(d.selected.count == 17)   // ルートの 3 領域 + 16 件ぶんが 19 枠
+        // 進み具合が無ければ、遠いので入らない
+        let free = place("route", waypoints: [30_000, 30_500, 31_000])
+        #expect(!NearestRotation.decide(places: near + [free], anchor: tokyo, monitoredKeys: [], maxRadius: -1).selected.contains("route"))
+    }
+
+    @Test("他の機能の領域が枠を使っているとき、選ぶ数もその分減る")
+    func foreignRegions() {
+        let places = (0..<25).map { place("p\($0)", at: Double($0) * 500 + 500) }
+        let d = NearestRotation.decide(places: places, anchor: tokyo, monitoredKeys: [], foreignRegions: 2, maxRadius: -1)
+        #expect(d.selected.count == 17)
     }
 
     @Test("入れ替え用の円の識別子は、このアプリのメモ・依頼・経由地の形式ではない")
