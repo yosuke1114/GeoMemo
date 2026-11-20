@@ -20,6 +20,12 @@ final class GeoMemoAppDelegate: NSObject, UIApplicationDelegate {
     func application(_ application: UIApplication,
                      didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]? = nil) -> Bool {
         application.registerForRemoteNotifications()
+        // 領域の入退出でバックグラウンド起動されたときは、画面が作られない。位置と通知の受け口を、
+        // ここで（画面より先に）作っておく。LocationManager はデリゲートを、NotificationManager は
+        // 通知センターのデリゲートを、生成時に設定する。
+        _ = LocationManager.shared
+        _ = NotificationManager.shared
+        NotificationManager.registerCategories()
         // ウィジェットで完了にした分を、画面が作られる前に取り込む（全登録し直しより先）
         WidgetCompletion.drainPending()
         NotificationCenter.default.addObserver(
@@ -233,7 +239,6 @@ struct geomemoApp: App {
                 .task {
                     GeoMemoShortcuts.updateAppShortcutParameters()
                     Self.indexAllMemosInSpotlight()
-                    NotificationManager.registerCategories()
                 }
                 #if DEBUG
                 .onAppear {

@@ -102,7 +102,7 @@ struct MarkMemoDoneIntent: AppIntent {
         try GeoMemoStore.markDone(id: target.id)
         // アプリがフォアグラウンドにいる場合は NotificationCenter でも同期
         await MainActor.run {
-            NotificationCenter.default.post(name: .geoMemoMarkDone, object: target.id.uuidString)
+            RegionEventService.shared.didMarkDone(id: target.id.uuidString)
         }
         return .result(dialog: "\"\(target.title)\" \(String(localized: "marked as complete"))")
     }

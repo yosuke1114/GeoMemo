@@ -3,13 +3,6 @@ import CoreLocation
 import Combine
 import os
 
-extension Notification.Name {
-    // SWIFT_DEFAULT_ACTOR_ISOLATION=MainActor のため明示しないと MainActor 隔離になり、
-    // CLLocationManagerDelegate の nonisolated コールバックから参照できない。
-    nonisolated static let didEnterGeoMemoRegion = Notification.Name("didEnterGeoMemoRegion")
-    nonisolated static let didExitGeoMemoRegion  = Notification.Name("didExitGeoMemoRegion")
-}
-
 @MainActor
 class LocationManager: NSObject, ObservableObject {
     static let shared = LocationManager()
@@ -283,30 +276,11 @@ class LocationManager: NSObject, ObservableObject {
 
     /// Check whether a memo's trigger conditions are currently satisfied.
     func shouldNotify(for memo: GeoMemo) -> Bool {
-        let now = Date()
-        let calendar = Calendar.current
-
-        // 期限チェック
-        if let deadline = memo.deadline {
-            if now > deadline { return false }
-        }
-
-        // 時間帯チェック
-        if let start = memo.timeWindowStart,
-           let end = memo.timeWindowEnd {
-            let currentMinutes =
-                calendar.component(.hour, from: now) * 60 +
-                calendar.component(.minute, from: now)
-            if currentMinutes < start || currentMinutes > end { return false }
-        }
-
-        // 曜日チェック (Calendar.weekday: 1=日, 2=月, ..., 7=土 → 0=日, 1=月, ..., 6=土)
-        if let days = memo.activeDays {
-            let weekday = calendar.component(.weekday, from: now) - 1
-            if !days.contains(weekday) { return false }
-        }
-
-        return true
+        // 期限・時間帯・曜日の判定は純粋ロジック（`TriggerConditions`）に切り出した
+        TriggerConditions.isSatisfied(
+            deadline: memo.deadline, timeWindowStart: memo.timeWindowStart,
+            timeWindowEnd: memo.timeWindowEnd, activeDays: memo.activeDays,
+            now: Date(), calendar: Calendar.current)
     }
 }
 
@@ -366,6 +340,12 @@ extension LocationManager: @MainActor CLLocationManagerDelegate {
         }
     }
 
+    /// 領域に入った通知を、画面に頼らず出す（アプリが終了した状態からの起動でも動く）。
+    @MainActor
+    private func notifyEntered(memoID: String) {
+        RegionEventService.shared.run { await RegionEventService.shared.memoEntered(id: memoID) }
+    }
+
     func locationManager(_ manager: CLLocationManager, didEnterRegion region: CLRegion) {
         MainActor.assumeIsolated {
             didEnterRegionMainActor(region)
@@ -405,7 +385,7 @@ extension LocationManager: @MainActor CLLocationManagerDelegate {
                 // ── 全ウェイポイント通過 → 発火 ──────────────────────
                 progress.removeValue(forKey: memoID)
                 routeProgress = progress
-                NotificationCenter.default.post(name: .didEnterGeoMemoRegion, object: memoID)
+                notifyEntered(memoID: memoID)
                 LiveActivityManager.shared.triggerMemo(id: memoID)
             } else {
                 // 次のウェイポイントを待つ
@@ -416,11 +396,11 @@ extension LocationManager: @MainActor CLLocationManagerDelegate {
             }
         } else if identifier.hasPrefix(SharedMemo.geofencePrefix) {
             // ── 共有メモジオフェンス（おつかい / 見守り）──────────────
-            NotificationCenter.default.post(name: .didEnterSharedMemoRegion, object: identifier)
+            RegionEventService.shared.run { await RegionEventService.shared.sharedEntered(identifier: identifier) }
         } else {
             // ── 通常ジオフェンス ─────────────────────────────────────
             let memoID = identifier
-            NotificationCenter.default.post(name: .didEnterGeoMemoRegion, object: memoID)
+            notifyEntered(memoID: memoID)
             LiveActivityManager.shared.triggerMemo(id: memoID)
         }
     }
@@ -432,7 +412,7 @@ extension LocationManager: @MainActor CLLocationManagerDelegate {
         let identifier = circularRegion.identifier
         // ルートウェイポイントと共有メモの退出は無視
         guard !identifier.contains("|wp|") && !identifier.hasPrefix(SharedMemo.geofencePrefix) else { return }
-        NotificationCenter.default.post(name: .didExitGeoMemoRegion, object: identifier)
+        RegionEventService.shared.run { await RegionEventService.shared.memoExited(id: identifier) }
     }
 
     func locationManager(_ manager: CLLocationManager, monitoringDidFailFor region: CLRegion?, withError error: Error) {
