@@ -20,35 +20,62 @@ nonisolated enum RadiusPolicy {
         return min(max(value, minimum), maximum)
     }
 
-    /// 刻み (10m) に丸めてから、下限〜上限に収める。
-    nonisolated static func snapped(_ value: Double) -> Double {
-        guard value.isFinite else { return defaultValue }
-        return clamp((value / step).rounded() * step)
+    /// 開いた時点の値に合わせた上限。すでに上限を超えて保存されている値でも、触ったあと元の値まで戻せる。
+    nonisolated static func ceiling(forOriginal original: Double) -> Double {
+        original.isFinite ? max(maximum, original) : maximum
     }
 
-    /// スライダーの範囲。すでに上限を超えて保存されているメモも、値を変えずに開けるよう上限を広げる。
-    nonisolated static func sliderRange(including current: Double) -> ClosedRange<Double> {
-        let upper = current.isFinite ? max(maximum, current) : maximum
-        return minimum...upper
+    /// 刻み (10m) に丸めてから、下限〜上限 (既定は `maximum`) に収める。
+    nonisolated static func snapped(_ value: Double, ceiling: Double = maximum) -> Double {
+        guard value.isFinite else { return defaultValue }
+        let upper = max(maximum, ceiling.isFinite ? ceiling : maximum)
+        return min(max((value / step).rounded() * step, minimum), upper)
+    }
+
+    /// スライダーの範囲。
+    nonisolated static func sliderRange(ceiling: Double) -> ClosedRange<Double> {
+        minimum...max(maximum, ceiling.isFinite ? ceiling : maximum)
+    }
+
+    /// スライダーが値を書き込んだときの結果。
+    /// 刻みに乗らない値・下限未満の値は、触れない限り (結果が現在値から刻みの半分以内なら) そのまま保つ。
+    nonisolated static func applyingSlider(_ new: Double, to current: Double, ceiling: Double) -> Double {
+        let result = snapped(new, ceiling: ceiling)
+        if current.isFinite, abs(result - current) <= step / 2 { return current }
+        return result
+    }
+
+    /// VoiceOver の増減。1 回で 50m 動かす。
+    nonisolated static let accessibilityStep: Double = 50
+
+    nonisolated static func adjusted(_ current: Double, increment: Bool, ceiling: Double) -> Double {
+        let base = current.isFinite ? current : defaultValue
+        return snapped(base + (increment ? accessibilityStep : -accessibilityStep), ceiling: ceiling)
     }
 
     nonisolated static func isTooSmallForIndoors(_ radius: Double) -> Bool {
         radius.isFinite && radius < indoorThreshold
     }
 
-    /// 地図に表示する縦の幅 (m)。円が画面の 8 割以内に収まる最小の段。
+    /// 地図に表示する縦の幅 (m)。円が画面の 8.5 割以内に収まる最小の段。
+    /// 段の境目 (半径で約 110 / 221 / 442 / 884m) は、既定値と候補 (50/100/500/1000) から離してある。
     /// 段を粗くして、スライダーを動かしている間は拡大率が変わらず、円の大きさの変化が見えるようにする。
-    nonisolated static let mapSpanSteps: [Double] = [250, 500, 1000, 2000, 4000]
+    nonisolated static let mapSpanSteps: [Double] = [260, 520, 1040, 2080, 4160]
+
+    nonisolated static let mapFillRatio: Double = 0.85
 
     nonisolated static func mapSpanMeters(for radius: Double) -> Double {
         let diameter = (radius.isFinite ? max(radius, 0) : defaultValue) * 2
-        let needed = diameter / 0.8
-        return mapSpanSteps.first(where: { $0 >= needed }) ?? (mapSpanSteps.last ?? 4000)
+        let needed = diameter / mapFillRatio
+        return mapSpanSteps.first(where: { $0 >= needed }) ?? (mapSpanSteps.last ?? 4160)
     }
 
-    /// 「150M」「1.2KM」(従来の詳細画面と同じ表記)。
+    /// 「150M」「1KM」「1.2KM」(設定画面と同じ表記)。
     nonisolated static func label(_ radius: Double) -> String {
-        if radius >= 1000 { return String(format: "%.1fKM", radius / 1000) }
+        if radius >= 1000 {
+            let km = radius / 1000
+            return km == km.rounded() ? "\(Int(km))KM" : String(format: "%.1fKM", km)
+        }
         return "\(Int(radius))M"
     }
 

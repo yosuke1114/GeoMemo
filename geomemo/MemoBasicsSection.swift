@@ -12,6 +12,8 @@ struct MemoBasicsSection: View {
     @Binding var radius: Double
     @Binding var notifyOnEntry: Bool
     @Binding var notifyOnExit: Bool
+    /// スライダーの上限 (開いた時点の値に合わせる)。
+    var radiusCeiling: Double = RadiusPolicy.maximum
 
     let coordinate: CLLocationCoordinate2D
     /// 地図の左下のバッジに出す文字 (場所名、またはルートの案内)。
@@ -41,7 +43,7 @@ struct MemoBasicsSection: View {
 
             MemoDivider()
 
-            RadiusAdjuster(radius: $radius)
+            RadiusAdjuster(radius: $radius, ceiling: radiusCeiling)
 
             if !isRouteTrigger {
                 MemoDivider()
@@ -112,12 +114,21 @@ struct RadiusMapPreview: View {
         var span: Double
         var routePoints: Int
         var isRoute: Bool
+        /// 経由地の外接範囲。経由地を動かしたら地図が追従する。
+        var minLat: Double
+        var maxLat: Double
+        var minLon: Double
+        var maxLon: Double
     }
 
     private var cameraKey: CameraKey {
-        CameraKey(latitude: coordinate.latitude, longitude: coordinate.longitude,
-                  span: RadiusPolicy.mapSpanMeters(for: radius),
-                  routePoints: routeWaypoints.count, isRoute: isRouteTrigger)
+        let useRoute = isRouteTrigger && routeWaypoints.count >= 2
+        let lats = routeWaypoints.map(\.latitude), lons = routeWaypoints.map(\.longitude)
+        return CameraKey(latitude: coordinate.latitude, longitude: coordinate.longitude,
+                         span: RadiusPolicy.mapSpanMeters(for: radius),
+                         routePoints: routeWaypoints.count, isRoute: isRouteTrigger,
+                         minLat: useRoute ? (lats.min() ?? 0) : 0, maxLat: useRoute ? (lats.max() ?? 0) : 0,
+                         minLon: useRoute ? (lons.min() ?? 0) : 0, maxLon: useRoute ? (lons.max() ?? 0) : 0)
     }
 
     private static func camera(coordinate: CLLocationCoordinate2D, radius: Double,
@@ -230,6 +241,8 @@ struct RadiusMapPreview: View {
 
 struct RadiusAdjuster: View {
     @Binding var radius: Double
+    /// スライダーの上限。開いた時点で決め、操作中に変わらない。
+    var ceiling: Double = RadiusPolicy.maximum
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -247,35 +260,31 @@ struct RadiusAdjuster: View {
             Slider(
                 value: Binding(
                     get: { radius },
-                    set: { radius = RadiusPolicy.snapped($0) }
+                    set: { radius = RadiusPolicy.applyingSlider($0, to: radius, ceiling: ceiling) }
                 ),
-                in: RadiusPolicy.sliderRange(including: radius),
+                in: RadiusPolicy.sliderRange(ceiling: ceiling),
                 step: RadiusPolicy.step
             )
             .tint(Brand.blue)
             .accessibilityLabel(String(localized: "RADIUS"))
             .accessibilityValue(RadiusPolicy.spokenValue(radius))
+            .accessibilityAdjustableAction { direction in
+                switch direction {
+                case .increment: radius = RadiusPolicy.adjusted(radius, increment: true, ceiling: ceiling)
+                case .decrement: radius = RadiusPolicy.adjusted(radius, increment: false, ceiling: ceiling)
+                @unknown default: break
+                }
+            }
             .accessibilityIdentifier("radiusSlider")
 
-            // 従来の 4 択はすばやく選ぶための候補として残す。
-            HStack(spacing: 8) {
-                ForEach(RadiusPolicy.presets, id: \.self) { value in
-                    let selected = radius == value
-                    Button {
-                        HapticManager.selection()
-                        radius = value
-                    } label: {
-                        Text(RadiusPolicy.label(value))
-                            .font(.subheadline.weight(selected ? .bold : .semibold))
-                            .foregroundColor(selected ? Brand.blue : Brand.secondaryText)
-                            .frame(maxWidth: .infinity, minHeight: 44)
-                            .background(selected ? Brand.background : Brand.secondaryBackground)
-                            .clipShape(RoundedRectangle(cornerRadius: 8))
-                            .overlay(RoundedRectangle(cornerRadius: 8)
-                                .stroke(selected ? Brand.blue : Color.clear, lineWidth: 1.5))
-                    }
-                    .accessibilityLabel(RadiusPolicy.spokenValue(value))
-                    .accessibilityAddTraits(selected ? .isSelected : [])
+            // 従来の 4 択はすばやく選ぶための候補として残す。最大の文字サイズでは 2 列に折り返す。
+            ViewThatFits(in: .horizontal) {
+                HStack(spacing: 8) {
+                    ForEach(RadiusPolicy.presets, id: \.self) { presetButton($0) }
+                }
+                VStack(spacing: 8) {
+                    HStack(spacing: 8) { presetButton(RadiusPolicy.presets[0]); presetButton(RadiusPolicy.presets[1]) }
+                    HStack(spacing: 8) { presetButton(RadiusPolicy.presets[2]); presetButton(RadiusPolicy.presets[3]) }
                 }
             }
 
@@ -292,6 +301,27 @@ struct RadiusAdjuster: View {
         }
         .padding(.horizontal, 20)
         .padding(.vertical, 16)
+    }
+
+    private func presetButton(_ value: Double) -> some View {
+        let selected = radius == value
+        return Button {
+            HapticManager.selection()
+            radius = value
+        } label: {
+            Text(RadiusPolicy.label(value))
+                .font(.subheadline.weight(selected ? .bold : .semibold))
+                .lineLimit(1)
+                .minimumScaleFactor(0.7)
+                .foregroundColor(selected ? Brand.blue : Brand.secondaryText)
+                .frame(maxWidth: .infinity, minHeight: 44)
+                .background(selected ? Brand.background : Brand.secondaryBackground)
+                .clipShape(RoundedRectangle(cornerRadius: 8))
+                .overlay(RoundedRectangle(cornerRadius: 8)
+                    .stroke(selected ? Brand.blue : Color.clear, lineWidth: 1.5))
+        }
+        .accessibilityLabel(RadiusPolicy.spokenValue(value))
+        .accessibilityAddTraits(selected ? .isSelected : [])
     }
 }
 
@@ -351,7 +381,9 @@ struct AdvancedDisclosure<Content: View>: View {
             .accessibilityValue(summary.isEmpty
                 ? stateText
                 : "\(stateText), \(summary)")
-            .accessibilityHint(String(localized: "Double-tap to show or hide"))
+            .accessibilityHint(isExpanded
+                ? String(localized: "Hides the detail items")
+                : String(localized: "Shows the detail items"))
             .accessibilityAddTraits(.isButton)
             .accessibilityIdentifier("editorDetailsToggle")
 

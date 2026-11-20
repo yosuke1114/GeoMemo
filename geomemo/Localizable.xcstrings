@@ -6762,12 +6762,22 @@
         }
       }
     },
-    "Double-tap to show or hide" : {
+    "Shows the detail items" : {
       "localizations" : {
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "ダブルタップで開閉します"
+            "value" : "詳細の項目を表示します"
+          }
+        }
+      }
+    },
+    "Hides the detail items" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "詳細の項目を隠します"
           }
         }
       }

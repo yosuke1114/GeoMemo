@@ -34,11 +34,57 @@ struct RadiusPolicyTests {
         #expect(RadiusPolicy.snapped(.nan) == 100)
     }
 
-    @Test("すでに上限を超えて保存された値でも、スライダーの範囲に入る")
-    func sliderRange() {
-        #expect(RadiusPolicy.sliderRange(including: 100) == 50...1000)
-        #expect(RadiusPolicy.sliderRange(including: 1500) == 50...1500)
-        #expect(RadiusPolicy.sliderRange(including: .nan) == 50...1000)
+    @Test("開いた時点の値に合わせて上限を広げる")
+    func ceiling() {
+        #expect(RadiusPolicy.ceiling(forOriginal: 100) == 1000)
+        #expect(RadiusPolicy.ceiling(forOriginal: 1500) == 1500)
+        #expect(RadiusPolicy.ceiling(forOriginal: .nan) == 1000)
+        #expect(RadiusPolicy.sliderRange(ceiling: 1000) == 50...1000)
+        #expect(RadiusPolicy.sliderRange(ceiling: 1500) == 50...1500)
+    }
+
+    @Test("1000m 超で保存された値は、触ったあとも元の値まで戻せる")
+    func snappedWithCeiling() {
+        #expect(RadiusPolicy.snapped(1500, ceiling: 1500) == 1500)
+        #expect(RadiusPolicy.snapped(1505, ceiling: 1505) == 1505)
+        #expect(RadiusPolicy.snapped(1400, ceiling: 1500) == 1400)
+        #expect(RadiusPolicy.snapped(2000, ceiling: 1500) == 1500)
+        #expect(RadiusPolicy.snapped(1500) == 1000) // 上限を渡さなければ従来どおり
+        // 上限未満に下げてから元に戻す
+        let down = RadiusPolicy.applyingSlider(900, to: 1500, ceiling: 1500)
+        #expect(down == 900)
+        #expect(RadiusPolicy.applyingSlider(1500, to: down, ceiling: 1500) == 1500)
+    }
+
+    @Test("刻みに乗らない値・50m 未満の値は、スライダーが同じ値や丸めた値を返しても変わらない")
+    func untouchedValuesStay() {
+        for original in [45.0, 52, 77, 104, 1234] {
+            let ceiling = RadiusPolicy.ceiling(forOriginal: original)
+            // 表示のために丸めた値・範囲に収めた値を書き戻されても、現在値を保つ
+            let echoes = [original, RadiusPolicy.snapped(original, ceiling: ceiling),
+                          min(max(original, 50), ceiling)]
+            for echo in echoes {
+                #expect(RadiusPolicy.applyingSlider(echo, to: original, ceiling: ceiling) == original)
+            }
+        }
+    }
+
+    @Test("実際に動かしたら (刻みの半分を超えたら) 反映する")
+    func movedValuesApply() {
+        #expect(RadiusPolicy.applyingSlider(110, to: 100, ceiling: 1000) == 110)
+        #expect(RadiusPolicy.applyingSlider(1000, to: 100, ceiling: 1000) == 1000)
+        #expect(RadiusPolicy.applyingSlider(0, to: 100, ceiling: 1000) == 50)
+        #expect(RadiusPolicy.applyingSlider(.nan, to: 100, ceiling: 1000) == 100)
+    }
+
+    @Test("VoiceOver の増減は 50m 単位で、下限・上限に収める")
+    func accessibilityAdjust() {
+        #expect(RadiusPolicy.adjusted(100, increment: true, ceiling: 1000) == 150)
+        #expect(RadiusPolicy.adjusted(100, increment: false, ceiling: 1000) == 50)
+        #expect(RadiusPolicy.adjusted(50, increment: false, ceiling: 1000) == 50)
+        #expect(RadiusPolicy.adjusted(1000, increment: true, ceiling: 1000) == 1000)
+        #expect(RadiusPolicy.adjusted(1000, increment: true, ceiling: 1500) == 1050)
+        #expect(RadiusPolicy.adjusted(1500, increment: true, ceiling: 1500) == 1500)
     }
 
     @Test("100m 未満は建物の中で反応しにくい注意を出す")
@@ -49,28 +95,38 @@ struct RadiusPolicyTests {
         #expect(!RadiusPolicy.isTooSmallForIndoors(500))
     }
 
-    @Test("地図の幅は円が 8 割以内に収まる最小の段で、範囲に対して単調")
+    @Test("地図の幅は円が 8.5 割以内に収まる最小の段で、範囲に対して単調")
     func mapSpan() {
-        #expect(RadiusPolicy.mapSpanMeters(for: 50) == 250)
-        #expect(RadiusPolicy.mapSpanMeters(for: 100) == 250)
-        #expect(RadiusPolicy.mapSpanMeters(for: 101) == 500)
-        #expect(RadiusPolicy.mapSpanMeters(for: 800) == 2000)
-        #expect(RadiusPolicy.mapSpanMeters(for: 801) == 4000)
-        #expect(RadiusPolicy.mapSpanMeters(for: 1000) == 4000)
-        #expect(RadiusPolicy.mapSpanMeters(for: 100000) == 4000)
+        #expect(RadiusPolicy.mapSpanMeters(for: 50) == 260)
+        #expect(RadiusPolicy.mapSpanMeters(for: 100) == 260)
+        #expect(RadiusPolicy.mapSpanMeters(for: 110) == 260)
+        #expect(RadiusPolicy.mapSpanMeters(for: 111) == 520)
+        #expect(RadiusPolicy.mapSpanMeters(for: 500) == 2080)
+        #expect(RadiusPolicy.mapSpanMeters(for: 1000) == 4160)
+        #expect(RadiusPolicy.mapSpanMeters(for: 100000) == 4160)
         var last = 0.0
         for r in stride(from: 50.0, through: 1500, by: 10) {
             let span = RadiusPolicy.mapSpanMeters(for: r)
             #expect(span >= last)
-            #expect(r * 2 <= span * 0.8 || span == 4000)
+            #expect(r * 2 <= span * RadiusPolicy.mapFillRatio || span == 4160)
             last = span
         }
     }
 
-    @Test("表記は従来の詳細画面と同じ (150M / 1.0KM)")
+    @Test("段の境目は、既定値と候補 (50/100/500/1000) から 5% 以上離れている")
+    func mapSpanBoundariesAvoidPresets() {
+        let boundaries = RadiusPolicy.mapSpanSteps.map { $0 * RadiusPolicy.mapFillRatio / 2 }
+        for value in RadiusPolicy.presets + [RadiusPolicy.defaultValue] {
+            for b in boundaries { #expect(abs(b - value) / value > 0.05) }
+        }
+    }
+
+    @Test("表記は設定画面と同じ (150M / 1KM)")
     func label() {
         #expect(RadiusPolicy.label(150) == "150M")
-        #expect(RadiusPolicy.label(1000) == "1.0KM")
+        #expect(RadiusPolicy.label(1000) == "1KM")
+        #expect(RadiusPolicy.label(1200) == "1.2KM")
+        #expect(RadiusPolicy.label(2000) == "2KM")
     }
 }
 
