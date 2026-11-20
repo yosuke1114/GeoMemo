@@ -10,6 +10,7 @@ import CloudKit
 struct ListTabView: View {
     let memos: [GeoMemo]
     @Environment(\.modelContext) private var modelContext
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     @ObservedObject private var locationManager = LocationManager.shared
     @State private var selectedTab: FilterTab = .all
@@ -28,6 +29,7 @@ struct ListTabView: View {
 
     @State private var showDoneSection: Bool = false
     @State private var selectedReceived: SharedMemo?
+    @State private var pendingDeleteReceived: SharedMemo?
     @State private var showColorFilter: Bool = false
     @State private var selectedColorIndex: Int? = nil
     @State private var isListSearching = false
@@ -116,19 +118,21 @@ struct ListTabView: View {
                     .clipShape(RoundedRectangle(cornerRadius: 10))
                     .padding(.horizontal, 16)
                     .padding(.vertical, 8)
-                    .transition(.opacity.combined(with: .move(edge: .top)))
+                    .transition(reduceMotion ? .opacity : .opacity.combined(with: .move(edge: .top)))
                 }
 
-                if memos.isEmpty {
+                switch ListContentState.resolve(ownMemoCount: memos.count,
+                                                receivedCount: receivedActiveMemos.count) {
+                case .empty:
                     Spacer()
                     VStack(spacing: 16) {
                         Image("ph-map-trifold-thin")
                             .resizable()
                             .frame(width: 48, height: 48)
-                            .foregroundColor(Brand.primaryText.opacity(0.45))
+                            .foregroundColor(Brand.secondaryText)
                         Text("No memos yet")
                             .font(.body.weight(.medium))
-                            .foregroundColor(Brand.primaryText.opacity(0.5))
+                            .foregroundColor(Brand.secondaryText)
                         Text("Tap the map to add a memo")
                             .font(.subheadline)
                             .foregroundColor(Brand.secondaryText)
@@ -136,7 +140,10 @@ struct ListTabView: View {
                             .padding(.horizontal, 32)
                     }
                     Spacer()
-                } else {
+                case .receivedOnly:
+                    // 自分のメモが 0 件でも、受信した依頼は見えるようにする。
+                    memoList(for: .all)
+                case .memos:
                     tabBar
                     pageContent
                 }
@@ -144,11 +151,29 @@ struct ListTabView: View {
             .background(Brand.background)
             .navigationBarHidden(true)
             .sheet(item: $selectedReceived) { shared in
-                ReceivedSharedMemoDetailView(shared: shared) {
-                    deleteReceivedSharedMemo(shared, in: modelContext)
-                }
+                ReceivedSharedMemoDetailView(
+                    shared: shared,
+                    onDelete: { deleteReceivedSharedMemo(shared, in: modelContext) },
+                    onComplete: { completeReceivedSharedMemo(shared, in: modelContext) }
+                )
             }
             .animation(.easeInOut(duration: 0.2), value: isListSearching)
+            .confirmationDialog(
+                String(localized: "この依頼を削除しますか？"),
+                isPresented: Binding(
+                    get: { pendingDeleteReceived != nil },
+                    set: { if !$0 { pendingDeleteReceived = nil } }
+                ),
+                titleVisibility: .visible,
+                presenting: pendingDeleteReceived
+            ) { shared in
+                Button(String(localized: "削除"), role: .destructive) {
+                    deleteReceivedSharedMemo(shared, in: modelContext)
+                }
+                Button(String(localized: "キャンセル"), role: .cancel) {}
+            } message: { _ in
+                Text(String(localized: "この端末から削除し、共有から抜けます。依頼した人の側には残ります。"))
+            }
         }
         .onChange(of: intentShowFavorites) { _, newValue in
             if newValue {
@@ -176,6 +201,8 @@ struct ListTabView: View {
                         .font(.body.weight(.bold))
                 }
                 .foregroundColor(Brand.primaryText)
+                .frame(minHeight: 44)
+                .contentShape(Rectangle())
             }
 
             Spacer()
@@ -189,8 +216,10 @@ struct ListTabView: View {
                     .resizable()
                     .frame(width: 20, height: 20)
                     .foregroundColor(isListSearching ? Brand.blue : Brand.primaryText)
-                    .frame(width: 32, height: 32)
+                    .frame(width: 44, height: 44)
+                    .contentShape(Rectangle())
             }
+            .accessibilityLabel(String(localized: "Search"))
 
             // 設定ボタン
             Button(action: { showSettings = true }) {
@@ -198,11 +227,13 @@ struct ListTabView: View {
                     .resizable()
                     .frame(width: 20, height: 20)
                     .foregroundColor(Brand.primaryText)
-                    .frame(width: 32, height: 32)
+                    .frame(width: 44, height: 44)
+                    .contentShape(Rectangle())
             }
+            .accessibilityLabel(String(localized: "Settings"))
         }
         .padding(.horizontal, 16)
-        .padding(.vertical, 12)
+        .padding(.vertical, 8)
         .background(Brand.background)
         .overlay(Rectangle().fill(Brand.border).frame(height: 1), alignment: .bottom)
     }
@@ -257,6 +288,8 @@ struct ListTabView: View {
                         .frame(width: 44, height: 44)
                     }
                     .padding(.trailing, 4)
+                    .accessibilityLabel(String(localized: "Color filter"))
+                    .accessibilityAddTraits(showColorFilter ? .isSelected : [])
                 }
             }
 
@@ -280,7 +313,11 @@ struct ListTabView: View {
                             Circle()
                                 .stroke(selectedColorIndex == nil ? Brand.primaryText : Color.clear, lineWidth: 2)
                         )
+                        .frame(width: 44, height: 44)
+                        .contentShape(Rectangle())
                     }
+                    .accessibilityLabel(String(localized: "All colors"))
+                    .accessibilityAddTraits(selectedColorIndex == nil ? .isSelected : [])
 
                     ForEach(usedColors, id: \.rawValue) { memoColor in
                         Button {
@@ -303,7 +340,11 @@ struct ListTabView: View {
                                         .stroke(Brand.background, lineWidth: selectedColorIndex == memoColor.rawValue ? 3 : 0)
                                         .padding(2)
                                 )
+                                .frame(width: 44, height: 44)
+                                .contentShape(Rectangle())
                         }
+                        .accessibilityLabel(memoColor.accessibilityName)
+                        .accessibilityAddTraits(selectedColorIndex == memoColor.rawValue ? .isSelected : [])
                     }
 
                     Spacer()
@@ -311,7 +352,7 @@ struct ListTabView: View {
                 .padding(.horizontal, 16)
                 .padding(.vertical, 10)
                 .background(Brand.secondaryBackground)
-                .transition(.opacity.combined(with: .move(edge: .top)))
+                .transition(reduceMotion ? .opacity : .opacity.combined(with: .move(edge: .top)))
             }
         }
         .background(Brand.background)
@@ -387,7 +428,7 @@ struct ListTabView: View {
         } ?? true
         return memoList(for: selectedTab)
             .id(selectedTab)
-            .transition(.asymmetric(
+            .transition(reduceMotion ? .opacity : .asymmetric(
                 insertion: .move(edge: isForward ? .trailing : .leading).combined(with: .opacity),
                 removal:   .move(edge: isForward ? .leading  : .trailing).combined(with: .opacity)
             ))
@@ -396,17 +437,17 @@ struct ListTabView: View {
     @ViewBuilder
     private func memoList(for tab: FilterTab) -> some View {
         let tabMemos = memos(for: tab)
-        if tabMemos.isEmpty && doneMemos.isEmpty {
+        if tabMemos.isEmpty && doneMemos.isEmpty && !(tab == .all && !receivedActiveMemos.isEmpty) {
             VStack(spacing: 12) {
                 Spacer()
                 Image(systemName: tab == .favorites ? "heart" : "tray")
                     .font(.system(size: emptyTabIconSize))
-                    .foregroundColor(Brand.primaryText.opacity(0.2))
+                    .foregroundColor(Brand.secondaryText)
                 Text(tab == .favorites
                      ? String(localized: "No favorites yet")
                      : String(localized: "No matching memos"))
                     .font(.body.weight(.medium))
-                    .foregroundColor(Brand.primaryText.opacity(0.4))
+                    .foregroundColor(Brand.secondaryText)
                 Spacer()
             }
         } else {
@@ -418,13 +459,15 @@ struct ListTabView: View {
                             receivedMemoRow(shared)
                                 .contentShape(Rectangle())
                                 .onTapGesture { selectedReceived = shared }
-                                .swipeActions(edge: .trailing, allowsFullSwipe: true) {
-                                    Button(role: .destructive) {
+                                .swipeActions(edge: .trailing, allowsFullSwipe: false) {
+                                    // 確認ダイアログ経由で削除するので destructive role は付けない
+                                    Button {
                                         HapticManager.notification(.warning)
-                                        deleteReceivedSharedMemo(shared, in: modelContext)
+                                        pendingDeleteReceived = shared
                                     } label: {
                                         Label(String(localized: "削除"), systemImage: "trash")
                                     }
+                                    .tint(.red)
                                 }
                                 .accessibilityAddTraits(.isButton)
                                 .listRowInsets(EdgeInsets(top: 12, leading: 20, bottom: 12, trailing: 20))
@@ -454,7 +497,7 @@ struct ListTabView: View {
                     .listRowSeparator(.visible, edges: .bottom)
                     .listRowSeparatorTint(Brand.primaryText.opacity(0.1))
                     .listRowBackground(Brand.background)
-                    .transition(.asymmetric(
+                    .transition(reduceMotion ? .opacity : .asymmetric(
                         insertion: .move(edge: .trailing).combined(with: .opacity),
                         removal:   .move(edge: .leading).combined(with: .opacity)
                     ))
@@ -552,7 +595,7 @@ struct ListTabView: View {
             Group {
                 if shared.status == .fired {
                     Image(systemName: "location.fill")
-                        .foregroundStyle(.orange)
+                        .foregroundStyle(Brand.warning)
                 } else {
                     Image(systemName: "clock")
                         .foregroundStyle(Brand.blue)
@@ -577,36 +620,17 @@ struct ListTabView: View {
             if shared.status == .fired {
                 Button {
                     HapticManager.notification(.success)
-                    completeSharedMemo(shared)
+                    completeReceivedSharedMemo(shared, in: modelContext)
                 } label: {
                     Text(String(localized: "完了"))
                         .font(.footnote.weight(.semibold))
-                        .foregroundStyle(.white)
+                        .foregroundStyle(Brand.onAccent)
                         .padding(.horizontal, 12)
                         .padding(.vertical, 6)
                         .background(Brand.blue)
                         .clipShape(Capsule())
                 }
                 .buttonStyle(.plain)
-            }
-        }
-    }
-
-    private func completeSharedMemo(_ shared: SharedMemo) {
-        let now = Date()
-        shared.status      = .completed
-        shared.completedAt = now
-        LocationManager.shared.stopMonitoring(memoID: shared.geofenceIdentifier)
-        try? modelContext.save()
-        let recordID = shared.cloudKitRecordID
-        let owner = shared.zoneOwnerName
-        Task {
-            do {
-                try await CKShareService.shared.updateStatus(recordID: recordID, status: .completed, date: now)
-            } catch {
-                PendingEventQueue.shared.enqueue(
-                    .completed(ckRecordName: shared.ckRecordName, zoneOwnerName: owner, completedAt: now)
-                )
             }
         }
     }

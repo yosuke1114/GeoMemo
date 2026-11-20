@@ -48,6 +48,14 @@ struct SettingsView: View {
     @AppStorage("mapStyle") private var mapStyleRaw: String = GeoMapStyle.mono.rawValue
 
     @Environment(CloudSyncMonitor.self) private var syncMonitor
+    @ObservedObject private var store = StoreKitManager.shared
+    @State private var showPaywall = false
+    @State private var isRestoring = false
+    @State private var restoreMessage: String?
+    @State private var showRestoreAlert = false
+
+    /// 公開済みのプライバシーポリシー (docs/privacy.html を GitHub Pages で公開したもの)。
+    private static let privacyPolicyURL = URL(string: "https://yosuke1114.github.io/GeoMemo/privacy.html")!
 
     @State private var locationStatus: String = String(localized: "Checking...")
     @State private var notificationStatus: String = String(localized: "Checking...")
@@ -222,7 +230,7 @@ struct SettingsView: View {
                     Text("Use Export to share a snapshot or migrate to a non-iCloud device.")
                 } else {
                     Text("iCloud sync is OFF. Export a backup to transfer data when switching devices.")
-                        .foregroundColor(.orange)
+                        .foregroundColor(Brand.warning)
                 }
             }
 
@@ -252,7 +260,7 @@ struct SettingsView: View {
                         iCloudStatusBadge
                     } else {
                         Text("Disabled")
-                            .foregroundColor(.orange)
+                            .foregroundColor(Brand.warning)
                     }
                 } label: {
                     Text("iCloud Sync")
@@ -272,10 +280,10 @@ struct SettingsView: View {
                 if case .failed(let msg) = syncMonitor.state {
                     HStack(alignment: .top, spacing: 8) {
                         Image(systemName: "exclamationmark.triangle.fill")
-                            .foregroundColor(.orange)
+                            .foregroundColor(Brand.warning)
                         Text(msg)
                             .font(.caption)
-                            .foregroundColor(.orange)
+                            .foregroundColor(Brand.warning)
                     }
                 }
             } header: {
@@ -285,8 +293,60 @@ struct SettingsView: View {
                     Text("Memos sync automatically across all devices signed in to the same Apple ID.")
                 } else {
                     Text("Sign in to iCloud in iOS Settings to enable automatic sync.")
-                        .foregroundColor(.orange)
+                        .foregroundColor(Brand.warning)
                 }
+            }
+
+            // MARK: - GEOMEMO PRO
+            Section {
+                LabeledContent {
+                    Text(store.isPro
+                         ? String(localized: "有効")
+                         : String(localized: "無料プラン"))
+                        .foregroundColor(Brand.secondaryText)
+                } label: {
+                    Text(String(localized: "ステータス"))
+                        .foregroundColor(Brand.primaryText)
+                }
+
+                if !store.isPro {
+                    Button {
+                        showPaywall = true
+                    } label: {
+                        HStack {
+                            Text(String(localized: "Upgrade to Pro"))
+                                .foregroundColor(Brand.blue)
+                            Spacer()
+                            Image("ph-caret-right-bold")
+                                .resizable()
+                                .frame(width: 12, height: 12)
+                                .foregroundColor(Brand.secondaryText)
+                                .accessibilityHidden(true)
+                        }
+                    }
+                }
+
+                Button {
+                    isRestoring = true
+                    Task {
+                        await store.restore()
+                        isRestoring = false
+                        if store.purchaseError != nil {
+                            restoreMessage = String(localized: "復元できませんでした。通信状況を確認して、もう一度お試しください。")
+                        } else if store.isPro {
+                            restoreMessage = String(localized: "購入情報を復元しました。")
+                        } else {
+                            restoreMessage = String(localized: "復元できる購入が見つかりませんでした。")
+                        }
+                        showRestoreAlert = true
+                    }
+                } label: {
+                    Text(String(localized: "Restore Purchase"))
+                        .foregroundColor(Brand.primaryText)
+                }
+                .disabled(isRestoring || store.purchaseInProgress)
+            } header: {
+                Text("GEOMEMO PRO")
             }
 
             // MARK: - ABOUT
@@ -305,6 +365,18 @@ struct SettingsView: View {
                     Text("Licenses")
                         .foregroundColor(Brand.primaryText)
                 }
+
+                Link(destination: Self.privacyPolicyURL) {
+                    HStack {
+                        Text(String(localized: "プライバシーポリシー"))
+                            .foregroundColor(Brand.primaryText)
+                        Spacer()
+                        Image(systemName: "arrow.up.right.square")
+                            .font(.footnote)
+                            .foregroundColor(Brand.secondaryText)
+                            .accessibilityHidden(true)
+                    }
+                }
             } header: {
                 Text("ABOUT")
             }
@@ -312,6 +384,9 @@ struct SettingsView: View {
         .listStyle(.insetGrouped)
         .scrollContentBackground(.hidden)
         .background(Brand.tertiaryBackground)
+        .sheet(isPresented: $showPaywall) {
+            PaywallView()
+        }
         .navigationTitle("SETTINGS")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
@@ -369,6 +444,11 @@ struct SettingsView: View {
         } message: {
             Text(importAlertMessage ?? "")
         }
+        .alert("Restore Purchase", isPresented: $showRestoreAlert) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text(restoreMessage ?? "")
+        }
         .alert("Export failed", isPresented: $showExportError) {
             Button("OK", role: .cancel) {}
         } message: {
@@ -412,7 +492,7 @@ struct SettingsView: View {
             }
         case .failed:
             Label("Sync error", systemImage: "exclamationmark.icloud")
-                .foregroundColor(.orange)
+                .foregroundColor(Brand.warning)
                 .font(.caption)
         case .idle:
             Label("Enabled", systemImage: "checkmark.icloud.fill")

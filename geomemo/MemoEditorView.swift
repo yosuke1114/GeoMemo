@@ -222,7 +222,10 @@ struct MemoEditorView: View {
                                 .resizable()
                                 .frame(width: 20, height: 20)
                                 .foregroundColor(Brand.primaryText)
+                                .frame(width: 44, height: 44)
+                                .contentShape(Rectangle())
                         }
+                        .accessibilityLabel(String(localized: "Back"))
 
                         Text(mode.navigationTitle)
                             .font(.body.weight(.bold))

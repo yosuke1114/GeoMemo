@@ -10,6 +10,7 @@ import os
 
 // MARK: - Main Content View
 struct ContentView: View {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Query(sort: \GeoMemo.createdAt, order: .reverse) private var memos: [GeoMemo]
     @Query(sort: \SharedMemo.createdAt, order: .reverse) private var allSharedMemos: [SharedMemo]
     @Query(sort: \UserProfile.createdAt) private var profiles: [UserProfile]
@@ -70,7 +71,7 @@ struct ContentView: View {
                         Rectangle().fill(Brand.border).frame(width: 1).ignoresSafeArea()
                     }
                 }
-                .transition(.move(edge: .trailing))
+                .transition(reduceMotion ? .opacity : .move(edge: .trailing))
                 .zIndex(1)
             }
         }
@@ -374,6 +375,29 @@ func deleteReceivedSharedMemo(_ shared: SharedMemo, in context: ModelContext) {
             ToastCenter.shared.show(.error(
                 String(localized: "共有の解除に失敗しました。通信状況を確認してください。")
             ))
+        }
+    }
+}
+
+/// 受信した依頼を完了にする (リスト行・詳細画面で共通)。
+/// 位置監視を止め、依頼者へ完了を送る。送れなければ未送信キューに積む。
+@MainActor
+func completeReceivedSharedMemo(_ shared: SharedMemo, in context: ModelContext) {
+    let now = Date()
+    shared.status      = .completed
+    shared.completedAt = now
+    LocationManager.shared.stopMonitoring(memoID: shared.geofenceIdentifier)
+    try? context.save()
+    let recordID = shared.cloudKitRecordID
+    let owner = shared.zoneOwnerName
+    let recordName = shared.ckRecordName
+    Task {
+        do {
+            try await CKShareService.shared.updateStatus(recordID: recordID, status: .completed, date: now)
+        } catch {
+            PendingEventQueue.shared.enqueue(
+                .completed(ckRecordName: recordName, zoneOwnerName: owner, completedAt: now)
+            )
         }
     }
 }

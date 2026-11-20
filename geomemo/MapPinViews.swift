@@ -48,7 +48,7 @@ struct ClusterPinView: View {
                 .frame(width: 32, height: 32)
             Text("\(count)")
                 .font(.footnote.weight(.bold))
-                .foregroundColor(.white)
+                .foregroundColor(Brand.onAccent)
         }
         .overlay(
             Circle()
@@ -167,7 +167,7 @@ struct ClusterListSheet: View {
                                         .foregroundColor(memo.isUntitled ? Brand.tertiaryText : Brand.primaryText)
                                         .italic(memo.isUntitled)
                                         .lineLimit(1)
-                                    Text(memo.locationName.isEmpty ? "Unknown Location" : memo.locationName)
+                                    Text(memo.locationName.isEmpty ? String(localized: "Unknown Location") : memo.locationName)
                                         .font(.caption)
                                         .foregroundColor(Brand.secondaryText)
                                         .lineLimit(1)

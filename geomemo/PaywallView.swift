@@ -67,6 +67,16 @@ struct PaywallView: View {
                             title: String(localized: "Pass-Through (Dynamic Island)"),
                             subtitle: String(localized: "See distance in Dynamic Island when nearby")
                         )
+                        Divider()
+                            .background(Brand.primaryText.opacity(0.08))
+                            .padding(.horizontal, 20)
+
+                        featureRow(
+                            icon: "ph-map-pin-fill",
+                            systemImage: "person.wave.2",
+                            title: String(localized: "依頼と見守り"),
+                            subtitle: String(localized: "メモを友達に送り、相手が場所に着くと通知が届きます")
+                        )
                     }
                     .background(Brand.surface)
                     .clipShape(RoundedRectangle(cornerRadius: 12))
@@ -123,7 +133,7 @@ struct PaywallView: View {
                             } else {
                                 Text(String(localized: "Upgrade to Pro"))
                                     .font(.body.weight(.bold))
-                                    .foregroundStyle(.white)
+                                    .foregroundStyle(Brand.onAccent)
                             }
                         }
                         .frame(maxWidth: .infinity)
@@ -175,13 +185,21 @@ struct PaywallView: View {
         }
     }
 
-    private func featureRow(icon: String, title: String, subtitle: String) -> some View {
+    private func featureRow(icon: String, systemImage: String? = nil, title: String, subtitle: String) -> some View {
         HStack(alignment: .top, spacing: 14) {
-            Image(icon)
-                .resizable()
-                .frame(width: 22, height: 22)
-                .foregroundStyle(Brand.blue)
-                .padding(.top, 1)
+            Group {
+                if let systemImage {
+                    Image(systemName: systemImage)
+                        .font(.system(size: 18))
+                } else {
+                    Image(icon)
+                        .resizable()
+                }
+            }
+            .frame(width: 22, height: 22)
+            .foregroundStyle(Brand.blue)
+            .padding(.top, 1)
+            .accessibilityHidden(true)
 
             VStack(alignment: .leading, spacing: 3) {
                 Text(title)

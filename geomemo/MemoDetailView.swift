@@ -445,11 +445,14 @@ struct MemoDetailView: View {
                         .resizable()
                         .frame(width: 18, height: 18)
                         .foregroundColor(Brand.primaryText)
+                        .frame(width: 44, height: 44)
+                        .contentShape(Rectangle())
                 }
+                .accessibilityLabel(String(localized: "Back"))
             }
             
             ToolbarItem(placement: .navigationBarTrailing) {
-                HStack(spacing: 16) {
+                HStack(spacing: 0) {
                     Button(action: {
                         HapticManager.impact(.light)
                         withAnimation(.spring(response: 0.3, dampingFraction: 0.5)) {
@@ -462,6 +465,8 @@ struct MemoDetailView: View {
                             .font(.body)
                             .foregroundColor(memo.isFavorite ? Color(hex: "E5484D") : Brand.primaryText)
                             .scaleEffect(memo.isFavorite ? 1.15 : 1.0)
+                            .frame(minWidth: 44, minHeight: 44)
+                            .contentShape(Rectangle())
                     }
                     .accessibilityLabel(memo.isFavorite ? "Remove from favorites" : "Add to favorites")
 
@@ -469,6 +474,8 @@ struct MemoDetailView: View {
                         Image(systemName: "square.and.arrow.up")
                             .font(.body)
                             .foregroundColor(Brand.primaryText)
+                            .frame(minWidth: 44, minHeight: 44)
+                            .contentShape(Rectangle())
                     }
                     .accessibilityLabel("Share memo")
 
@@ -480,12 +487,18 @@ struct MemoDetailView: View {
                         Image(systemName: store.isPro ? "person.wave.2" : "person.wave.2")
                             .font(.body)
                             .foregroundColor(store.isPro ? Brand.primaryText : Brand.secondaryText.opacity(0.5))
+                            .frame(minWidth: 44, minHeight: 44)
+                            .contentShape(Rectangle())
                     }
+                    .accessibilityLabel(String(localized: "依頼する"))
 
                     Button(action: { activeSheet = .edit }) {
                         Text("EDIT")
                             .font(.body.weight(.semibold))
                             .foregroundColor(Brand.blue)
+                            .padding(.leading, 8)
+                            .frame(minHeight: 44)
+                            .contentShape(Rectangle())
                     }
                 }
             }

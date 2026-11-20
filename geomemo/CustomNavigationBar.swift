@@ -52,8 +52,10 @@ struct CustomNavigationBar: View {
                 Image(systemName: "eye")
                     .font(.body.weight(.medium))
                     .foregroundColor(Brand.primaryText)
-                    .frame(width: 32, height: 32)
+                    .frame(width: 44, height: 44)
+                    .contentShape(Rectangle())
             }
+            .accessibilityLabel(String(localized: "見守り"))
 
             // Search Button
             Button(action: { withAnimation(.easeInOut(duration: 0.25)) { isSearching.toggle() } }) {
@@ -61,20 +63,24 @@ struct CustomNavigationBar: View {
                     .resizable()
                     .frame(width: 20, height: 20)
                     .foregroundColor(Brand.primaryText)
-                    .frame(width: 32, height: 32)
+                    .frame(width: 44, height: 44)
+                    .contentShape(Rectangle())
             }
-            
+            .accessibilityLabel(String(localized: "Search"))
+
             // Settings Button
             Button(action: { showSettings = true }) {
                 Image("ph-gear-six-bold")
                     .resizable()
                     .frame(width: 20, height: 20)
                     .foregroundColor(Brand.primaryText)
-                    .frame(width: 32, height: 32)
+                    .frame(width: 44, height: 44)
+                    .contentShape(Rectangle())
             }
+            .accessibilityLabel(String(localized: "Settings"))
         }
         .padding(.horizontal, 16)
-        .padding(.vertical, 12)
+        .padding(.vertical, 8)
         .background(Brand.background)
         .overlay(
             Rectangle()

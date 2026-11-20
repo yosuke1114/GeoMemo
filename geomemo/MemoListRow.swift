@@ -50,7 +50,7 @@ struct MemoListRow: View {
                     }
                     Text(memo.displayTitle)
                         .font(.body.weight(memo.isUntitled ? .regular : .bold))
-                        .foregroundColor(memo.isUntitled ? Brand.tertiaryText : (memo.isDone ? Brand.primaryText.opacity(0.4) : Brand.primaryText))
+                        .foregroundColor(memo.isUntitled ? Brand.tertiaryText : (memo.isDone ? Brand.secondaryText : Brand.primaryText))
                         .italic(memo.isUntitled)
                         .strikethrough(memo.isDone, color: Brand.primaryText.opacity(0.4))
                         .lineLimit(1)

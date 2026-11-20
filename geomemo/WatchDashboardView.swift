@@ -27,6 +27,9 @@ struct WatchDashboardView: View {
     @State private var isSyncing = false
     @State private var pendingCount = 0
     @State private var editing: SharedMemo?
+    /// 取り消しの確認待ちの依頼
+    @State private var pendingCancel: SharedMemo?
+    @State private var pendingDeleteUnsent: SharedMemo?
     /// 送れたか分からず「未送信」として残している依頼（`UnsentShareStore`）
     @State private var unsentRecordNames: Set<String> = []
 
@@ -51,6 +54,38 @@ struct WatchDashboardView: View {
             .background(Brand.background)
             .sheet(item: $editing) { shared in
                 EditSharedMemoSheet(shared: shared)
+            }
+            .confirmationDialog(
+                String(localized: "この依頼を取り消しますか？"),
+                isPresented: Binding(
+                    get: { pendingCancel != nil },
+                    set: { if !$0 { pendingCancel = nil } }
+                ),
+                titleVisibility: .visible,
+                presenting: pendingCancel
+            ) { shared in
+                Button(String(localized: "依頼を取り消す"), role: .destructive) {
+                    Task { await cancelSharedMemo(shared) }
+                }
+                Button(String(localized: "戻る"), role: .cancel) {}
+            } message: { _ in
+                Text(String(localized: "取り消した依頼は、見守りの一覧から消えます。"))
+            }
+            .confirmationDialog(
+                String(localized: "この依頼を削除しますか？"),
+                isPresented: Binding(
+                    get: { pendingDeleteUnsent != nil },
+                    set: { if !$0 { pendingDeleteUnsent = nil } }
+                ),
+                titleVisibility: .visible,
+                presenting: pendingDeleteUnsent
+            ) { shared in
+                Button(String(localized: "削除"), role: .destructive) {
+                    Task { await deleteUnsent(shared) }
+                }
+                Button(String(localized: "戻る"), role: .cancel) {}
+            } message: { _ in
+                Text(String(localized: "相手に届いていない依頼を、サーバーから削除します。"))
             }
             .navigationTitle(String(localized: "見守り"))
             .navigationBarTitleDisplayMode(.inline)
@@ -87,7 +122,7 @@ struct WatchDashboardView: View {
     private var pendingBanner: some View {
         HStack(spacing: 10) {
             Image(systemName: "arrow.triangle.2.circlepath")
-                .foregroundStyle(.orange)
+                .foregroundStyle(Brand.warning)
                 .font(.footnote.weight(.semibold))
                 .accessibilityHidden(true)
             Text(String(localized: "未送信の更新が \(pendingCount) 件あります。通信が戻り次第再送します。"))
@@ -107,7 +142,7 @@ struct WatchDashboardView: View {
         VStack(spacing: 16) {
             Image(systemName: "eye.slash")
                 .font(.system(size: emptyStateIconSize))
-                .foregroundStyle(Brand.secondaryText.opacity(0.4))
+                .foregroundStyle(Brand.secondaryText)
                 .accessibilityHidden(true)
             Text(String(localized: "依頼中のメモはありません"))
                 .font(.body.weight(.semibold))
@@ -188,7 +223,7 @@ struct WatchDashboardView: View {
                 if isUnsent(shared) {
                     Text(String(localized: "未送信・送れたか確認できませんでした"))
                         .font(.caption.weight(.semibold))
-                        .foregroundStyle(.orange)
+                        .foregroundStyle(Brand.warning)
                 } else {
                     statusSubtitle(for: shared)
                         .font(.caption)
@@ -220,15 +255,15 @@ struct WatchDashboardView: View {
                 if isUnsent(shared) {
                     // 送れたか分からない依頼。相手に届いていなければサーバから消す
                     Button(role: .destructive) {
-                        Task { await deleteUnsent(shared) }
+                        pendingDeleteUnsent = shared
                     } label: {
                         Label(String(localized: "削除"), systemImage: "trash")
                     }
                 } else {
                     Button(role: .destructive) {
-                        Task { await cancelSharedMemo(shared) }
+                        pendingCancel = shared
                     } label: {
-                        Label(String(localized: "キャンセル"), systemImage: "xmark")
+                        Label(String(localized: "依頼を取り消す"), systemImage: "xmark")
                     }
                 }
             }
@@ -245,7 +280,7 @@ struct WatchDashboardView: View {
             : shared.memoTitle
         let statusText: String = {
             switch shared.status {
-            case .active:    return String(localized: "監視中")
+            case .active:    return String(localized: "到着待ち")
             case .fired:     return String(localized: "到着済み")
             case .completed: return String(localized: "完了")
             case .cancelled: return String(localized: "キャンセル済み")
@@ -265,7 +300,7 @@ struct WatchDashboardView: View {
                 .foregroundStyle(Brand.blue)
         case .fired:
             Image(systemName: "location.fill")
-                .foregroundStyle(.orange)
+                .foregroundStyle(Brand.warning)
         case .completed:
             Image(systemName: "checkmark.circle.fill")
                 .foregroundStyle(.green)
@@ -277,7 +312,7 @@ struct WatchDashboardView: View {
 
     private func statusTitleColor(for status: ShareStatus) -> Color {
         switch status {
-        case .completed: return Brand.primaryText.opacity(0.5)
+        case .completed: return Brand.secondaryText
         case .cancelled: return Brand.secondaryText
         default: return Brand.primaryText
         }
@@ -288,19 +323,19 @@ struct WatchDashboardView: View {
         switch shared.status {
         case .active:
             if let deadline = shared.memoDeadline {
-                Text("〜\(deadline, format: .dateTime.hour().minute())")
+                Text("〜\(dayAndTimeText(deadline))")
             } else {
-                Text(String(localized: "監視中"))
+                Text(String(localized: "到着待ち"))
             }
         case .fired:
             if let firedAt = shared.firedAt {
-                Text("\(String(localized: "到着")) \(firedAt, format: .dateTime.hour().minute())")
+                Text("\(String(localized: "到着")) \(dayAndTimeText(firedAt))")
             } else {
                 Text(String(localized: "到着済み・完了待ち"))
             }
         case .completed:
             if let completedAt = shared.completedAt {
-                Text("\(String(localized: "完了")) \(completedAt, format: .dateTime.hour().minute())")
+                Text("\(String(localized: "完了")) \(dayAndTimeText(completedAt))")
             } else {
                 Text(String(localized: "完了"))
             }

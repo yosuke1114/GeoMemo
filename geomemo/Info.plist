@@ -20,9 +20,9 @@
 	<key>NSAppTransportSecurity</key>
 	<dict/>
 	<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
-	<string>GeoMemo uses your location in the background to notify you when you enter or exit a saved memo area, even when the app is closed.</string>
+	<string>GeoMemo uses your location in the background to notify you when you arrive at or leave a saved memo area, even when the app is closed. For requests shared with you, it also lets the person who sent the request know that you arrived.</string>
 	<key>NSLocationWhenInUseUsageDescription</key>
-	<string>GeoMemo uses your location to notify you when you approach a saved memo area.</string>
+	<string>GeoMemo uses your location to show where you are on the map and to notify you when you approach a saved memo area.</string>
 	<key>NSSupportsLiveActivities</key>
 	<true/>
 	<key>UIBackgroundModes</key>

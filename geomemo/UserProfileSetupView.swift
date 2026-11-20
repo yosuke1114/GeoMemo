@@ -82,7 +82,7 @@ struct UserProfileSetupView: View {
                         } else {
                             Text(String(localized: "設定する"))
                                 .font(.body.weight(.semibold))
-                                .foregroundStyle(.white)
+                                .foregroundStyle(Brand.onAccent)
                         }
                     }
                     .frame(maxWidth: .infinity)
