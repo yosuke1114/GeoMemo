@@ -4,6 +4,86 @@
     "" : {
 
     },
+    "Add ${title} at ${place}" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "${place}に${title}を追加"
+          }
+        }
+      }
+    },
+    "Add Memo at Favorite Place" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "お気に入りの場所にメモを追加"
+          }
+        }
+      }
+    },
+    "Add Memo at Place" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "場所を指定して追加"
+          }
+        }
+      }
+    },
+    "Could not add the memo. Check the title and the place." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "メモを追加できませんでした。題と場所を確認してください。"
+          }
+        }
+      }
+    },
+    "Creates a new memo at one of your saved favorite places in GeoMemo" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "GeoMemo に保存したお気に入りの場所のひとつに、新しいメモを追加します"
+          }
+        }
+      }
+    },
+    "Favorite Place" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "お気に入りの場所"
+          }
+        }
+      }
+    },
+    "Memo \"%@\" added at %@" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "「%1$@」を「%2$@」に追加しました"
+          }
+        }
+      }
+    },
+    "That favorite place no longer exists." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "そのお気に入りの場所は見つかりませんでした。"
+          }
+        }
+      }
+    },
     "〜" : {
 
     },
