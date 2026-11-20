@@ -185,7 +185,7 @@ struct FriendTombstoneStore {
     }
 
     static var shared: FriendTombstoneStore {
-        FriendTombstoneStore(defaults: UserDefaults(suiteName: GeoMemoStore.appGroupID))
+        FriendTombstoneStore(defaults: UserDefaults(suiteName: GeoMemoStoreConfig.appGroupID))
     }
 
     private func load() -> [String: Date] {
@@ -281,7 +281,7 @@ struct VerifiedFriendStore {
     }
 
     static var shared: VerifiedFriendStore {
-        VerifiedFriendStore(defaults: UserDefaults(suiteName: GeoMemoStore.appGroupID))
+        VerifiedFriendStore(defaults: UserDefaults(suiteName: GeoMemoStoreConfig.appGroupID))
     }
 
     var all: Set<String> {
@@ -389,7 +389,7 @@ struct UnsentShareStore {
     }
 
     static var shared: UnsentShareStore {
-        UnsentShareStore(defaults: UserDefaults(suiteName: GeoMemoStore.appGroupID))
+        UnsentShareStore(defaults: UserDefaults(suiteName: GeoMemoStoreConfig.appGroupID))
     }
 
     var entries: [UnsentShareEntry] {
@@ -503,24 +503,6 @@ nonisolated enum SharedMemoNoteEditPolicy {
         }
     }
 }
-
-// MARK: - 依頼者への通知の購読
-
-nonisolated enum RequesterSubscriptionPolicy {
-    /// 通知文に受信者名（相手が書けるフィールド）を差し込んでいた旧版の購読か。
-    nonisolated static func isLegacy(_ subscriptionID: String?) -> Bool {
-        guard let subscriptionID else { return false }
-        return CKShareService.legacySubscriptionIDs.contains(subscriptionID)
-    }
-
-    /// `modifySubscriptions` の項目ごとの失敗を、失敗として扱うか。
-    /// 削除しようとした購読が既に無い（別の端末が先に消した等）のは成功とみなす。
-    nonisolated static func isFailure(_ error: any Error, deleting: Bool) -> Bool {
-        if deleting, let ckError = error as? CKError, ckError.code == .unknownItem { return false }
-        return true
-    }
-}
-
 
 // MARK: - 受信した依頼の取り込み（受信者側）
 

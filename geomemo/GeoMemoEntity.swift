@@ -7,39 +7,20 @@ import CoreSpotlight
 
 /// Standalone SwiftData container for use outside SwiftUI (App Intents, Spotlight).
 enum GeoMemoStore {
-    nonisolated static let appGroupID          = "group.com.yokuro.geomemo"
-    nonisolated static let cloudKitContainerID = "iCloud.com.yokuro.geomemo"
+    nonisolated static let appGroupID          = GeoMemoStoreConfig.appGroupID
+    nonisolated static let cloudKitContainerID = GeoMemoStoreConfig.cloudKitContainerID
 
-    /// アプリ本体と Spotlight/App Intents で同じスキーマを共有する。
-    /// ここを App 側 (geomemoApp.sharedModelContainer) と揃えないと、
-    /// 同じ App Group の `geomemo.store` を別構成で開いてしまい migration が失敗する。
+    /// アプリ本体・Spotlight/App Intents・Watch で同じスキーマを共有する（定義は GeoMemoStoreConfig）。
+    /// 食い違うと同じ App Group の `geomemo.store` を別構成で開いてしまい migration が失敗する。
     nonisolated static func makeSchema() -> Schema {
-        Schema([
-            GeoMemo.self,
-            FavoritePlace.self,
-            UserProfile.self,
-            FriendConnection.self,
-            SharedMemo.self
-        ])
+        GeoMemoStoreConfig.makeSchema()
     }
 
     nonisolated static func makeContainer() throws -> ModelContainer {
         let schema = makeSchema()
-        guard let url = FileManager.default
-            .containerURL(forSecurityApplicationGroupIdentifier: appGroupID)?
-            .appendingPathComponent("geomemo.store") else {
+        guard let config = GeoMemoStoreConfig.makeConfiguration(schema: schema) else {
             throw StoreError.appGroupUnavailable
         }
-        #if targetEnvironment(simulator)
-        let config = ModelConfiguration(schema: schema, url: url, cloudKitDatabase: .none)
-        #else
-        let useCloudKit = FileManager.default.ubiquityIdentityToken != nil
-        let config = ModelConfiguration(
-            schema: schema,
-            url: url,
-            cloudKitDatabase: useCloudKit ? .private(cloudKitContainerID) : .none
-        )
-        #endif
         return try ModelContainer(
             for: schema,
             migrationPlan: GeoMemoMigrationPlan.self,

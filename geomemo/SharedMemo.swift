@@ -113,7 +113,7 @@ enum ShareStatus: String, Codable {
 
     /// CloudKit 操作で使う完全な CKRecord.ID（zone owner も含む）
     var cloudKitRecordID: CKRecord.ID {
-        let zoneID = CKRecordZone.ID(zoneName: CKShareService.sharingZoneName, ownerName: zoneOwnerName)
+        let zoneID = CKRecordZone.ID(zoneName: SharingZoneConfig.zoneName, ownerName: zoneOwnerName)
         return CKRecord.ID(recordName: ckRecordName, zoneID: zoneID)
     }
 

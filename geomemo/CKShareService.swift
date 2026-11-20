@@ -26,7 +26,7 @@ final class CKShareService {
     var privateDB: CKDatabase { container.privateCloudDatabase }
     var sharedDB:  CKDatabase { container.sharedCloudDatabase  }
 
-    nonisolated static let sharingZoneName = "geomemoSharingZone"
+    nonisolated static let sharingZoneName = SharingZoneConfig.zoneName
     nonisolated static let recordType      = "SharedMemo"  // 旧 SharedMemoRecord と区別
 
     /// 共有まわりのログ。ゾーン ID（＝相手の userRecordID）や座標などは `.private` で出す。
@@ -553,99 +553,19 @@ final class CKShareService {
     }
 }
 
-// MARK: - SharedMemoCKData
-// 新しい CKShare 経由の SharedMemo データ（encryptedValues 対応版）
+// MARK: - 依頼者への通知の購読
 
-struct SharedMemoCKData: Sendable {
-    let ckRecordID: CKRecord.ID
-    let memoTitle: String
-    let memoNote: String
-    let memoLocationName: String
-    let memoLatitude: Double
-    let memoLongitude: Double
-    let memoRadius: Double
-    let memoDeadline: Date?
-    let memoTimeWindowStart: Int?
-    let memoTimeWindowEnd: Int?
-    let requesterName: String
-    let recipientRecordID: String
-    let recipientName: String
-    let autoComplete: Bool
-    let status: ShareStatus
-    let firedAt: Date?
-    let completedAt: Date?
-    let createdAt: Date
-    let isMyRequest: Bool
-    /// ルートレコードに付いている共有 (CKShare) のレコード ID。依頼者側で参加者を調べるのに使う。
-    let shareRecordID: CKRecord.ID?
-
-    init(
-        ckRecordID: CKRecord.ID, memoTitle: String, memoLocationName: String,
-        memoLatitude: Double, memoLongitude: Double, memoRadius: Double,
-        memoDeadline: Date?, memoTimeWindowStart: Int?, memoTimeWindowEnd: Int?,
-        requesterName: String, recipientRecordID: String, recipientName: String,
-        autoComplete: Bool, status: ShareStatus,
-        firedAt: Date?, completedAt: Date?, createdAt: Date, isMyRequest: Bool,
-        memoNote: String = "",
-        shareRecordID: CKRecord.ID? = nil
-    ) {
-        self.ckRecordID = ckRecordID
-        self.memoTitle = memoTitle
-        self.memoNote = memoNote
-        self.memoLocationName = memoLocationName
-        self.memoLatitude = memoLatitude
-        self.memoLongitude = memoLongitude
-        self.memoRadius = memoRadius
-        self.memoDeadline = memoDeadline
-        self.memoTimeWindowStart = memoTimeWindowStart
-        self.memoTimeWindowEnd = memoTimeWindowEnd
-        self.requesterName = requesterName
-        self.recipientRecordID = recipientRecordID
-        self.recipientName = recipientName
-        self.autoComplete = autoComplete
-        self.status = status
-        self.firedAt = firedAt
-        self.completedAt = completedAt
-        self.createdAt = createdAt
-        self.isMyRequest = isMyRequest
-        self.shareRecordID = shareRecordID
+nonisolated enum RequesterSubscriptionPolicy {
+    /// 通知文に受信者名（相手が書けるフィールド）を差し込んでいた旧版の購読か。
+    nonisolated static func isLegacy(_ subscriptionID: String?) -> Bool {
+        guard let subscriptionID else { return false }
+        return CKShareService.legacySubscriptionIDs.contains(subscriptionID)
     }
 
-    init?(from record: CKRecord, isMyRequest: Bool) {
-        guard
-            let title       = record.encryptedValues["memoTitle"]        as? String,
-            let locName     = record.encryptedValues["memoLocationName"] as? String,
-            let lat         = record.encryptedValues["memoLatitude"]     as? Double,
-            let lon         = record.encryptedValues["memoLongitude"]    as? Double,
-            let radius      = record["memoRadius"]    as? Double,
-            let requesterN  = record["requesterName"] as? String,
-            let recipientID = record["recipientRecordID"] as? String,
-            let recipientN  = record["recipientName"]    as? String,
-            let autoInt     = record["autoComplete"]  as? Int,
-            let statusStr   = record["status"]        as? String,
-            let createdAt   = record["createdAt"]     as? Date
-        else { return nil }
-
-        self.ckRecordID          = record.recordID
-        self.memoTitle           = title
-        // 本文は後から追加した項目。古い依頼レコードには無いので空文字にする。
-        self.memoNote            = record.encryptedValues["memoNote"] as? String ?? ""
-        self.memoLocationName    = locName
-        self.memoLatitude        = lat
-        self.memoLongitude       = lon
-        self.memoRadius          = radius
-        self.memoDeadline        = record["memoDeadline"]        as? Date
-        self.memoTimeWindowStart = record["memoTimeWindowStart"] as? Int
-        self.memoTimeWindowEnd   = record["memoTimeWindowEnd"]   as? Int
-        self.requesterName       = requesterN
-        self.recipientRecordID   = recipientID
-        self.recipientName       = recipientN
-        self.autoComplete        = autoInt == 1
-        self.status              = ShareStatus(rawValue: statusStr) ?? .active
-        self.firedAt             = record["firedAt"]     as? Date
-        self.completedAt         = record["completedAt"] as? Date
-        self.createdAt           = createdAt
-        self.isMyRequest         = isMyRequest
-        self.shareRecordID       = record.share?.recordID
+    /// `modifySubscriptions` の項目ごとの失敗を、失敗として扱うか。
+    /// 削除しようとした購読が既に無い（別の端末が先に消した等）のは成功とみなす。
+    nonisolated static func isFailure(_ error: any Error, deleting: Bool) -> Bool {
+        if deleting, let ckError = error as? CKError, ckError.code == .unknownItem { return false }
+        return true
     }
 }

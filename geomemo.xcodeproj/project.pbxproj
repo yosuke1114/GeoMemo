@@ -132,7 +132,15 @@
 		40DF010C2F8080F600F92924 /* Exceptions for "geomemo" folder in "geomemoWatch Watch App" target */ = {
 			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
 			membershipExceptions = (
+				FavoritePlace.swift,
+				FriendConnection.swift,
 				GeoMemo.swift,
+				GeoMemoMigrationPlan.swift,
+				GeoMemoStoreConfig.swift,
+				SharedMemo.swift,
+				SharedMemoCKData.swift,
+				SharingPolicy.swift,
+				UserProfile.swift,
 			);
 			target = 40DF00DF2F80805000F92924 /* geomemoWatch Watch App */;
 		};
