@@ -14,6 +14,11 @@ struct MapTabView: View {
     @AppStorage("mapStyle") private var mapStyleRaw: String = GeoMapStyle.mono.rawValue
 
     @ObservedObject private var locationManager = LocationManager.shared
+    @ObservedObject private var notificationManager = NotificationManager.shared
+    @Environment(\.scenePhase) private var scenePhase
+    /// 閉じた案内の識別子と時刻。同じ案内は 1 週間出さない。
+    @AppStorage("mapGuidanceDismissedKey") private var guidanceDismissedKey = ""
+    @AppStorage("mapGuidanceDismissedAt") private var guidanceDismissedAt: Double = 0
     @Binding var isSearching: Bool
     @Binding var deepLinkMemoID: UUID?
     @Binding var showList: Bool
@@ -60,13 +65,27 @@ struct MapTabView: View {
             mapView
             locationButton
             addMemoButton
-            
+
+            if !isSearching, let guidance = currentGuidance {
+                MapGuidanceBanner(
+                    guidance: guidance,
+                    onAction: { performGuidanceAction(guidance) },
+                    onDismiss: { dismissGuidance(guidance) }
+                )
+                .transition(.move(edge: .top).combined(with: .opacity))
+            }
+
             if isSearching {
                 searchOverlay
                     .transition(.move(edge: .top).combined(with: .opacity))
             }
         }
         .animation(.easeInOut(duration: 0.25), value: isSearching)
+        .animation(.easeInOut(duration: 0.25), value: currentGuidance)
+        // 設定アプリから戻った直後に、通知の許可状態を読み直す。
+        .onChange(of: scenePhase) { _, phase in
+            if phase == .active { notificationManager.checkAuthorizationStatus() }
+        }
         .sheet(item: $mapSelectedReceived) { shared in
             ReceivedSharedMemoDetailView(
                 shared: shared,
@@ -86,6 +105,7 @@ struct MapTabView: View {
             }
         }
         .onAppear {
+            notificationManager.checkAuthorizationStatus()
             locationManager.refreshLocation()
             locationManager.startHeading()
             if let userLocation = locationManager.location?.coordinate {
@@ -199,22 +219,21 @@ struct MapTabView: View {
             Map(position: $cameraPosition, interactionModes: .all) {
                 UserAnnotation {
                     ZStack {
-                        // TimelineView で描画レート（60/120fps）に同期し、
-                        // EMA の滑らかな値をフレームごとに読み取って補間効果を得る
-                        TimelineView(.animation) { _ in
-                            if locationManager.smoothedHeadingDegrees >= 0 {
-                                HeadingCone()
-                                    .fill(
-                                        LinearGradient(
-                                            colors: [Brand.blue.opacity(0.5), Brand.blue.opacity(0.0)],
-                                            startPoint: UnitPoint(x: 0.5, y: 0.5),
-                                            endPoint: .top
-                                        )
+                        // 方位は EMA で平滑化済みの値が @Published で届くので、その変化で再描画する。
+                        // （TimelineView のクロージャ内で MainActor 隔離の値を読むと、SwiftUI の
+                        //  AsyncRenderer スレッドで隔離チェックに失敗して落ちるため、読まない。）
+                        if locationManager.smoothedHeadingDegrees >= 0 {
+                            HeadingCone()
+                                .fill(
+                                    LinearGradient(
+                                        colors: [Brand.blue.opacity(0.5), Brand.blue.opacity(0.0)],
+                                        startPoint: UnitPoint(x: 0.5, y: 0.5),
+                                        endPoint: .top
                                     )
-                                    .frame(width: 36, height: 56)
-                                    .padding(.bottom, 56)
-                                    .rotationEffect(.degrees(locationManager.smoothedHeadingDegrees))
-                            }
+                                )
+                                .frame(width: 36, height: 56)
+                                .padding(.bottom, 56)
+                                .rotationEffect(.degrees(locationManager.smoothedHeadingDegrees))
                         }
                         Circle()
                             .stroke(Brand.blue.opacity(0.5), lineWidth: 2.5)
@@ -592,6 +611,49 @@ struct MapTabView: View {
     }
 
     /// Re-register geofences for all memos on app launch
+    // MARK: - Permission / limit guidance
+
+    /// 監視したいジオフェンスの数（ルートは経由地ごとに 1 件、受信した有効な依頼も 1 件）。
+    private var requiredRegionCount: Int {
+        let own = memos.filter { !$0.isDone }.reduce(0) { $0 + ($1.isRouteTrigger ? $1.routeWaypoints.count : 1) }
+        let received = mapSharedMemos.filter { !$0.isMyRequest && $0.status == .active }.count
+        return own + received
+    }
+
+    private var currentGuidance: MapGuidance? {
+        MapGuidance.resolve(
+            permissions: PermissionSnapshot(
+                location: LocationAccess(locationManager.authorizationStatus),
+                isPreciseLocation: locationManager.isPreciseLocation,
+                notification: NotificationAccess(notificationManager.authorizationStatus)
+            ),
+            requiredRegions: requiredRegionCount,
+            dismissedKey: guidanceDismissedKey.isEmpty ? nil : guidanceDismissedKey,
+            dismissedAt: guidanceDismissedAt > 0 ? Date(timeIntervalSince1970: guidanceDismissedAt) : nil
+        )
+    }
+
+    /// 許可ダイアログは、バナーのボタンを押したときにだけ出す。
+    private func performGuidanceAction(_ guidance: MapGuidance) {
+        guard case .permission(let notice) = guidance else { return }
+        HapticManager.impact(.light)
+        switch notice.action {
+        case .requestLocation:
+            locationManager.requestWhenInUseAuthorization()
+        case .requestNotifications:
+            Task { _ = await notificationManager.requestAuthorization() }
+        case .openSettings:
+            if let url = URL(string: UIApplication.openSettingsURLString) {
+                UIApplication.shared.open(url)
+            }
+        }
+    }
+
+    private func dismissGuidance(_ guidance: MapGuidance) {
+        guidanceDismissedKey = guidance.dismissalKey
+        guidanceDismissedAt = Date().timeIntervalSince1970
+    }
+
     private func reRegisterAllGeofences() {
         locationManager.stopAllMonitoring()
         var registeredRegionCount = 0

@@ -1826,16 +1826,6 @@
         }
       }
     },
-    "Page %lld of 3" : {
-      "localizations" : {
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "ページ%lld/3"
-          }
-        }
-      }
-    },
     "PASS-THROUGH" : {
       "localizations" : {
         "ja" : {
@@ -2797,16 +2787,6 @@
         }
       }
     },
-    "Used to notify you when\nyou approach a memo area" : {
-      "localizations" : {
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "エリアに近づいたときにメモをお知らせ\nするために使用します"
-          }
-        }
-      }
-    },
     "Version" : {
       "localizations" : {
         "ja" : {
@@ -3347,22 +3327,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "まだフレンドがいません"
-          }
-        }
-      }
-    },
-    "アプリを閉じていても場所に着いたことを知らせるため、最初の画面では「アプリの使用中は許可」を選び、次に表示される画面で「\"常に許可\"に変更」を選んでください。" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "So we can tell you when you arrive even if the app is closed, choose “Allow While Using App” on the first prompt, then “Change to Always Allow” on the next one."
-          }
-        },
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "アプリを閉じていても場所に着いたことを知らせるため、最初の画面では「アプリの使用中は許可」を選び、次に表示される画面で「\"常に許可\"に変更」を選んでください。"
           }
         }
       }
@@ -5256,6 +5220,276 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "相手に届いていない依頼を、サーバーから削除します。"
+          }
+        }
+      }
+    },
+    "Page %lld of %lld" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ページ%1$lld/%2$lld"
+          }
+        }
+      }
+    },
+    "Not Now" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "あとで"
+          }
+        }
+      }
+    },
+    "Allow Always" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "常に許可にする"
+          }
+        }
+      }
+    },
+    "Allow" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "許可する"
+          }
+        }
+      }
+    },
+    "Open Settings" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "設定を開く"
+          }
+        }
+      }
+    },
+    "Dismiss" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "閉じる"
+          }
+        }
+      }
+    },
+    "While you use the app, GeoMemo shows where you are on the map and lets you pin memos nearby." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "アプリを使っている間、地図に現在地を表示し、近くの場所にメモを置けるようにします。"
+          }
+        }
+      }
+    },
+    "The next screen asks for permission. Choose “Allow While Using App”." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "次に表示される画面で「アプリの使用中は許可」を選んでください。"
+          }
+        }
+      }
+    },
+    "Notify Even When Closed" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "アプリを閉じていても知らせるために"
+          }
+        }
+      }
+    },
+    "To tell you when you reach a saved place while the app is closed, GeoMemo needs “Always” location access." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "アプリを閉じていても、登録した場所に着いたことを知らせるには、位置情報の「常に許可」が必要です。"
+          }
+        }
+      }
+    },
+    "The next screen asks for it. Choose “Change to Always Allow”. You can also do this later in Settings." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "次に表示される画面で「\"常に許可\"に変更」を選んでください。あとから設定アプリで変えることもできます。"
+          }
+        }
+      }
+    },
+    "Location is off" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "位置情報がオフです"
+          }
+        }
+      }
+    },
+    "Location isn't set up yet" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "位置情報がまだ設定されていません"
+          }
+        }
+      }
+    },
+    "Alerts only work while the app is open" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "アプリを開いている間しか通知されません"
+          }
+        }
+      }
+    },
+    "Precise Location is off" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "「正確な位置情報」がオフです"
+          }
+        }
+      }
+    },
+    "Notifications are off" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "通知がオフです"
+          }
+        }
+      }
+    },
+    "Notifications aren't set up yet" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "通知がまだ設定されていません"
+          }
+        }
+      }
+    },
+    "GeoMemo can't tell when you reach a saved place. Turn on Location in Settings." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "登録した場所に着いたことを検知できません。設定アプリで位置情報をオンにしてください。"
+          }
+        }
+      }
+    },
+    "Allow location to see your position and get arrival alerts." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "現在地の表示と到着の通知のために、位置情報を許可してください。"
+          }
+        }
+      }
+    },
+    "Location is set to “While Using”. Choose “Always” in Settings to be notified when the app is closed." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "位置情報が「使用中のみ」です。アプリを閉じていても通知するには、設定アプリで「常に」を選んでください。"
+          }
+        }
+      }
+    },
+    "Alerts for small areas may be late or missed. Turn on Precise Location in Settings." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "小さな範囲の通知が遅れたり届かなかったりします。設定アプリで「正確な位置情報」をオンにしてください。"
+          }
+        }
+      }
+    },
+    "You won't see alerts even when you reach a place. Turn on Notifications in Settings." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "場所に着いても通知が表示されません。設定アプリで通知をオンにしてください。"
+          }
+        }
+      }
+    },
+    "Allow notifications to be told when you reach a place." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "場所に着いたことを知らせるために、通知を許可してください。"
+          }
+        }
+      }
+    },
+    "Too many places to watch" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "監視できる場所の上限を超えています"
+          }
+        }
+      }
+    },
+    "Nearing the 20-place limit" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "監視できる場所が上限の20件に近づいています"
+          }
+        }
+      }
+    },
+    "iOS can watch up to 20 places. %lld won't send alerts. Complete or delete some memos." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "iOS が監視できる場所は20件までです。%lld件は通知されません。完了済みにするか、削除してください。"
+          }
+        }
+      }
+    },
+    "%lld of 20 places are being watched. iOS can't watch more than 20." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "20件のうち%lld件を監視中です。iOS は21件以上は監視できません。"
           }
         }
       }
