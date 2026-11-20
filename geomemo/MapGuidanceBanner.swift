@@ -20,6 +20,7 @@ extension MapGuidance {
         case .permission(let notice):
             switch notice {
             case .locationDenied: return String(localized: "Location is off")
+            case .locationRestricted: return String(localized: "Location is restricted")
             case .locationNotDetermined: return String(localized: "Location isn't set up yet")
             case .locationWhenInUseOnly: return String(localized: "Alerts only work while the app is open")
             case .locationReducedAccuracy: return String(localized: "Precise Location is off")
@@ -39,10 +40,12 @@ extension MapGuidance {
             switch notice {
             case .locationDenied:
                 return String(localized: "GeoMemo can't tell when you reach a saved place. Turn on Location in Settings.")
+            case .locationRestricted:
+                return String(localized: "Location can't be changed in Settings on this device (for example, due to parental controls).")
             case .locationNotDetermined:
                 return String(localized: "Allow location to see your position and get arrival alerts.")
             case .locationWhenInUseOnly:
-                return String(localized: "Location is set to “While Using”. Choose “Always” in Settings to be notified when the app is closed.")
+                return String(localized: "Location is set to “While Using”, so alerts only arrive while the app is open. You can change this to be notified when it's closed.")
             case .locationReducedAccuracy:
                 return String(localized: "Alerts for small areas may be late or missed. Turn on Precise Location in Settings.")
             case .notificationsDenied:
@@ -61,10 +64,12 @@ extension MapGuidance {
 
     /// ボタンの文言。ボタンが無い案内は nil。
     var actionTitle: String? {
-        guard case .permission(let notice) = self else { return nil }
-        return notice.action == .openSettings
-            ? String(localized: "Open Settings")
-            : String(localized: "Allow")
+        guard case .permission(let notice) = self, let action = notice.action else { return nil }
+        switch action {
+        case .openSettings: return String(localized: "Open Settings")
+        case .requestAlways: return String(localized: "Change Location Access")
+        case .requestLocation, .requestNotifications: return String(localized: "Allow")
+        }
     }
 }
 
@@ -94,7 +99,8 @@ struct MapGuidanceBanner: View {
                         Text(actionTitle)
                             .font(.caption.weight(.semibold))
                             .foregroundColor(Brand.blue)
-                            .frame(minHeight: 32, alignment: .leading)
+                            .frame(minHeight: 44, alignment: .leading)
+                            .contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
                     .accessibilityIdentifier("mapGuidance.action")
@@ -125,5 +131,9 @@ struct MapGuidanceBanner: View {
         .padding(.horizontal, 16)
         .padding(.top, 8)
         .accessibilityElement(children: .contain)
+        // バナーが出たとき（案内が変わったとき）に VoiceOver で読み上げる。
+        .task(id: guidance) {
+            AccessibilityNotification.Announcement("\(guidance.title). \(guidance.message)").post()
+        }
     }
 }

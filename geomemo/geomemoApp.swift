@@ -63,14 +63,14 @@ final class GeoMemoAppDelegate: NSObject, UIApplicationDelegate {
                 let ownerName = metadata.ownerIdentity.nameComponents.map {
                     PersonNameComponentsFormatter().string(from: $0)
                 } ?? ""
-                NotificationCenter.default.post(
-                    name: .didAcceptSharedMemo,
-                    object: AcceptedShareInfo(
-                        ownerRecordID: ownerRecordID,
-                        ownerName: ownerName,
-                        shareRecordID: metadata.share.recordID
-                    )
-                )
+                // 先にキューへ積み、通知は「処理して」の合図にする。ContentView が表示中なら
+                // すぐ取り出され、未表示なら表示されたときに取り出される。
+                PendingShareQueue.shared.enqueue(AcceptedShareInfo(
+                    ownerRecordID: ownerRecordID,
+                    ownerName: ownerName,
+                    shareRecordID: metadata.share.recordID
+                ))
+                NotificationCenter.default.post(name: .didAcceptSharedMemo, object: nil)
             } catch {
                 ToastCenter.shared.show(.error(
                     String(localized: "共有メモの受諾に失敗しました。通信状況を確認して再度お試しください。")
@@ -103,6 +103,24 @@ struct AcceptedShareInfo {
     let ownerRecordID: String
     let ownerName: String
     let shareRecordID: CKRecord.ID
+}
+
+/// 受諾した共有の保留キュー。コールドスタートの受諾は、ContentView が表示される前
+/// （オンボーディング中など）に起きて、通知を受ける側がいない。ここに積んでおき、
+/// ContentView が表示されたとき・通知を受けたときに取り出して処理する。
+@MainActor
+final class PendingShareQueue {
+    static let shared = PendingShareQueue()
+
+    private var items: [AcceptedShareInfo] = []
+
+    func enqueue(_ info: AcceptedShareInfo) { items.append(info) }
+
+    /// 積まれているものを順に取り出す（取り出したら空になる）。
+    func drain() -> [AcceptedShareInfo] {
+        defer { items.removeAll() }
+        return items
+    }
 }
 
 extension Notification.Name {

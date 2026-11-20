@@ -15,20 +15,29 @@ struct OnboardingView: View {
     @State private var step: OnboardingStep = .welcome
     /// システムの許可ダイアログの結果を待っている間 true（二重タップと、ダイアログに重なる画面遷移を防ぐ）。
     @State private var awaitingSystemDialog = false
-    @State private var sawInactiveWhileAwaiting = false
+    /// 「常に」のダイアログが出たか（scenePhase で判定）を見張る。
+    @State private var dialogProbe = SystemDialogProbe()
+    @AccessibilityFocusState private var titleFocused: Bool
 
     private var pageCount: Int { OnboardingStep.allCases.count }
 
     var body: some View {
         VStack(spacing: 0) {
             // ページはボタンでだけ進める（スワイプで許可の説明を飛ばせないようにする）。
-            ZStack {
-                switch step {
-                case .welcome: welcomeContent
-                case .whenInUse: whenInUseContent
-                case .always: alwaysContent
-                case .notifications: notificationContent
+            // 大きな文字サイズでも切れないよう ScrollView で包む（収まるときはスクロールしない）。
+            GeometryReader { geo in
+                ScrollView {
+                    ZStack {
+                        switch step {
+                        case .welcome: welcomeContent
+                        case .whenInUse: whenInUseContent
+                        case .always: alwaysContent
+                        case .notifications: notificationContent
+                        }
+                    }
+                    .frame(maxWidth: .infinity, minHeight: geo.size.height)
                 }
+                .scrollBounceBehavior(.basedOnSize)
             }
             .id(step)
             .transition(.opacity)
@@ -73,6 +82,11 @@ struct OnboardingView: View {
         .background(Brand.background)
         .toolbar(.hidden, for: .navigationBar)
         .animation(.easeInOut(duration: 0.25), value: step)
+        // ページが変わったら、VoiceOver のフォーカスを題へ移す。
+        .onChange(of: step) { _, _ in
+            titleFocused = true
+        }
+        .onDisappear { dialogProbe.cancel() }
         // 使用中の許可ダイアログの結果（未決定 → 決定）で次へ進む。
         .onChange(of: locationManager.authorizationStatus) { _, newStatus in
             guard awaitingSystemDialog, step == .whenInUse, newStatus != .notDetermined else { return }
@@ -80,24 +94,15 @@ struct OnboardingView: View {
             advance()
         }
         // 「常に許可」のダイアログは、使用中のままを選ぶと状態が変わらないことがある。
-        // ダイアログが閉じて画面が active に戻ったら進む。
+        // ダイアログが閉じて画面が active に戻ったら進む（SystemDialogProbe が判定）。
         .onChange(of: scenePhase) { _, phase in
-            guard awaitingSystemDialog, step == .always else { return }
-            if phase == .inactive { sawInactiveWhileAwaiting = true }
-            if phase == .active && sawInactiveWhileAwaiting {
-                finishAwaiting()
-                advance()
-            }
+            guard step == .always else { return }
+            dialogProbe.scenePhaseChanged(phase)
         }
     }
 
-    private var primaryTitle: String {
-        switch step {
-        case .welcome: return String(localized: "Get Started")
-        case .always: return String(localized: "Allow Always")
-        default: return String(localized: "Continue")
-        }
-    }
+    /// システムのボタンに似せない。どの画面も「続ける」に統一する。
+    private var primaryTitle: String { String(localized: "Continue") }
 
     private var hasSecondaryAction: Bool { step == .always || step == .notifications }
 
@@ -130,7 +135,7 @@ struct OnboardingView: View {
             image: "ph-navigation-arrow-fill",
             title: Text("Allow Location"),
             message: Text("While you use the app, GeoMemo shows where you are on the map and lets you pin memos nearby."),
-            footnote: Text("The next screen asks for permission. Choose “Allow While Using App”.")
+            footnote: Text("You can choose on the next screen. You can change it later in Settings.")
         )
     }
 
@@ -141,7 +146,7 @@ struct OnboardingView: View {
             image: "ph-navigation-arrow-fill",
             title: Text("Notify Even When Closed"),
             message: Text("To tell you when you reach a saved place while the app is closed, GeoMemo needs “Always” location access."),
-            footnote: Text("The next screen asks for it. Choose “Change to Always Allow”. You can also do this later in Settings.")
+            footnote: Text("You can choose on the next screen. You can change it later in Settings.")
         )
     }
 
@@ -180,6 +185,8 @@ struct OnboardingView: View {
                 .foregroundColor(Brand.primaryText)
                 .multilineTextAlignment(.center)
                 .padding(.bottom, 12)
+                .accessibilityAddTraits(.isHeader)
+                .accessibilityFocused($titleFocused)
 
             message
                 .font(.subheadline)
@@ -232,14 +239,12 @@ struct OnboardingView: View {
             }
         case .always:
             beginAwaiting()
-            locationManager.requestAlwaysAuthorization()
-            // ダイアログが出ない場合（既に尋ね済みなど）に止まらないよう、少し待って進む。
-            Task {
-                try? await Task.sleep(for: .seconds(1.5))
-                if awaitingSystemDialog && !sawInactiveWhileAwaiting {
-                    finishAwaiting()
-                    advance()
-                }
+            let requested = locationManager.requestAlwaysAuthorization()
+            // ダイアログが出た → 閉じて active に戻ったら進む。出なかった（既に尋ね済みなど）→ 止まらずに進む。
+            // どちらでも 1 度だけ進む。
+            dialogProbe.begin(requested: requested) { _ in
+                finishAwaiting()
+                advance()
             }
         case .notifications:
             beginAwaiting()
@@ -261,12 +266,11 @@ struct OnboardingView: View {
 
     private func beginAwaiting() {
         awaitingSystemDialog = true
-        sawInactiveWhileAwaiting = false
     }
 
     private func finishAwaiting() {
         awaitingSystemDialog = false
-        sawInactiveWhileAwaiting = false
+        dialogProbe.cancel()
     }
 
     private func advance() {

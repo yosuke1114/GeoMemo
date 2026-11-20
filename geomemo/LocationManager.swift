@@ -158,9 +158,12 @@ class LocationManager: NSObject, ObservableObject {
     }
 
     /// 「常に許可」への昇格を求める。使用中のときだけ有効で、iOS は 1 回しか出さない。
-    func requestAlwaysAuthorization() {
-        guard manager.authorizationStatus == .authorizedWhenInUse else { return }
+    /// 要求を出したら true（ダイアログが実際に出るかは iOS 次第）。使用中でなければ何もせず false。
+    @discardableResult
+    func requestAlwaysAuthorization() -> Bool {
+        guard manager.authorizationStatus == .authorizedWhenInUse else { return false }
         manager.requestAlwaysAuthorization()
+        return true
     }
 
     /// 許可済みなら現在地と方位のウォームアップを始める。ダイアログは出さない。

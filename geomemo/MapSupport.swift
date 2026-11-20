@@ -6,6 +6,21 @@ import CloudKit
 
 // 地図表示の補助型（方位コーン・ピン/クラスタ・シート種別・クラスタリング）。ContentView.swift から分離。
 
+// MARK: - 受信した依頼のジオフェンス
+
+extension SharedMemo {
+    /// 受信した依頼の到着を監視する領域（識別子は `shared_...`）。
+    var monitoringRegion: CLCircularRegion {
+        let region = CLCircularRegion(
+            center: coordinate,
+            radius: max(50, memoRadius),
+            identifier: geofenceIdentifier
+        )
+        region.notifyOnEntry = true
+        return region
+    }
+}
+
 // MARK: - Heading Cone Shape
 
 nonisolated struct HeadingCone: Shape {

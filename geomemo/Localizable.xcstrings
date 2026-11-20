@@ -5244,16 +5244,6 @@
         }
       }
     },
-    "Allow Always" : {
-      "localizations" : {
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "常に許可にする"
-          }
-        }
-      }
-    },
     "Allow" : {
       "localizations" : {
         "ja" : {
@@ -5294,16 +5284,6 @@
         }
       }
     },
-    "The next screen asks for permission. Choose “Allow While Using App”." : {
-      "localizations" : {
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "次に表示される画面で「アプリの使用中は許可」を選んでください。"
-          }
-        }
-      }
-    },
     "Notify Even When Closed" : {
       "localizations" : {
         "ja" : {
@@ -5320,16 +5300,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "アプリを閉じていても、登録した場所に着いたことを知らせるには、位置情報の「常に許可」が必要です。"
-          }
-        }
-      }
-    },
-    "The next screen asks for it. Choose “Change to Always Allow”. You can also do this later in Settings." : {
-      "localizations" : {
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "次に表示される画面で「\"常に許可\"に変更」を選んでください。あとから設定アプリで変えることもできます。"
           }
         }
       }
@@ -5414,16 +5384,6 @@
         }
       }
     },
-    "Location is set to “While Using”. Choose “Always” in Settings to be notified when the app is closed." : {
-      "localizations" : {
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "位置情報が「使用中のみ」です。アプリを閉じていても通知するには、設定アプリで「常に」を選んでください。"
-          }
-        }
-      }
-    },
     "Alerts for small areas may be late or missed. Turn on Precise Location in Settings." : {
       "localizations" : {
         "ja" : {
@@ -5490,6 +5450,56 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "20件のうち%lld件を監視中です。iOS は21件以上は監視できません。"
+          }
+        }
+      }
+    },
+    "You can choose on the next screen. You can change it later in Settings." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "次の画面で選べます。あとから設定アプリでも変えられます。"
+          }
+        }
+      }
+    },
+    "Location is restricted" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "位置情報が制限されています"
+          }
+        }
+      }
+    },
+    "Location can't be changed in Settings on this device (for example, due to parental controls)." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "この端末では設定アプリから変更できません（保護者による制限など）。"
+          }
+        }
+      }
+    },
+    "Location is set to “While Using”, so alerts only arrive while the app is open. You can change this to be notified when it's closed." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "位置情報は「使用中のみ」のため、アプリを開いている間しか通知されません。アプリを閉じていても通知を受け取るには、設定を変えられます。"
+          }
+        }
+      }
+    },
+    "Change Location Access" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "位置情報の設定を変更"
           }
         }
       }

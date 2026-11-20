@@ -120,11 +120,22 @@ struct ContentView: View {
                 Task { await handleSharedMemoFired(geofenceIdentifier: identifier) }
             }
         }
-        .onReceive(NotificationCenter.default.publisher(for: .didAcceptSharedMemo)) { notification in
-            if let info = notification.object as? AcceptedShareInfo {
-                registerFriendIfNeeded(info: info)
-                Task { await syncSharedMemos() }
-            }
+        .onReceive(NotificationCenter.default.publisher(for: .didAcceptSharedMemo)) { _ in
+            processPendingShares()
+            Task { await syncSharedMemos() }
+        }
+        // 表示されたとき: 表示前に受諾した共有（共有リンクからの初回起動など）を処理し、一度同期する。
+        // scenePhase の変化を待たない（初回起動では .active への変化が起きないことがある）。
+        .task {
+            processPendingShares()
+            await syncSharedMemos()
+        }
+    }
+
+    /// 保留キューにある受諾済みの共有をフレンド登録する。
+    private func processPendingShares() {
+        for info in PendingShareQueue.shared.drain() {
+            registerFriendIfNeeded(info: info)
         }
     }
 
@@ -287,13 +298,7 @@ struct ContentView: View {
                         claimRecipient(data.ckRecordID, me: me)
                     }
                     if data.status == .active {
-                        let region = CLCircularRegion(
-                            center: shared.coordinate,
-                            radius: max(50, shared.memoRadius),
-                            identifier: shared.geofenceIdentifier
-                        )
-                        region.notifyOnEntry = true
-                        LocationManager.shared.startMonitoring(region: region)
+                        LocationManager.shared.startMonitoring(region: shared.monitoringRegion)
                     }
                 }
             }

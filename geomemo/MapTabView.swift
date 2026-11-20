@@ -16,9 +16,12 @@ struct MapTabView: View {
     @ObservedObject private var locationManager = LocationManager.shared
     @ObservedObject private var notificationManager = NotificationManager.shared
     @Environment(\.scenePhase) private var scenePhase
-    /// 閉じた案内の識別子と時刻。同じ案内は 1 週間出さない。
-    @AppStorage("mapGuidanceDismissedKey") private var guidanceDismissedKey = ""
-    @AppStorage("mapGuidanceDismissedAt") private var guidanceDismissedAt: Double = 0
+    /// 閉じた案内ごとの時刻（JSON の [識別子: 時刻]）。同じ案内は 1 週間出さない。
+    @AppStorage("mapGuidanceDismissals") private var guidanceDismissalsJSON = ""
+    /// 今出す案内。body のたびには計算せず、材料が変わったとき（recomputeGuidance）だけ更新する。
+    @State private var currentGuidance: MapGuidance?
+    /// 「常に」のダイアログが出たかを見張る（出なかったときだけ設定アプリを開く）。
+    @State private var alwaysDialogProbe = SystemDialogProbe()
     @Binding var isSearching: Bool
     @Binding var deepLinkMemoID: UUID?
     @Binding var showList: Bool
@@ -84,8 +87,22 @@ struct MapTabView: View {
         .animation(.easeInOut(duration: 0.25), value: currentGuidance)
         // 設定アプリから戻った直後に、通知の許可状態を読み直す。
         .onChange(of: scenePhase) { _, phase in
+            alwaysDialogProbe.scenePhaseChanged(phase)
             if phase == .active { notificationManager.checkAuthorizationStatus() }
         }
+        // 許可を変えた後（設定アプリから戻った・ダイアログで許可した）に、監視を張り直す。
+        // 未許可のうちに登録した領域は効かないため、未許可 → 許可済みになったら登録し直す。
+        .onChange(of: locationManager.authorizationStatus) { old, new in
+            if !LocationAccess(old).isAuthorized && LocationAccess(new).isAuthorized {
+                reRegisterAllGeofences()
+                locationManager.updatePassMemos(memos)
+            }
+            recomputeGuidance()
+        }
+        .onChange(of: locationManager.isPreciseLocation) { _, _ in recomputeGuidance() }
+        .onChange(of: notificationManager.authorizationStatus) { _, _ in recomputeGuidance() }
+        .onChange(of: guidanceDismissalsJSON) { _, _ in recomputeGuidance() }
+        .onChange(of: mapSharedMemos.count) { _, _ in recomputeGuidance() }
         .sheet(item: $mapSelectedReceived) { shared in
             ReceivedSharedMemoDetailView(
                 shared: shared,
@@ -115,12 +132,14 @@ struct MapTabView: View {
             // Pass-through 通知の対象を LocationManager に同期（接近時 Dynamic Island 表示）。
             // フォアグラウンド中のみ動作（バックグラウンド対応は別途審査が必要）。
             locationManager.updatePassMemos(memos)
+            recomputeGuidance()
 
             // Start Live Activity for Dynamic Island
             LiveActivityManager.shared.startMonitoring(count: memos.count)
         }
         .onDisappear {
             locationManager.stopHeading()
+            alwaysDialogProbe.cancel()
         }
         .onChange(of: locationManager.location) { oldValue, newValue in
             guard let userLocation = newValue?.coordinate else { return }
@@ -135,6 +154,7 @@ struct MapTabView: View {
             scheduleCluster()
             // メモ追加/削除で pass-through 監視対象も更新する。
             locationManager.updatePassMemos(memos)
+            recomputeGuidance()
         }
         .onChange(of: deepLinkMemoID) { _, newID in
             guard let id = newID else { return }
@@ -203,6 +223,7 @@ struct MapTabView: View {
             if let id = notification.object as? String,
                let memo = memos.first(where: { $0.id.uuidString == id }) {
                 memo.isDone = true
+                recomputeGuidance()
                 HapticManager.notification(.success)
                 if memo.isRouteTrigger {
                     locationManager.stopMonitoringRoute(memoID: id)
@@ -437,6 +458,7 @@ struct MapTabView: View {
     
     // MARK: - Sheet Handling
     private func handleSheetDismiss() {
+        recomputeGuidance() // 詳細画面で完了・削除された分を上限の数え方に反映する
         if let memo = pendingDetailMemo {
             pendingDetailMemo = nil
             deferredDetailTask?.cancel()
@@ -602,44 +624,60 @@ struct MapTabView: View {
     // MARK: - Permission / limit guidance
 
     /// 監視したいジオフェンスの数（ルートは経由地ごとに 1 件、受信した有効な依頼も 1 件）。
+    /// 経由地が 2 未満のルートは登録されない（LocationManager.startMonitoringRoute）ので数えない。
     private var requiredRegionCount: Int {
-        let own = memos.filter { !$0.isDone }.reduce(0) { $0 + ($1.isRouteTrigger ? $1.routeWaypoints.count : 1) }
+        let own = memos.filter { !$0.isDone }.reduce(0) {
+            $0 + MonitoringLimitState.regionCount(isRoute: $1.isRouteTrigger, waypointCount: $1.routeWaypoints.count)
+        }
         let received = mapSharedMemos.filter { !$0.isMyRequest && $0.status == .active }.count
         return own + received
     }
 
-    private var currentGuidance: MapGuidance? {
-        MapGuidance.resolve(
+    /// 案内の材料（メモ・許可状態・閉じた記録）が変わったときだけ呼ぶ。
+    private func recomputeGuidance() {
+        currentGuidance = MapGuidance.resolve(
             permissions: PermissionSnapshot(
                 location: LocationAccess(locationManager.authorizationStatus),
                 isPreciseLocation: locationManager.isPreciseLocation,
                 notification: NotificationAccess(notificationManager.authorizationStatus)
             ),
             requiredRegions: requiredRegionCount,
-            dismissedKey: guidanceDismissedKey.isEmpty ? nil : guidanceDismissedKey,
-            dismissedAt: guidanceDismissedAt > 0 ? Date(timeIntervalSince1970: guidanceDismissedAt) : nil
+            dismissals: MapGuidance.decodeDismissals(guidanceDismissalsJSON)
         )
     }
 
     /// 許可ダイアログは、バナーのボタンを押したときにだけ出す。
     private func performGuidanceAction(_ guidance: MapGuidance) {
-        guard case .permission(let notice) = guidance else { return }
+        guard case .permission(let notice) = guidance, let action = notice.action else { return }
         HapticManager.impact(.light)
-        switch notice.action {
+        switch action {
         case .requestLocation:
             locationManager.requestWhenInUseAuthorization()
+        case .requestAlways:
+            // 「あとで」を選んだ人にも、まず「常に」のダイアログを出す。iOS は 1 回しか出さないので、
+            // 出なかった（scene が inactive にならなかった）ときだけ設定アプリを開く。
+            let requested = locationManager.requestAlwaysAuthorization()
+            alwaysDialogProbe.begin(requested: requested) { dialogShown in
+                if !dialogShown { openSettings() }
+            }
         case .requestNotifications:
             Task { _ = await notificationManager.requestAuthorization() }
         case .openSettings:
-            if let url = URL(string: UIApplication.openSettingsURLString) {
-                UIApplication.shared.open(url)
-            }
+            openSettings()
+        }
+    }
+
+    private func openSettings() {
+        if let url = URL(string: UIApplication.openSettingsURLString) {
+            UIApplication.shared.open(url)
         }
     }
 
     private func dismissGuidance(_ guidance: MapGuidance) {
-        guidanceDismissedKey = guidance.dismissalKey
-        guidanceDismissedAt = Date().timeIntervalSince1970
+        let updated = MapGuidance.recordingDismissal(
+            of: guidance, in: MapGuidance.decodeDismissals(guidanceDismissalsJSON))
+        guidanceDismissalsJSON = MapGuidance.encodeDismissals(updated)
+        recomputeGuidance()
     }
 
     private func reRegisterAllGeofences() {
@@ -660,6 +698,11 @@ struct MapTabView: View {
                 locationManager.startMonitoring(region: region)
                 registeredRegionCount += 1
             }
+        }
+        // 受信した依頼（`shared_...`）も登録し直す。stopAllMonitoring で外れたまま戻らないため。
+        for shared in mapSharedMemos where !shared.isMyRequest && shared.status == .active {
+            locationManager.startMonitoring(region: shared.monitoringRegion)
+            registeredRegionCount += 1
         }
         if registeredRegionCount > 20 {
             print("⚠️ Geofencing limit warning: \(registeredRegionCount) regions registered (iOS limit is 20)")
