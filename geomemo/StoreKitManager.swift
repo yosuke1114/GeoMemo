@@ -15,6 +15,8 @@ class StoreKitManager: ObservableObject {
     @Published var isPro: Bool = false
     @Published var proProduct: Product?
     @Published var isLoadingProducts: Bool = true
+    /// 起動後、購入状態（`isPro`）の確認が一度終わったか。外からの作成の要求で上限の判定をする前に待つ。
+    @Published private(set) var hasResolvedProStatus: Bool = false
     @Published var purchaseInProgress: Bool = false
     @Published var purchaseError: String?
 
@@ -25,6 +27,15 @@ class StoreKitManager: ObservableObject {
         Task {
             await loadProducts()
             await refreshProStatus()
+            hasResolvedProStatus = true
+        }
+    }
+
+    /// 購入状態の確認が済むまで待つ（最大 `timeout` 秒）。
+    func waitForProStatus(timeout: TimeInterval = 5) async {
+        let deadline = Date().addingTimeInterval(timeout)
+        while !hasResolvedProStatus && Date() < deadline {
+            try? await Task.sleep(for: .milliseconds(100))
         }
     }
 

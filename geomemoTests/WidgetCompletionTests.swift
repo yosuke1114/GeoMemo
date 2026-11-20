@@ -38,14 +38,30 @@ struct WidgetCompletionQueueTests {
         #expect(queue.pending() == [b])
     }
 
-    @Test("壊れた値は読み飛ばす")
+    @Test("壊れたキーは読み飛ばす")
     func ignoresMalformedValues() {
         let suite = "widget-completion-test-\(UUID().uuidString)"
         let defaults = UserDefaults(suiteName: suite)!
         let good = UUID()
-        defaults.set(["not-a-uuid", good.uuidString, ""], forKey: WidgetCompletionQueue.key)
+        defaults.set(true, forKey: WidgetCompletionQueue.keyPrefix + "not-a-uuid")
+        defaults.set(true, forKey: WidgetCompletionQueue.keyPrefix + good.uuidString)
+        defaults.set(true, forKey: "unrelated")
         #expect(WidgetCompletionQueue(defaults: defaults).pending() == [good])
         defaults.removePersistentDomain(forName: suite)
+    }
+
+    @Test("別々のキャッシュ（プロセス）が同時に足しても、互いの分が消えない")
+    func concurrentWritersDoNotLoseEntries() {
+        let suite = "widget-completion-test-\(UUID().uuidString)"
+        let a = WidgetCompletionQueue(defaults: UserDefaults(suiteName: suite))
+        let b = WidgetCompletionQueue(defaults: UserDefaults(suiteName: suite))
+        let x = UUID(), y = UUID()
+        a.enqueue(x)
+        b.enqueue(y)
+        // 先に読んでいた側が、取り込んだ分だけを外しても、あとから足された分は残る
+        a.remove([x])
+        #expect(b.pending() == [y])
+        UserDefaults(suiteName: suite)?.removePersistentDomain(forName: suite)
     }
 
     @Test("UserDefaults が無ければ何もしない（クラッシュしない）")

@@ -12,8 +12,10 @@ import WidgetKit
 //   ウィジェットは完了待ちを除いて描き、アプリが次に動いたときに保存・監視の停止を行う。
 
 /// 完了待ちの ID（App Group の UserDefaults）。純粋な読み書きだけで、どのスレッドからでも呼べる。
+/// ID ごとに別のキーで持つ。1 つの配列を「読んで書く」と、拡張とアプリが同時に動いたときに
+/// 片方の追加が消えるため（キーが別なら、互いの書き込みは衝突しない）。
 nonisolated struct WidgetCompletionQueue {
-    nonisolated static let key = "widgetPendingDoneIDs"
+    nonisolated static let keyPrefix = "widgetPendingDone."
     nonisolated static let appGroupID = "group.com.yokuro.geomemo"
 
     private let defaults: UserDefaults?
@@ -24,26 +26,23 @@ nonisolated struct WidgetCompletionQueue {
         WidgetCompletionQueue(defaults: UserDefaults(suiteName: appGroupID))
     }
 
-    /// 完了待ちの ID。壊れた値は読み飛ばす。
+    /// 完了待ちの ID。壊れたキーは読み飛ばす。
     nonisolated func pending() -> Set<UUID> {
-        let raw = defaults?.stringArray(forKey: Self.key) ?? []
-        return Set(raw.compactMap(UUID.init(uuidString:)))
+        guard let defaults else { return [] }
+        var ids: Set<UUID> = []
+        for key in defaults.dictionaryRepresentation().keys where key.hasPrefix(Self.keyPrefix) {
+            if let id = UUID(uuidString: String(key.dropFirst(Self.keyPrefix.count))) { ids.insert(id) }
+        }
+        return ids
     }
 
     nonisolated func enqueue(_ id: UUID) {
-        var ids = pending()
-        ids.insert(id)
-        write(ids)
+        defaults?.set(true, forKey: Self.keyPrefix + id.uuidString)
     }
 
-    /// 保存し終えた分を外す。
+    /// 保存し終えた分だけを外す（その間に別のプロセスが足した分は残る）。
     nonisolated func remove(_ ids: Set<UUID>) {
-        guard !ids.isEmpty else { return }
-        write(pending().subtracting(ids))
-    }
-
-    private func write(_ ids: Set<UUID>) {
-        defaults?.set(ids.map(\.uuidString).sorted(), forKey: Self.key)
+        for id in ids { defaults?.removeObject(forKey: Self.keyPrefix + id.uuidString) }
     }
 }
 
@@ -52,6 +51,8 @@ struct CompleteMemoFromWidgetIntent: AppIntent {
     static let title: LocalizedStringResource = "Complete Memo"
     static let description: IntentDescription = "Marks a GeoMemo memo as complete"
     static var isDiscoverable: Bool { false }
+    // スタンバイなどのロック中に、第三者が完了にできないようにする
+    static let authenticationPolicy: IntentAuthenticationPolicy = .requiresAuthentication
 
     @Parameter(title: "Memo ID")
     var memoID: String
@@ -73,6 +74,26 @@ struct CompleteMemoFromWidgetIntent: AppIntent {
             #endif
         }
         WidgetCenter.shared.reloadAllTimelines()
+        return .result()
+    }
+}
+
+/// コントロール（コントロールセンター・ロック画面・アクションボタン）から「新しいメモ」を開く。
+/// アプリを前面に出し、アプリ側の `perform` で作成の要求を出す（URL を介さない）。
+struct OpenNewMemoIntent: AppIntent {
+    static let title: LocalizedStringResource = "Add Memo"
+    static let description: IntentDescription = "Open GeoMemo to add a new memo"
+    static var openAppWhenRun: Bool { true }
+    static var isDiscoverable: Bool { false }
+    static let authenticationPolicy: IntentAuthenticationPolicy = .requiresAuthentication
+
+    init() {}
+
+    @MainActor
+    func perform() async throws -> some IntentResult {
+        #if !WIDGET_EXTENSION
+        NewMemoRequest.post()
+        #endif
         return .result()
     }
 }

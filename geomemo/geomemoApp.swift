@@ -20,6 +20,13 @@ final class GeoMemoAppDelegate: NSObject, UIApplicationDelegate {
     func application(_ application: UIApplication,
                      didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]? = nil) -> Bool {
         application.registerForRemoteNotifications()
+        // ウィジェットで完了にした分を、画面が作られる前に取り込む（全登録し直しより先）
+        WidgetCompletion.drainPending()
+        NotificationCenter.default.addObserver(
+            forName: UIApplication.didBecomeActiveNotification, object: nil, queue: .main
+        ) { _ in
+            MainActor.assumeIsolated { WidgetCompletion.drainPending() }
+        }
         return true
     }
 

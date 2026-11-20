@@ -1,4 +1,5 @@
 import SwiftUI
+import WidgetKit
 import SwiftData
 import MapKit
 import CoreLocation
@@ -119,7 +120,10 @@ struct MapTabView: View {
         .onChange(of: seenTick) { _, _ in recomputeReceived() }
         .onChange(of: receivedStateKey) { _, _ in recomputeReceived() }
         .onChange(of: isAnotherSheetPresented) { _, presented in
-            if !presented { presentArrivalWhenReady() }
+            if !presented {
+                presentArrivalWhenReady()
+                handleExternalNewMemoRequest()
+            }
         }
         // 設定アプリから戻った直後に、通知の許可状態を読み直す。
         .onChange(of: scenePhase) { _, phase in
@@ -127,8 +131,7 @@ struct MapTabView: View {
             if phase == .active {
                 notificationManager.checkAuthorizationStatus()
                 recomputeReceived() // 完了から 24 時間の判定が時間で変わるため
-                // ウィジェットで完了にした分を取り込み、外れていない監視を外す
-                WidgetCompletion.drainPending()
+                handleExternalNewMemoRequest() // 閉じていたシートの後ろで待たせていた要求
             }
         }
         // 許可を変えた後（設定アプリから戻った・ダイアログで許可した）に、監視を張り直す。
@@ -153,6 +156,7 @@ struct MapTabView: View {
         .onChange(of: regionRegistrationKey) { _, _ in
             GeofenceReconciler.reconcile(memos: memos, sharedMemos: mapSharedMemos)
             recomputeGuidance()
+            WidgetCenter.shared.reloadAllTimelines() // メモの増減・完了をウィジェットへ
         }
         .sheet(item: $mapSelectedReceived, onDismiss: { seenTick += 1 }) { shared in
             ReceivedSharedMemoDetailView(
@@ -191,9 +195,8 @@ struct MapTabView: View {
                 cameraPosition = .region(streetLevelRegion(userLocation))
             }
             recomputeReceived()
-            WidgetCompletion.drainPending()
             reRegisterAllGeofences()
-            if NewMemoRequest.consume() { startNewMemoFromExternalRequest() }
+            handleExternalNewMemoRequest()
             // Pass-through 通知の対象を LocationManager に同期（接近時 Dynamic Island 表示）。
             // フォアグラウンド中のみ動作（バックグラウンド対応は別途審査が必要）。
             locationManager.updatePassMemos(memos)
@@ -224,7 +227,7 @@ struct MapTabView: View {
         }
         // コントロール・ロック画面ウィジェットからの「新しいメモ」
         .onReceive(NotificationCenter.default.publisher(for: .startNewGeoMemo)) { _ in
-            if NewMemoRequest.consume() { startNewMemoFromExternalRequest() }
+            handleExternalNewMemoRequest()
         }
         .onChange(of: deepLinkMemoID) { _, newID in
             guard let id = newID else { return }
@@ -255,11 +258,9 @@ struct MapTabView: View {
             }
         }
         .onReceive(NotificationCenter.default.publisher(for: Notification.Name.didEnterGeoMemoRegion)) { notification in
-            // ウィジェットで完了にしたのに監視が残っていた場合に、通知を出さないようにする
-            let completedFromWidget = WidgetCompletion.drainPending()
             if let id = notification.object as? String,
                let memo = memos.first(where: { $0.id.uuidString == id }) {
-                guard memo.notifyOnEntry && !memo.isDone && !completedFromWidget.contains(memo.id) else { return }
+                guard memo.notifyOnEntry && !memo.isDone else { return }
                 guard locationManager.shouldNotify(for: memo) else { return }
                 Task {
                     if let dwell = memo.dwellMinutes {
@@ -280,13 +281,12 @@ struct MapTabView: View {
             }
         }
         .onReceive(NotificationCenter.default.publisher(for: .didExitGeoMemoRegion)) { notification in
-            let completedFromWidget = WidgetCompletion.drainPending()
             if let id = notification.object as? String,
                let memo = memos.first(where: { $0.id.uuidString == id }) {
                 // キャンセル：滞在タイマー通知（退場前に発火していなければ取り消す）
                 NotificationManager.shared.cancelDwellNotification(memoID: id)
 
-                guard memo.notifyOnExit && !memo.isDone && !completedFromWidget.contains(memo.id) else { return }
+                guard memo.notifyOnExit && !memo.isDone else { return }
                 guard locationManager.shouldNotify(for: memo) else { return }
                 Task {
                     await NotificationManager.shared.scheduleExitNotification(
@@ -536,19 +536,38 @@ struct MapTabView: View {
         }
     }
     
-    /// 外（コントロール・ウィジェット）からの作成の要求。ほかのシートが出ていれば何もしない。
-    private func startNewMemoFromExternalRequest() {
-        guard !isAnotherSheetPresented else { return }
+    /// 外（コントロール・ロック画面ウィジェット）からの作成の要求。シートが出ている間は残しておき、閉じたら処理する。
+    private func handleExternalNewMemoRequest() {
+        guard NewMemoRequest.isPending, !NewMemoRequest.containerBlocked, !isAnotherSheetPresented else { return }
+        _ = NewMemoRequest.consume()
         isSearching = false
-        startNewMemo()
+        Task { @MainActor in
+            // 無料版の上限の判定は、購入状態の確認が済んでから（起動直後は Free に見えるため）
+            await store.waitForProStatus()
+            // 位置は短く待つ。取れなければ東京駅の既定座標では開かず、案内を出して地図から選んでもらう。
+            locationManager.refreshLocation()
+            var waited = 0
+            while locationManager.location == nil && waited < 15 {
+                try? await Task.sleep(for: .milliseconds(200))
+                waited += 1
+            }
+            startNewMemo(requiresLocation: true)
+        }
     }
 
     /// メモの作成を始める（「ADD MEMO」と、受け取るだけの人の「＋」で共通）。
-    private func startNewMemo() {
+    /// `requiresLocation` が true（外からの要求）で現在地が無いときは、既定座標で開かず案内を出す。
+    private func startNewMemo() { startNewMemo(requiresLocation: false) }
+
+    private func startNewMemo(requiresLocation: Bool) {
         HapticManager.impact(.medium)
         // Free プランかつ上限に達している場合はペイウォールを表示
         if MemoLimitPolicy.isAtLimit(currentCount: memos.count, isPro: store.isPro) {
             showPaywall = true
+            return
+        }
+        if requiresLocation, newMemoCoordinate == nil, locationManager.location == nil {
+            ToastCenter.shared.show(.warning(String(localized: "Couldn't get your location. Tap the map to choose a place.")))
             return
         }
         let defaultTokyo = CLLocationCoordinate2D(latitude: 35.6812, longitude: 139.7671)

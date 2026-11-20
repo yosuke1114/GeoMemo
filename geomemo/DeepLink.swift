@@ -44,6 +44,8 @@ nonisolated enum DeepLinkRoute: Equatable {
 @MainActor
 enum NewMemoRequest {
     private(set) static var isPending = false
+    /// 設定・見守りの画面（`ContentView` が出すもの）が開いている間は true。閉じてから処理する。
+    static var containerBlocked = false
 
     static func post() {
         isPending = true

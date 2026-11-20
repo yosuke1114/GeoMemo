@@ -13,7 +13,7 @@ private func makeSharedContainer() -> ModelContainer? {
     if let url = FileManager.default
         .containerURL(forSecurityApplicationGroupIdentifier: appGroupID)?
         .appendingPathComponent("geomemo.store") {
-        let config = ModelConfiguration(schema: schema, url: url, cloudKitDatabase: .none)
+        let config = ModelConfiguration(schema: schema, url: url, allowsSave: false, cloudKitDatabase: .none)
         return try? ModelContainer(for: schema, configurations: [config])
     }
 
@@ -285,13 +285,15 @@ private struct MemoRowTrailingIcon: View {
 private struct DoneButton: View {
     let memoID: UUID
     var iconSize: CGFloat = 20
+    /// タップ領域の高さ。幅は 44pt。中サイズは 3 行入れるため少し低くしている。
+    var height: CGFloat = 44
 
     var body: some View {
         Button(intent: CompleteMemoFromWidgetIntent(memoID: memoID)) {
             Image(systemName: "checkmark.circle")
                 .font(.system(size: iconSize, weight: .regular))
                 .foregroundStyle(Brand.blue)
-                .frame(width: 34, height: 34)
+                .frame(width: 44, height: height)
                 .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
@@ -347,7 +349,7 @@ struct SmallWidgetView: View {
                             .foregroundStyle(Color(hex: "E5484D"))
                     }
                     DoneButton(memoID: memo.id, iconSize: 18)
-                        .padding(.trailing, -6)
+                        .padding(.trailing, -10)
                 }
 
                 Spacer()
@@ -361,6 +363,7 @@ struct SmallWidgetView: View {
                     Text(memo.title)
                         .font(.system(size: 15, weight: .bold))
                         .foregroundStyle(Brand.primaryText)
+                        .privacySensitive()
                         .lineLimit(2)
                 }
 
@@ -368,6 +371,7 @@ struct SmallWidgetView: View {
                     Text(memo.locationName)
                         .font(.system(size: 11, weight: .medium))
                         .foregroundStyle(Brand.secondaryText)
+                        .privacySensitive()
                         .lineLimit(1)
                 }
 
@@ -405,6 +409,7 @@ struct SmallWidgetView: View {
                 Text(String(localized: "No memos"))
                     .font(.system(size: 13))
                     .foregroundStyle(Brand.secondaryText)
+                    .privacySensitive()
             }
         }
     }
@@ -424,6 +429,7 @@ struct MediumWidgetView: View {
                 Text(String(localized: "No memos"))
                     .font(.system(size: 13))
                     .foregroundStyle(Brand.secondaryText)
+                    .privacySensitive()
             }
             .frame(maxWidth: .infinity)
         } else {
@@ -446,6 +452,7 @@ struct MediumWidgetView: View {
                                 Text(memo.title)
                                     .font(.system(size: 14, weight: .semibold))
                                     .foregroundStyle(Brand.primaryText)
+                                    .privacySensitive()
                                     .lineLimit(1)
                                 MemoRowBadge(memo: memo, tagLabelSize: 10)
                             }
@@ -458,6 +465,7 @@ struct MediumWidgetView: View {
                                 Text(memo.locationName)
                                     .font(.system(size: 11, weight: .medium))
                                     .foregroundStyle(Brand.secondaryText)
+                                    .privacySensitive()
                                     .lineLimit(1)
                             }
                         }
@@ -467,7 +475,7 @@ struct MediumWidgetView: View {
                             memo.isRouteInProgress ? Brand.blue.opacity(0.05) : Color.clear
                         )
                     }
-                    DoneButton(memoID: memo.id, iconSize: 18)
+                    DoneButton(memoID: memo.id, iconSize: 18, height: 40)
                     }
 
                     if index < entry.memos.prefix(3).count - 1 {
@@ -496,6 +504,7 @@ struct LargeWidgetView: View {
                 Text(String(localized: "No memos"))
                     .font(.system(size: 14))
                     .foregroundStyle(Brand.secondaryText)
+                    .privacySensitive()
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         } else {
@@ -522,6 +531,7 @@ struct LargeWidgetView: View {
                                     Text(memo.title)
                                         .font(.system(size: 14, weight: .semibold))
                                         .foregroundStyle(Brand.primaryText)
+                                        .privacySensitive()
                                         .lineLimit(1)
 
                                     Spacer()
@@ -532,6 +542,7 @@ struct LargeWidgetView: View {
                                         Text(memo.locationName)
                                             .font(.system(size: 10, weight: .medium))
                                             .foregroundStyle(Brand.secondaryText)
+                                            .privacySensitive()
                                             .lineLimit(1)
                                     }
                                 }
@@ -541,6 +552,7 @@ struct LargeWidgetView: View {
                                     Text(memo.note)
                                         .font(.system(size: 12, weight: .regular))
                                         .foregroundStyle(Brand.secondaryText)
+                                        .privacySensitive()
                                         .lineLimit(1)
                                 }
 
