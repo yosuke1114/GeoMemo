@@ -5,7 +5,6 @@ import Combine
 
 extension Notification.Name {
     static let geoMemoMarkDone          = Notification.Name("geoMemoMarkDone")
-    static let didEnterSharedMemoRegion = Notification.Name("didEnterSharedMemoRegion")
 }
 
 class NotificationManager: NSObject, ObservableObject {
@@ -38,7 +37,8 @@ class NotificationManager: NSObject, ObservableObject {
         let done = UNNotificationAction(
             identifier: actionDone,
             title: String(localized: "Complete"),
-            options: .destructive
+            // ロック中に第三者が完了にできないよう、解除を求める（スヌーズはそのまま）
+            options: [.destructive, .authenticationRequired]
         )
         let snooze5 = UNNotificationAction(
             identifier: actionSnooze5,
@@ -300,7 +300,8 @@ extension NotificationManager: UNUserNotificationCenterDelegate {
     private func handleNotificationAction(_ action: String, memoID: String, title: String, body: String) async {
         switch action {
         case Self.actionDone:
-            NotificationCenter.default.post(name: .geoMemoMarkDone, object: memoID)
+            // 画面に頼らず、保存・監視の停止まで行う（画面へは触覚・案内の更新だけを通知する）
+            RegionEventService.shared.markDone(id: memoID)
 
         case Self.actionSnooze5:
             await scheduleSnooze(title: title, body: body, memoID: memoID, minutes: 5)

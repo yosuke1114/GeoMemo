@@ -14,7 +14,8 @@ enum WidgetCompletion {
         guard !ids.isEmpty else { return [] }
         var saved: Set<UUID> = []
         do {
-            let context = try GeoMemoStore.sharedContainer().mainContext
+            // アプリのコンテナと同じコンテキスト（UI テストの in-memory でも実ストアを開かない）
+            guard let context = RegionEventService.shared.mainContext else { return [] }
             let memos = try context.fetch(FetchDescriptor<GeoMemo>(predicate: #Predicate { ids.contains($0.id) }))
             for memo in memos { memo.isDone = true }
             try context.save()

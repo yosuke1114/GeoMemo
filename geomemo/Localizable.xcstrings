@@ -44,6 +44,16 @@
         }
       }
     },
+    "Could not complete that memo." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "メモを完了できませんでした。"
+          }
+        }
+      }
+    },
     "Could not open your memos. Try again after unlocking your device." : {
       "localizations" : {
         "ja" : {
