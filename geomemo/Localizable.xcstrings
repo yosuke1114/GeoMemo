@@ -134,12 +134,12 @@
         }
       }
     },
-    "%@ will see this name. You can skip this." : {
+    "%@ will see this name on this request and on requests you receive later. You can skip this." : {
       "localizations" : {
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "%@さんにこの名前が表示されます。設定しなくても受け取れます。"
+            "value" : "%@さんに、この依頼と今後受け取る依頼でこの名前が表示されます。設定しなくても受け取れます。"
           }
         }
       }
@@ -602,6 +602,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "キャンセル"
+          }
+        }
+      }
+    },
+    "Check that you're signed in to iCloud with the email address or phone number that was invited." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "招待されたメールアドレス・電話番号の Apple ID で iCloud にサインインしているか確認してください。"
           }
         }
       }
@@ -1172,6 +1182,26 @@
         }
       }
     },
+    "From the person who sent it" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "依頼した人から"
+          }
+        }
+      }
+    },
+    "From the person who sent it · %@" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "依頼した人から・%@"
+          }
+        }
+      }
+    },
     "GeoMemo" : {
       "shouldTranslate" : false
     },
@@ -1682,6 +1712,16 @@
         }
       }
     },
+    "Name the sender wrote" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "依頼者が書いた名前"
+          }
+        }
+      }
+    },
     "Nearby" : {
       "localizations" : {
         "ja" : {
@@ -1960,16 +2000,6 @@
         }
       }
     },
-    "Only your arrival and completion are shared. Your current location and where you've been are never sent." : {
-      "localizations" : {
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "伝わるのは「着いたこと」と「完了したこと」だけです。現在地や移動の経路は送りません。"
-          }
-        }
-      }
-    },
     "ONにすると、相手が着いた時点で自動的に完了にします" : {
       "localizations" : {
         "en" : {
@@ -2228,6 +2258,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "依頼 %lld"
+          }
+        }
+      }
+    },
+    "Requests %lld · To finish" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "依頼 %lld・完了待ち"
           }
         }
       }
@@ -2897,12 +2937,22 @@
         }
       }
     },
-    "The person who sent the request will see this name. You can skip this." : {
+    "The person who sent it" : {
       "localizations" : {
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "依頼した人にこの名前が表示されます。設定しなくても受け取れます。"
+            "value" : "依頼した人"
+          }
+        }
+      }
+    },
+    "The person who sent the request will see this name on this request and on requests you receive later. You can skip this." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "依頼した人に、この依頼と今後受け取る依頼でこの名前が表示されます。設定しなくても受け取れます。"
           }
         }
       }
@@ -2993,6 +3043,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "完了待ち"
+          }
+        }
+      }
+    },
+    "To receive it again, the sender needs to send it again." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "もう一度受け取るには、依頼した人に送り直してもらう必要があります。"
           }
         }
       }
@@ -3163,6 +3223,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "%@さんに到着を知らせました。"
+          }
+        }
+      }
+    },
+    "We let the person who sent the request know you arrived." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "依頼した人に到着を知らせました。"
           }
         }
       }
@@ -6518,6 +6588,36 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "低電力モードのあいだ、App のバックグラウンド更新は止まります。低電力モードをオフにすると元に戻ります。"
+          }
+        }
+      }
+    },
+    "Your current location and where you've been are never sent. Only your arrival and completion are shared." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "現在地や移動の経路は送りません。伝わるのは「着いたこと」と「完了したこと」だけです。"
+          }
+        }
+      }
+    },
+    "Your name (%1$@) is shown to %2$@." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "あなたの名前（%1$@）が%2$@さんに表示されます。"
+          }
+        }
+      }
+    },
+    "Your name (%@) is shown to the person who sent the request." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "あなたの名前（%@）が依頼した人に表示されます。"
           }
         }
       }

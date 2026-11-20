@@ -100,6 +100,16 @@ struct ReceivedRequestSectionsTests {
     @Test("空")
     func empty() {
         #expect(ReceivedRequestSections.resolve([], now: now).isEmpty)
+        #expect(ReceivedRequestSections.resolve([], now: now).count == 0)
+    }
+
+    @Test("件数は、有効な依頼と完了から 24 時間以内の依頼だけ（すべて終わったら 0）")
+    func count() {
+        let items = [item("a"), item("b", .fired), item("c", .completed, completedAt: now.addingTimeInterval(-60)),
+                     item("d", .completed, completedAt: now.addingTimeInterval(-SharedMemoNotePolicy.completedRetention - 5)),
+                     item("e", .cancelled)]
+        #expect(ReceivedRequestSections.resolve(items, now: now).count == 3)
+        #expect(ReceivedRequestSections.resolve(Array(items.suffix(2)), now: now).count == 0)
     }
 }
 
@@ -209,6 +219,26 @@ struct ArrivalResolverTests {
         #expect(ArrivalResolver.resolve(accepted: [], received: [item("r1")], newlyInserted: ["r1"], skippedCancelled: [:]) == nil)
     }
 
+    @Test("ルートが無いときの取り消しは、受諾の後に初めて見つけたものだけ（前から残る取り消し済みを取り違えない）")
+    func fallbackCancelledFresh() {
+        let skipped = ["old": "_a"]
+        #expect(ArrivalResolver.resolve(accepted: [key(nil, owner: "_a")], received: [], newlyInserted: [],
+                                        skippedCancelled: skipped, freshCancelled: []) == nil)
+        #expect(ArrivalResolver.resolve(accepted: [key(nil, owner: "_a")], received: [], newlyInserted: [],
+                                        skippedCancelled: skipped, freshCancelled: ["old"]) == .cancelledBeforeOpen)
+        // ルートが分かっていれば、受諾より前から取り消し済みでも知らせる
+        #expect(ArrivalResolver.resolve(accepted: [key("old")], received: [], newlyInserted: [],
+                                        skippedCancelled: skipped, freshCancelled: []) == .cancelledBeforeOpen)
+    }
+
+    @Test("見つかった鍵だけを返す（残りは次の試行に回す）")
+    func resolvedKeys() {
+        let keys = [key("r1"), key("r2"), key("r3")]
+        let resolved = ArrivalResolver.resolvedKeys(
+            accepted: keys, received: [item("r1")], newlyInserted: ["r1"], skippedCancelled: ["r3": "_owner"])
+        #expect(resolved == [key("r1"), key("r3")])
+    }
+
     @Test("別の端末から来た依頼（newlyInserted に無い）は、受諾していなければ対象にならない")
     func notAccepted() {
         let result = ArrivalResolver.resolve(
@@ -224,44 +254,113 @@ struct ReceivedArrivalContentTests {
         PermissionSnapshot(location: location, isPreciseLocation: precise, notification: notification)
     }
 
-    @Test("許可が足りていて、プロフィールもあれば案内なし")
+    private func resolve(_ status: ShareStatus = .active, permissions s: PermissionSnapshot? = nil,
+                         hasProfile: Bool = true, regions: Int = 0) -> ReceivedArrivalContent {
+        ReceivedArrivalContent.resolve(status: status, permissions: s ?? snapshot(), hasProfile: hasProfile, requiredRegions: regions)
+    }
+
+    @Test("許可が足りていて、プロフィールがあれば案内なし。3 項目と「あなたの名前」を出す")
     func allGood() {
-        let content = ReceivedArrivalContent.resolve(
-            requesterName: "母", permissions: snapshot(), hasProfile: true, requiredRegions: 3)
-        #expect(content == ReceivedArrivalContent(headingRequesterName: "母", notice: nil, showsNamePrompt: false))
+        #expect(resolve(regions: 3) == ReceivedArrivalContent(
+            notice: nil, showsAbout: true, showsNamePrompt: false, showsYourName: true))
     }
 
     @Test("使用中のみは専用の文、それ以外は PR #11 の案内")
     func notices() {
-        func notice(_ s: PermissionSnapshot) -> ReceivedArrivalNotice? {
-            ReceivedArrivalContent.resolve(requesterName: "母", permissions: s, hasProfile: true, requiredRegions: 0).notice
-        }
-        #expect(notice(snapshot(.whenInUse)) == .whenInUseOnly)
-        #expect(notice(snapshot(.denied)) == .permission(.locationDenied))
-        #expect(notice(snapshot(.notDetermined)) == .permission(.locationNotDetermined))
-        #expect(notice(snapshot(.always, .denied)) == .permission(.notificationsDenied))
-        #expect(notice(snapshot(.always, precise: false)) == .permission(.locationReducedAccuracy))
+        #expect(resolve(permissions: snapshot(.whenInUse)).notice == .whenInUseOnly)
+        #expect(resolve(permissions: snapshot(.denied)).notice == .permission(.locationDenied))
+        #expect(resolve(permissions: snapshot(.notDetermined)).notice == .permission(.locationNotDetermined))
+        #expect(resolve(permissions: snapshot(.always, .denied)).notice == .permission(.notificationsDenied))
+        #expect(resolve(permissions: snapshot(.always, precise: false)).notice == .permission(.locationReducedAccuracy))
     }
 
     @Test("許可の不足が無くて上限を超えているときだけ上限の案内。許可の不足があればそちらが先")
     func limit() {
-        let over = ReceivedArrivalContent.resolve(
-            requesterName: "母", permissions: snapshot(), hasProfile: true, requiredRegions: 22)
-        #expect(over.notice == .monitoringLimit(.overLimit(used: 22, unmonitored: 2)))
-        let near = ReceivedArrivalContent.resolve(
-            requesterName: "母", permissions: snapshot(), hasProfile: true, requiredRegions: 19)
-        #expect(near.notice == nil)
-        let both = ReceivedArrivalContent.resolve(
-            requesterName: "母", permissions: snapshot(.denied), hasProfile: true, requiredRegions: 22)
-        #expect(both.notice == .permission(.locationDenied))
+        #expect(resolve(regions: 22).notice == .monitoringLimit(.overLimit(used: 22, unmonitored: 2)))
+        #expect(resolve(regions: 19).notice == nil)
+        #expect(resolve(permissions: snapshot(.denied), regions: 22).notice == .permission(.locationDenied))
     }
 
-    @Test("名前の行はプロフィールが無いときだけ。依頼者の名前が空なら見出しに出さない")
-    func nameAndHeading() {
-        let noProfile = ReceivedArrivalContent.resolve(
-            requesterName: "  ", permissions: snapshot(), hasProfile: false, requiredRegions: 0)
-        #expect(noProfile.showsNamePrompt)
-        #expect(noProfile.headingRequesterName == nil)
+    @Test("名前の行はプロフィールが無いときだけ、「あなたの名前」はあるときだけ")
+    func nameRows() {
+        let noProfile = resolve(hasProfile: false)
+        #expect(noProfile.showsNamePrompt && !noProfile.showsYourName)
+        let profile = resolve(hasProfile: true)
+        #expect(!profile.showsNamePrompt && profile.showsYourName)
+    }
+
+    @Test("監視中でない依頼（到着済み・完了・取り消し）には、3 項目・案内・名前の行を出さない")
+    func notActive() {
+        for status in [ShareStatus.fired, .completed, .cancelled] {
+            let content = resolve(status, permissions: snapshot(.denied), hasProfile: false, regions: 30)
+            #expect(content == ReceivedArrivalContent(notice: nil, showsAbout: false, showsNamePrompt: false, showsYourName: false))
+        }
+    }
+}
+
+@Suite("RequesterIdentity")
+struct RequesterIdentityTests {
+    @Test("確認済みの名前が無ければ、レコードに書かれた名前をそのまま使う")
+    func unverified() {
+        #expect(RequesterIdentity.resolve(writtenName: " 母 ", verifiedName: nil) == RequesterIdentity(displayName: "母", writtenName: nil))
+        #expect(RequesterIdentity.resolve(writtenName: "母", verifiedName: "  ") == RequesterIdentity(displayName: "母", writtenName: nil))
+        #expect(RequesterIdentity.resolve(writtenName: "", verifiedName: nil).displayName.isEmpty)
+    }
+
+    @Test("確認済みの名前を優先し、食い違うときだけ書かれた名前を添える")
+    func verified() {
+        #expect(RequesterIdentity.resolve(writtenName: "母", verifiedName: "母") == RequesterIdentity(displayName: "母", writtenName: nil))
+        #expect(RequesterIdentity.resolve(writtenName: "社長", verifiedName: "山田") == RequesterIdentity(displayName: "山田", writtenName: "社長"))
+        #expect(RequesterIdentity.resolve(writtenName: "", verifiedName: "山田") == RequesterIdentity(displayName: "山田", writtenName: nil))
+    }
+}
+
+@Suite("DeclinedRequestStore")
+struct DeclinedRequestStoreTests {
+    private func makeStore() -> DeclinedRequestStore {
+        let suite = "test.declined.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suite)!
+        defaults.removePersistentDomain(forName: suite)
+        return DeclinedRequestStore(defaults: defaults)
+    }
+
+    @Test("断った記録の追加・確認・削除")
+    func addRemove() {
+        let store = makeStore()
+        #expect(!store.contains("r1"))
+        store.add(recordName: "r1", zoneOwner: "_a")
+        store.add(recordName: "", zoneOwner: "_a")
+        #expect(store.contains("r1"))
+        #expect(store.entries == ["r1": "_a"])
+        store.remove("r1")
+        store.remove("none")
+        #expect(store.entries.isEmpty)
+    }
+
+    @Test("受諾し直したら、ルートのレコード名で記録を消す")
+    func reacceptByRoot() {
+        let store = makeStore()
+        store.add(recordName: "r1", zoneOwner: "_a")
+        store.add(recordName: "r2", zoneOwner: "_a")
+        store.removeForReaccept(rootRecordName: "r1", ownerRecordID: "_a")
+        #expect(store.entries == ["r2": "_a"])
+    }
+
+    @Test("ルートが取れないときは、依頼者が同じ記録を消す")
+    func reacceptByOwner() {
+        let store = makeStore()
+        store.add(recordName: "r1", zoneOwner: "_a")
+        store.add(recordName: "r2", zoneOwner: "_b")
+        store.removeForReaccept(rootRecordName: nil, ownerRecordID: "_a")
+        #expect(store.entries == ["r2": "_b"])
+    }
+
+    @Test("UserDefaults が無くても落ちない")
+    func noDefaults() {
+        let store = DeclinedRequestStore(defaults: nil)
+        store.add(recordName: "r1", zoneOwner: "_a")
+        store.remove("r1")
+        #expect(store.entries.isEmpty)
     }
 }
 
@@ -270,12 +369,13 @@ struct ShareAcceptFailureTests {
     @Test("CKError のコードごとの分類")
     func classify() {
         #expect(ShareAcceptFailure.classify(.notAuthenticated) == .notSignedIn)
+        #expect(ShareAcceptFailure.classify(.accountTemporarilyUnavailable) == .notSignedIn)
         #expect(ShareAcceptFailure.classify(.networkUnavailable) == .network)
         #expect(ShareAcceptFailure.classify(.networkFailure) == .network)
         #expect(ShareAcceptFailure.classify(.unknownItem) == .goneOrCancelled)
         #expect(ShareAcceptFailure.classify(.zoneNotFound) == .goneOrCancelled)
         #expect(ShareAcceptFailure.classify(.permissionFailure) == .notInvited)
-        #expect(ShareAcceptFailure.classify(.participantMayNeedVerification) == .notInvited)
+        #expect(ShareAcceptFailure.classify(.participantMayNeedVerification) == .needsVerification)
     }
 
     @Test("分からないコード・nil は汎用")
@@ -308,7 +408,7 @@ struct ShareAcceptFailureTests {
 
     @Test("どの分類にも文がある（空でない）")
     func messages() {
-        for failure in [ShareAcceptFailure.notSignedIn, .network, .goneOrCancelled, .notInvited, .other] {
+        for failure in [ShareAcceptFailure.notSignedIn, .network, .goneOrCancelled, .notInvited, .needsVerification, .other] {
             #expect(!failure.message.isEmpty)
         }
     }

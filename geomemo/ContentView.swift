@@ -36,6 +36,8 @@ struct ContentView: View {
     /// 同期で新しく取り込んだ依頼・取り消し済みで取り込まなかった依頼（受諾との突き合わせに使う）。
     @State private var newlyInserted: Set<String> = []
     @State private var skippedCancelled: [String: String] = [:]
+    /// そのうち、受諾の後に初めて見つけたもの（ルートのレコード名が取れなかったときの保険の判定に使う）。
+    @State private var freshCancelled: Set<String> = []
 
     /// ルートの現在幅。折りたたみ/展開やウインドウリサイズのたびに更新される。
     @State private var containerWidth: CGFloat = 0
@@ -149,7 +151,7 @@ struct ContentView: View {
             processPendingShares()
             #if DEBUG
             // 受け取り画面の見た目確認用（DemoDataSeeder の受け取った依頼を受け取り画面で出す）
-            if CommandLine.arguments.contains("-demoArrival") {
+            if geomemoApp.isUITesting && CommandLine.arguments.contains("-demoArrival") {
                 try? await Task.sleep(for: .seconds(1))
                 arrival = .arrival(recordName: "demo-1")
             }
@@ -162,7 +164,7 @@ struct ContentView: View {
     /// 設定・見守り・リストを開いている間は渡さない（閉じてから出す）。
     private var arrivalBinding: Binding<ArrivalPresentation?> {
         Binding(
-            get: { (showSettings || showWatchDashboard || showList) ? nil : arrival },
+            get: { (showSettings || showWatchDashboard || (showList && !isSideBySide)) ? nil : arrival },
             set: { arrival = $0 }
         )
     }
@@ -170,6 +172,9 @@ struct ContentView: View {
     /// 保留キューにある受諾済みの共有をフレンド登録する。
     private func processPendingShares() {
         for info in PendingShareQueue.shared.drain() {
+            // 断った依頼をもう一度受諾したときは、断った記録を消す（そうしないと取り込まれない）
+            DeclinedRequestStore.shared.removeForReaccept(
+                rootRecordName: info.rootRecordName, ownerRecordID: info.ownerRecordID)
             registerFriendIfNeeded(info: info)
             awaitingArrivals.append(info)
         }
@@ -192,20 +197,29 @@ struct ContentView: View {
             }
             guard !awaitingArrivals.isEmpty else { return }
             let received = allSharedMemos.filter { !$0.isMyRequest }.map(\.summary)
+            let keys = awaitingArrivals.map(\.key)
             if let result = ArrivalResolver.resolve(
-                accepted: awaitingArrivals.map(\.key),
-                received: received,
-                newlyInserted: newlyInserted,
-                skippedCancelled: skippedCancelled
+                accepted: keys, received: received, newlyInserted: newlyInserted,
+                skippedCancelled: skippedCancelled, freshCancelled: freshCancelled
             ) {
-                awaitingArrivals.removeAll()
+                // 見つかった鍵だけを外す。見つからなかったものは次の試行に回す
+                let resolved = ArrivalResolver.resolvedKeys(
+                    accepted: keys, received: received, newlyInserted: newlyInserted,
+                    skippedCancelled: skippedCancelled, freshCancelled: freshCancelled)
+                awaitingArrivals.removeAll { info in resolved.contains(info.key) }
+                // 出すものが決まった依頼は「新しく取り込んだ」の記録から外す（次の受諾と取り違えない）
+                switch result {
+                case .arrival(let name), .existing(let name): newlyInserted.remove(name)
+                case .list(let names): names.forEach { newlyInserted.remove($0) }
+                case .cancelledBeforeOpen: break
+                }
                 switch result {
                 case .cancelledBeforeOpen:
                     announce(String(localized: "The person who sent this request canceled it."))
                 default:
                     arrival = result
                 }
-                return
+                if awaitingArrivals.isEmpty { return }
             }
         }
         awaitingArrivals.removeAll()
@@ -329,11 +343,16 @@ struct ContentView: View {
         let me = profiles.first
         var importedCount = 0
         var newlyCancelled: [SharedMemo] = []
+        // 断った依頼の「共有から抜ける」が失敗していたら、ここで抜け直す
+        await retryDeclinedLeaves()
+        let declined = DeclinedRequestStore.shared
         do {
             let received = try await CKShareService.shared.fetchReceivedSharedMemos()
             var didChange = false
             for data in received {
                 let recordName = data.ckRecordID.recordName
+                // 断った依頼は取り込まず、監視もしない（抜けるのに失敗していても復活させない）
+                if declined.contains(recordName) { continue }
                 // 完了・取り消しになった依頼の本文は端末に残さない（完了直後は読めるよう少しだけ残す）
                 let keepsNote = SharedMemoNotePolicy.retainsReceivedNote(
                     status: data.status, completedAt: data.completedAt, now: Date())
@@ -367,7 +386,10 @@ struct ContentView: View {
                     }
                 } else if data.status == .cancelled {
                     // まだ取り込んでいない依頼が既に取り消されていれば取り込まない（受諾した人には文で知らせる）
-                    skippedCancelled[recordName] = zoneOwner
+                    if skippedCancelled[recordName] == nil {
+                        skippedCancelled[recordName] = zoneOwner
+                        if !awaitingArrivals.isEmpty { freshCancelled.insert(recordName) }
+                    }
                     continue
                 } else {
                     let claimingMe = shouldClaim ? me : nil
@@ -410,7 +432,10 @@ struct ContentView: View {
             ReceivedRequestSeenStore.shared.prune(
                 keeping: Set(allSharedMemos.filter { !$0.isMyRequest }.map(\.ckRecordName)).union(newlyInserted))
             for cancelled in newlyCancelled {
-                announce(String(format: String(localized: "%@ canceled the request"), cancelled.requesterName))
+                let name = cancelled.requesterName.trimmingCharacters(in: .whitespacesAndNewlines)
+                announce(name.isEmpty
+                         ? String(localized: "The person who sent this request canceled it.")
+                         : String(format: String(localized: "%@ canceled the request"), name))
             }
             if importedCount > 0 && awaitingArrivals.isEmpty && !isResolvingArrival {
                 // 旧版で受諾済みだった依頼が、この版で初めてまとめて取り込まれることがある
@@ -419,6 +444,22 @@ struct ContentView: View {
         } catch {
             // ネットワーク不可は通常運用の一部なので、UI を遮るのは "今ユーザー操作で
             // 取得を期待していたとき" だけにする。ここはバックグラウンド同期なので silent。
+        }
+    }
+
+    /// 断った依頼で、共有から抜けるのに失敗したものを抜け直す。成功（すでに無い場合を含む）したら記録を消す。
+    private func retryDeclinedLeaves() async {
+        let store = DeclinedRequestStore.shared
+        for (recordName, zoneOwner) in store.entries {
+            let zoneID = CKRecordZone.ID(zoneName: CKShareService.sharingZoneName, ownerName: zoneOwner)
+            do {
+                try await CKShareService.shared.leaveReceivedShare(
+                    recordID: CKRecord.ID(recordName: recordName, zoneID: zoneID))
+                store.remove(recordName)
+            } catch {
+                // すでに共有が無い（取り消された・抜け済み）なら、記録は要らない。それ以外は次の同期で再試行する
+                if ShareAcceptFailure.classify(error: error) == .goneOrCancelled { store.remove(recordName) }
+            }
         }
     }
 
@@ -482,6 +523,9 @@ struct ContentView: View {
 @MainActor
 func deleteReceivedSharedMemo(_ shared: SharedMemo, in context: ModelContext) {
     let recordID = shared.cloudKitRecordID
+    let recordName = shared.ckRecordName
+    // 抜けるのに失敗しても次の同期で依頼が復活しないよう、断った記録を先に残す（抜けられたら消す）
+    DeclinedRequestStore.shared.add(recordName: recordName, zoneOwner: shared.zoneOwnerName)
     LocationManager.shared.stopMonitoring(memoID: shared.geofenceIdentifier)
     SharedMemoNoteStore.setNote("", for: shared.ckRecordName)
     context.delete(shared)
@@ -489,7 +533,12 @@ func deleteReceivedSharedMemo(_ shared: SharedMemo, in context: ModelContext) {
     Task {
         do {
             try await CKShareService.shared.leaveReceivedShare(recordID: recordID)
+            DeclinedRequestStore.shared.remove(recordName)
         } catch {
+            if ShareAcceptFailure.classify(error: error) == .goneOrCancelled {
+                DeclinedRequestStore.shared.remove(recordName)
+                return
+            }
             ToastCenter.shared.show(.error(
                 String(localized: "共有の解除に失敗しました。通信状況を確認してください。")
             ))

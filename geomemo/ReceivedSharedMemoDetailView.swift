@@ -14,14 +14,7 @@ struct ReceivedSharedMemoDetailView: View {
     /// true のとき、受諾した直後の「受け取り画面」として出す（依頼者・伝わること・足りない許可・断る）。
     var isArrival: Bool = false
     @State private var confirmingDelete = false
-    @Environment(\.scenePhase) private var scenePhase
-    @Query private var profiles: [UserProfile]
-    @Query private var ownMemos: [GeoMemo]
-    @Query private var allShared: [SharedMemo]
-    @ObservedObject private var locationManager = LocationManager.shared
-    @ObservedObject private var notificationManager = NotificationManager.shared
-    @State private var permissionPerformer = PermissionActionPerformer()
-    @State private var showProfileSetup = false
+    @Query private var friends: [FriendConnection]
     @AccessibilityFocusState private var headingFocused: Bool
 
     private var coordinate: CLLocationCoordinate2D { shared.memoCoordinate }
@@ -65,7 +58,7 @@ struct ReceivedSharedMemoDetailView: View {
 
                     if !isArrival && (shared.status == .active || shared.status == .fired) {
                         Text(String(format: String(localized: "この場所に着くと、依頼した人（%@）に通知されます。伝わるのは到着と完了だけで、現在地は共有されません。"),
-                                    shared.requesterName))
+                                    requesterLabel))
                             .font(.footnote)
                             .foregroundStyle(Brand.secondaryText)
                             .frame(maxWidth: .infinity, alignment: .leading)
@@ -97,14 +90,16 @@ struct ReceivedSharedMemoDetailView: View {
                             .clipShape(RoundedRectangle(cornerRadius: 12))
                     }
 
+                    // 受け取り用の部分（許可の状態・プロフィールなどを読む）は別の View にして、通常の詳細を重くしない
                     if isArrival {
-                        aboutSection
-                        noticeBox
-                        namePromptRow
+                        ReceivedArrivalExtras(shared: shared, requesterName: identity.displayName.isEmpty ? nil : identity.displayName)
                     }
 
                     VStack(spacing: 0) {
-                        infoRow(String(localized: "依頼者"), shared.requesterName)
+                        infoRow(String(localized: "依頼者"), requesterLabel)
+                        if let written = identity.writtenName {
+                            infoRow(String(localized: "Name the sender wrote"), written)
+                        }
                         infoRow(String(localized: "範囲"), "\(Int(shared.memoRadius))m")
                         if let deadline = shared.memoDeadline {
                             if RequestDeadline.isOverdue(deadline, now: Date()) {
@@ -147,7 +142,7 @@ struct ReceivedSharedMemoDetailView: View {
                                 .frame(maxWidth: .infinity, minHeight: 44)
                         }
                         .buttonStyle(.bordered)
-                        .accessibilityIdentifier("arrival.decline")
+                        .accessibilityIdentifier(isArrival ? "arrival.decline" : "received.delete")
                         .confirmationDialog(
                             isArrival ? String(localized: "Decline this request?") : String(localized: "この依頼を削除しますか？"),
                             isPresented: $confirmingDelete,
@@ -160,9 +155,10 @@ struct ReceivedSharedMemoDetailView: View {
                             }
                             Button(String(localized: "キャンセル"), role: .cancel) {}
                         } message: {
-                            Text(isArrival
-                                 ? String(localized: "It will be removed from this device and you'll leave the share. The person who sent it isn't notified.")
-                                 : String(localized: "この端末から削除し、共有から抜けます。依頼した人の側には残ります。"))
+                            Text((isArrival
+                                  ? String(localized: "It will be removed from this device and you'll leave the share. The person who sent it isn't notified.")
+                                  : String(localized: "この端末から削除し、共有から抜けます。依頼した人の側には残ります。"))
+                                 + " " + String(localized: "To receive it again, the sender needs to send it again."))
                         }
                     }
                 }
@@ -183,193 +179,31 @@ struct ReceivedSharedMemoDetailView: View {
             // 開いた依頼は既読にする（端末ごとの記録。バッジの「新着」に使う）
             ReceivedRequestSeenStore.shared.markSeen(shared.ckRecordName)
             if isArrival { headingFocused = true }
-            notificationManager.checkAuthorizationStatus()
-        }
-        .onChange(of: scenePhase) { _, phase in
-            permissionPerformer.scenePhaseChanged(phase)
-            if phase == .active { notificationManager.checkAuthorizationStatus() }
-        }
-        .onDisappear { permissionPerformer.cancel() }
-        .sheet(isPresented: $showProfileSetup) {
-            UserProfileSetupView()
         }
     }
 
-    // MARK: - 受け取り画面
+    // MARK: - 依頼者の名前
 
-    private var requesterNameOrNil: String? {
-        let trimmed = shared.requesterName.trimmingCharacters(in: .whitespacesAndNewlines)
-        return trimmed.isEmpty ? nil : trimmed
+    /// CloudKit の共有で確認できた依頼者の名前（確認済みのフレンドの表示名）。
+    private var verifiedRequesterName: String? {
+        guard VerifiedFriendStore.shared.contains(shared.requesterRecordID) else { return nil }
+        return friends.first { $0.friendRecordID == shared.requesterRecordID }?.friendDisplayName
     }
 
-    private var arrivalContent: ReceivedArrivalContent {
-        ReceivedArrivalContent.resolve(
-            requesterName: shared.requesterName,
-            permissions: PermissionSnapshot(
-                location: LocationAccess(locationManager.authorizationStatus),
-                isPreciseLocation: locationManager.isPreciseLocation,
-                notification: NotificationAccess(notificationManager.authorizationStatus)),
-            hasProfile: !profiles.isEmpty,
-            requiredRegions: GeofenceRegistrar.requiredRegionCount(memos: ownMemos, sharedMemos: allShared))
+    private var identity: RequesterIdentity {
+        RequesterIdentity.resolve(writtenName: shared.requesterName, verifiedName: verifiedRequesterName)
+    }
+
+    /// 名前が空のときは「依頼した人」に置き換える。
+    private var requesterLabel: String {
+        identity.displayName.isEmpty ? String(localized: "The person who sent it") : identity.displayName
     }
 
     private var arrivalHeading: String {
-        if let name = arrivalContent.headingRequesterName {
-            return String(format: String(localized: "%@ sent you a request"), name)
+        if !identity.displayName.isEmpty {
+            return String(format: String(localized: "%@ sent you a request"), identity.displayName)
         }
         return String(localized: "You received a request")
-    }
-
-    /// 「この依頼について」の 3 項目。「監視」「追跡」を連想させない言い方にする。
-    private var aboutSection: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Text(String(localized: "About this request"))
-                .font(.headline)
-                .foregroundStyle(Brand.primaryText)
-                .accessibilityAddTraits(.isHeader)
-            aboutRow("mappin.and.ellipse", arrivalLine)
-            aboutRow("lock.shield", String(localized: "Only your arrival and completion are shared. Your current location and where you've been are never sent."))
-            aboutRow("hand.raised", String(localized: "You can decline at any time. Declining removes it from this device and stops the arrival alert."))
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-    }
-
-    private var arrivalLine: String {
-        if let name = requesterNameOrNil {
-            return String(format: String(localized: "When you reach this place, %@ is told that you arrived."), name)
-        }
-        return String(localized: "When you reach this place, the person who sent the request is told that you arrived.")
-    }
-
-    private func aboutRow(_ icon: String, _ text: String) -> some View {
-        HStack(alignment: .top, spacing: 12) {
-            Image(systemName: icon)
-                .font(.body)
-                .foregroundStyle(Brand.blue)
-                .frame(width: 24)
-                .accessibilityHidden(true)
-            Text(text)
-                .font(.subheadline)
-                .foregroundStyle(Brand.primaryText)
-                .fixedSize(horizontal: false, vertical: true)
-        }
-        .accessibilityElement(children: .combine)
-    }
-
-    /// 足りない許可の案内（1 件）。ボタンは地図のバナーと同じ `PermissionActionPerformer` で動かす。
-    @ViewBuilder
-    private var noticeBox: some View {
-        if let notice = arrivalContent.notice {
-            let text = noticeText(notice)
-            let action = noticeAction(notice)
-            VStack(alignment: .leading, spacing: 4) {
-                HStack(alignment: .top, spacing: 12) {
-                    Image(systemName: noticeIcon(notice))
-                        .font(.callout.weight(.semibold))
-                        .foregroundStyle(Brand.warning)
-                        .accessibilityHidden(true)
-                    Text(text)
-                        .font(.footnote)
-                        .foregroundStyle(Brand.primaryText)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-                if let action {
-                    Button {
-                        permissionPerformer.perform(action)
-                    } label: {
-                        Text(action.title)
-                            .font(.footnote.weight(.semibold))
-                            .foregroundStyle(Brand.blue)
-                            .frame(minHeight: 44, alignment: .leading)
-                            .contentShape(Rectangle())
-                    }
-                    .buttonStyle(.plain)
-                    .padding(.leading, 36)
-                    .accessibilityIdentifier("arrival.noticeAction")
-                }
-            }
-            .padding(14)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .background(Brand.surface)
-            .clipShape(RoundedRectangle(cornerRadius: 12))
-            .overlay(RoundedRectangle(cornerRadius: 12).stroke(Brand.warning.opacity(0.5), lineWidth: 1))
-            .accessibilityElement(children: .contain)
-        }
-    }
-
-    private func noticeText(_ notice: ReceivedArrivalNotice) -> String {
-        switch notice {
-        case .whenInUseOnly:
-            if let name = requesterNameOrNil {
-                return String(format: String(localized: "To tell %@ when the app is closed, location must be set to “Always”."), name)
-            }
-            return String(localized: "To tell the person who sent the request when the app is closed, location must be set to “Always”.")
-        case .permission(let permission):
-            return MapGuidance.permission(permission).message
-        case .monitoringLimit(let limit):
-            return MapGuidance.monitoringLimit(limit).message
-        }
-    }
-
-    private func noticeAction(_ notice: ReceivedArrivalNotice) -> PermissionNotice.Action? {
-        switch notice {
-        case .whenInUseOnly: return PermissionNotice.locationWhenInUseOnly.action
-        case .permission(let permission): return permission.action
-        case .monitoringLimit: return nil
-        }
-    }
-
-    private func noticeIcon(_ notice: ReceivedArrivalNotice) -> String {
-        switch notice {
-        case .whenInUseOnly: return MapGuidance.permission(.locationWhenInUseOnly).iconName
-        case .permission(let permission): return MapGuidance.permission(permission).iconName
-        case .monitoringLimit(let limit): return MapGuidance.monitoringLimit(limit).iconName
-        }
-    }
-
-    /// プロフィールが無いときだけ。名前を伝えるのは任意で、設定しなくても受け取れる。
-    @ViewBuilder
-    private var namePromptRow: some View {
-        if arrivalContent.showsNamePrompt {
-            Button {
-                showProfileSetup = true
-            } label: {
-                HStack(spacing: 12) {
-                    Image(systemName: "person.crop.circle")
-                        .font(.title3)
-                        .foregroundStyle(Brand.blue)
-                        .accessibilityHidden(true)
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text(String(localized: "Tell them your name"))
-                            .font(.subheadline.weight(.semibold))
-                            .foregroundStyle(Brand.primaryText)
-                        Text(nameCaption)
-                            .font(.caption)
-                            .foregroundStyle(Brand.secondaryText)
-                            .fixedSize(horizontal: false, vertical: true)
-                    }
-                    Spacer(minLength: 0)
-                    Image(systemName: "chevron.right")
-                        .font(.footnote.weight(.semibold))
-                        .foregroundStyle(Brand.secondaryText)
-                        .accessibilityHidden(true)
-                }
-                .padding(14)
-                .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
-                .background(Brand.surface)
-                .clipShape(RoundedRectangle(cornerRadius: 12))
-                .contentShape(Rectangle())
-            }
-            .buttonStyle(.plain)
-            .accessibilityIdentifier("arrival.namePrompt")
-        }
-    }
-
-    private var nameCaption: String {
-        if let name = requesterNameOrNil {
-            return String(format: String(localized: "%@ will see this name. You can skip this."), name)
-        }
-        return String(localized: "The person who sent the request will see this name. You can skip this.")
     }
 
     private var statusText: String {
@@ -399,6 +233,12 @@ struct ReceivedSharedMemoDetailView: View {
 }
 
 extension SharedMemo {
+    /// 依頼者の名前。空のときは「依頼した人」に置き換える。
+    var requesterLabel: String {
+        let trimmed = requesterName.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? String(localized: "The person who sent it") : trimmed
+    }
+
     /// 受け取った依頼の表示判断（`RecipientLogic.swift`）に渡す要約。
     var summary: ReceivedSummary {
         ReceivedSummary(recordName: ckRecordName, zoneOwner: requesterRecordID, status: status,

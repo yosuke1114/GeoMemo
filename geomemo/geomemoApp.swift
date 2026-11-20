@@ -80,7 +80,9 @@ final class GeoMemoAppDelegate: NSObject, UIApplicationDelegate {
                 PendingShareQueue.shared.failIncoming()
                 // CKError のコードで分類する。分からないものは汎用の文にする（原因を決め打ちしない）。
                 let failure = ShareAcceptFailure.classify(error: error)
-                CKShareService.logger.error("accept share failed: \(error.localizedDescription, privacy: .public)")
+                // エラーの説明文には名前などが入りうるので private。コードだけ public にする
+                let code = (error as? CKError)?.code.rawValue ?? -1
+                CKShareService.logger.error("accept share failed: code \(code, privacy: .public) \(error.localizedDescription, privacy: .private)")
                 let message = failure.message
                 ToastCenter.shared.show(.error(message, duration: 5))
                 AccessibilityNotification.Announcement(message).post()
@@ -101,6 +103,8 @@ extension ShareAcceptFailure {
             return String(localized: "This request was canceled or no longer exists.")
         case .notInvited:
             return String(localized: "Only the invited person can open this link.")
+        case .needsVerification:
+            return String(localized: "Check that you're signed in to iCloud with the email address or phone number that was invited.")
         case .other:
             return String(localized: "共有メモの受諾に失敗しました。通信状況を確認して再度お試しください。")
         }

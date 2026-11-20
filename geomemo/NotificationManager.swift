@@ -170,7 +170,10 @@ class NotificationManager: NSObject, ObservableObject {
     func scheduleSharedMemoFiredNotification(memoTitle: String, requesterName: String, sharedID: String) async {
         guard isNotificationsEnabled else { return }
         let title = memoTitle.isEmpty ? String(localized: "到着しました") : memoTitle
-        let body  = String(format: String(localized: "We let %@ know you arrived."), requesterName)
+        let name = requesterName.trimmingCharacters(in: .whitespacesAndNewlines)
+        let body  = name.isEmpty
+            ? String(localized: "We let the person who sent the request know you arrived.")
+            : String(format: String(localized: "We let %@ know you arrived."), name)
         let content = makeContent(title: title, body: body, memoID: sharedID,
                                   defaultBody: body, categoryIdentifier: Self.categoryFriendAlert)
         let trigger = UNTimeIntervalNotificationTrigger(timeInterval: 1, repeats: false)

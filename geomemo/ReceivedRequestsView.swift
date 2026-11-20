@@ -45,7 +45,7 @@ struct ReceivedRequestRow: View {
                             .clipShape(Capsule())
                     }
                 }
-                Text(String(localized: "依頼: ") + shared.requesterName)
+                Text(String(localized: "依頼: ") + shared.requesterLabel)
                     .font(.caption)
                     .foregroundStyle(Brand.secondaryText)
                     .lineLimit(1)
@@ -198,10 +198,12 @@ struct ReceivedRequestsBadge: View {
                     Image(systemName: "person.2.fill")
                         .font(.caption.weight(.semibold))
                         .accessibilityHidden(true)
-                    Text(String(localized: "Requests \(count)"))
-                    if hasArrived {
-                        Text(verbatim: "・" + String(localized: "To finish"))
-                    }
+                    // 最大の文字サイズでは「完了待ち」を次の行に折り返す
+                    Text(hasArrived
+                         ? String(localized: "Requests \(count) · To finish")
+                         : String(localized: "Requests \(count)"))
+                        .multilineTextAlignment(.leading)
+                        .fixedSize(horizontal: false, vertical: true)
                     if hasUnseen {
                         Circle().fill(Brand.onAccent).frame(width: 8, height: 8)
                             .accessibilityHidden(true)
@@ -210,10 +212,11 @@ struct ReceivedRequestsBadge: View {
                 .font(.footnote.weight(.semibold))
                 .foregroundStyle(Brand.onAccent)
                 .padding(.horizontal, 14)
+                .padding(.vertical, 6)
                 .frame(minHeight: 44)
-                .background(hasArrived ? Brand.warning : Brand.blue, in: Capsule())
+                .background(hasArrived ? Brand.warning : Brand.blue, in: RoundedRectangle(cornerRadius: 22))
                 .shadow(color: .black.opacity(0.2), radius: 4, x: 0, y: 2)
-                .contentShape(Capsule())
+                .contentShape(RoundedRectangle(cornerRadius: 22))
             }
             .buttonStyle(.plain)
             .accessibilityElement(children: .ignore)
@@ -312,13 +315,16 @@ struct ReceivedRequestCard: View {
     private func fromLine(_ shared: SharedMemo) -> some View {
         if dynamicTypeSize.isAccessibilitySize {
             VStack(alignment: .leading, spacing: 2) {
-                Text(String(format: String(localized: "From %@"), shared.requesterName))
+                Text(shared.requesterName.isEmpty ? String(localized: "From the person who sent it")
+                     : String(format: String(localized: "From %@"), shared.requesterName))
                 Text(shared.memoLocationName)
             }
             .font(.caption)
             .foregroundStyle(Brand.secondaryText)
         } else {
-            Text(String(format: String(localized: "From %1$@ · %2$@"), shared.requesterName, shared.memoLocationName))
+            Text(shared.requesterName.isEmpty
+                 ? String(format: String(localized: "From the person who sent it · %@"), shared.memoLocationName)
+                 : String(format: String(localized: "From %1$@ · %2$@"), shared.requesterName, shared.memoLocationName))
                 .font(.caption)
                 .foregroundStyle(Brand.secondaryText)
                 .lineLimit(1)

@@ -76,6 +76,7 @@ nonisolated struct ReceivedRequestSections: Equatable {
     var recent: [String] = []
 
     nonisolated var isEmpty: Bool { arrived.isEmpty && waiting.isEmpty && recent.isEmpty }
+    nonisolated var count: Int { arrived.count + waiting.count + recent.count }
 
     /// 各節の中は、期限の近い順（期限なしは後ろ）、同じなら受け取った順（新しい方が先）。
     nonisolated static func resolve(_ items: [ReceivedSummary], now: Date) -> ReceivedRequestSections {
@@ -158,42 +159,69 @@ nonisolated enum ArrivalPresentation: Equatable, Identifiable {
 }
 
 nonisolated enum ArrivalResolver {
+    /// 1 つの鍵に対応する依頼（取り込み済みのレコード名）と、取り消し済みで取り込まなかった依頼があったか。
+    private nonisolated static func match(
+        _ key: AcceptedShareKey,
+        received: [ReceivedSummary],
+        newlyInserted: Set<String>,
+        skippedCancelled: [String: String],
+        freshCancelled: Set<String>
+    ) -> (names: [String], cancelled: Bool) {
+        if let root = key.rootRecordName, !root.isEmpty {
+            if received.contains(where: { $0.recordName == root }) { return ([root], false) }
+            return ([], skippedCancelled[root] != nil)
+        }
+        // ルートのレコード名が取れなかったときの保険。取り消しは、受諾の後に初めて見つけたものだけを対象にする
+        // （前から残っている同じ依頼者の取り消し済みの依頼を、今回の受諾と取り違えない）。
+        let byOwner = received.filter { newlyInserted.contains($0.recordName) && $0.zoneOwner == key.ownerRecordID }.map(\.recordName)
+        if !byOwner.isEmpty { return (byOwner, false) }
+        let cancelled = skippedCancelled.contains { freshCancelled.contains($0.key) && $0.value == key.ownerRecordID }
+        return ([], cancelled)
+    }
+
     /// 受諾した共有に対応する依頼を探し、何を出すか決める。見つからなければ nil（同期をやり直す）。
     ///
     /// - `rootRecordName` があればそのレコード名で探す。無ければ、新しく取り込んだ依頼のうち
     ///   ゾーンの所有者が `ownerRecordID` と同じものを使う（同じ依頼者から 2 件を同時に受諾すると区別できず一覧になる）。
     /// - `skippedCancelled` は、取り消し済みで取り込まなかった依頼（レコード名 → ゾーンの所有者）。
+    /// - `freshCancelled` は、そのうち受諾より後に初めて見つけたもの（ルートが無いときの保険にだけ使う。nil なら全部）。
     nonisolated static func resolve(
         accepted: [AcceptedShareKey],
         received: [ReceivedSummary],
         newlyInserted: Set<String>,
-        skippedCancelled: [String: String]
+        skippedCancelled: [String: String],
+        freshCancelled: Set<String>? = nil
     ) -> ArrivalPresentation? {
         var found: [String] = []
         var cancelledFound = false
-        func add(_ name: String) { if !found.contains(name) { found.append(name) } }
-
+        let fresh = freshCancelled ?? Set(skippedCancelled.keys)
         for key in accepted {
-            if let root = key.rootRecordName, !root.isEmpty {
-                if received.contains(where: { $0.recordName == root }) {
-                    add(root)
-                } else if skippedCancelled[root] != nil {
-                    cancelledFound = true
-                }
-            } else {
-                let byOwner = received.filter { newlyInserted.contains($0.recordName) && $0.zoneOwner == key.ownerRecordID }
-                byOwner.forEach { add($0.recordName) }
-                if byOwner.isEmpty, skippedCancelled.values.contains(key.ownerRecordID) {
-                    cancelledFound = true
-                }
-            }
+            let m = match(key, received: received, newlyInserted: newlyInserted,
+                          skippedCancelled: skippedCancelled, freshCancelled: fresh)
+            for name in m.names where !found.contains(name) { found.append(name) }
+            if m.cancelled { cancelledFound = true }
         }
-
         if found.count >= 2 { return .list(recordNames: found) }
         if let only = found.first {
             return newlyInserted.contains(only) ? .arrival(recordName: only) : .existing(recordName: only)
         }
         return cancelledFound ? .cancelledBeforeOpen : nil
+    }
+
+    /// 依頼が見つかった（または取り消し済みと分かった）鍵。残りは次の試行に回す。
+    nonisolated static func resolvedKeys(
+        accepted: [AcceptedShareKey],
+        received: [ReceivedSummary],
+        newlyInserted: Set<String>,
+        skippedCancelled: [String: String],
+        freshCancelled: Set<String>? = nil
+    ) -> [AcceptedShareKey] {
+        let fresh = freshCancelled ?? Set(skippedCancelled.keys)
+        return accepted.filter {
+            let m = match($0, received: received, newlyInserted: newlyInserted,
+                          skippedCancelled: skippedCancelled, freshCancelled: fresh)
+            return !m.names.isEmpty || m.cancelled
+        }
     }
 }
 
@@ -209,20 +237,25 @@ nonisolated enum ReceivedArrivalNotice: Equatable {
 }
 
 nonisolated struct ReceivedArrivalContent: Equatable {
-    /// 見出しに依頼者の名前を出すか（名前が空なら出さない）。
-    var headingRequesterName: String?
-    /// 足りない許可の案内（1 件。いちばん重要なもの）。
+    /// 足りない許可の案内（1 件。いちばん重要なもの）。監視中の依頼のときだけ。
     var notice: ReceivedArrivalNotice?
-    /// 「名前を伝える」の行を出すか（プロフィールが無いときだけ）。
+    /// 「この依頼について」の 3 項目を出すか（監視中の依頼のときだけ）。
+    var showsAbout: Bool
+    /// 「名前を伝える」の行を出すか（プロフィールが無く、監視中のとき）。
     var showsNamePrompt: Bool
+    /// 「あなたの名前（○○）が表示されます」を出すか（プロフィールがあり、監視中のとき）。
+    var showsYourName: Bool
 
     nonisolated static func resolve(
-        requesterName: String,
+        status: ShareStatus,
         permissions: PermissionSnapshot,
         hasProfile: Bool,
         requiredRegions: Int
     ) -> ReceivedArrivalContent {
-        let trimmed = requesterName.trimmingCharacters(in: .whitespacesAndNewlines)
+        // 到着済み・完了・取り消しの依頼には、これから到着が伝わる前提の説明・案内・名前の行は出さない
+        guard status == .active else {
+            return ReceivedArrivalContent(notice: nil, showsAbout: false, showsNamePrompt: false, showsYourName: false)
+        }
         var notice: ReceivedArrivalNotice?
         if let top = PermissionNotice.resolve(permissions) {
             notice = top == .locationWhenInUseOnly ? .whenInUseOnly : .permission(top)
@@ -230,10 +263,75 @@ nonisolated struct ReceivedArrivalContent: Equatable {
             let limit = MonitoringLimitState.resolve(requiredRegions: requiredRegions)
             if case .overLimit = limit { notice = .monitoringLimit(limit) }
         }
-        return ReceivedArrivalContent(
-            headingRequesterName: trimmed.isEmpty ? nil : trimmed,
-            notice: notice,
-            showsNamePrompt: !hasProfile)
+        return ReceivedArrivalContent(notice: notice, showsAbout: true,
+                                      showsNamePrompt: !hasProfile, showsYourName: hasProfile)
+    }
+}
+
+// MARK: - 依頼者の名前
+
+/// 見出しなどに出す依頼者の名前。レコードに依頼者が書いた名前は自己申告なので、
+/// CloudKit の共有で確認できた名前（確認済みのフレンドの表示名）があればそれを優先し、食い違うときは両方出す。
+nonisolated struct RequesterIdentity: Equatable {
+    /// 見出し・通知に出す名前。空なら「依頼した人」などに置き換える。
+    var displayName: String
+    /// 確認済みの名前と、依頼者がレコードに書いた名前が食い違うときの、書かれた名前。
+    var writtenName: String?
+
+    nonisolated static func resolve(writtenName: String, verifiedName: String?) -> RequesterIdentity {
+        let written = writtenName.trimmingCharacters(in: .whitespacesAndNewlines)
+        let verified = (verifiedName ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !verified.isEmpty else { return RequesterIdentity(displayName: written, writtenName: nil) }
+        let differs = !written.isEmpty && written != verified
+        return RequesterIdentity(displayName: verified, writtenName: differs ? written : nil)
+    }
+}
+
+// MARK: - 断った依頼の記録
+
+/// 「断る」で共有から抜けるのに失敗したとき、次の同期で依頼が復活（取り込み・監視の再開）しないよう、
+/// 断ったレコード名（と、抜け直すための共有ゾーンの所有者）を端末に残す。同期のたびに抜け直しを再試行し、
+/// 成功したら消す。同じ依頼を受諾し直したときも消す。App Group の UserDefaults に端末ごとに記録する。
+nonisolated struct DeclinedRequestStore {
+    private static let key = "declinedReceivedRequests"
+    let defaults: UserDefaults?
+
+    nonisolated init(defaults: UserDefaults?) {
+        self.defaults = defaults
+    }
+
+    nonisolated static var shared: DeclinedRequestStore {
+        DeclinedRequestStore(defaults: UserDefaults(suiteName: GeoMemoStore.appGroupID))
+    }
+
+    /// レコード名 → 共有ゾーンの所有者。
+    nonisolated var entries: [String: String] {
+        (defaults?.dictionary(forKey: Self.key) as? [String: String]) ?? [:]
+    }
+
+    nonisolated func contains(_ recordName: String) -> Bool { entries[recordName] != nil }
+
+    nonisolated func add(recordName: String, zoneOwner: String) {
+        guard !recordName.isEmpty, let defaults else { return }
+        var current = entries
+        current[recordName] = zoneOwner
+        defaults.set(current, forKey: Self.key)
+    }
+
+    nonisolated func remove(_ recordName: String) {
+        guard let defaults else { return }
+        var current = entries
+        guard current.removeValue(forKey: recordName) != nil else { return }
+        defaults.set(current, forKey: Self.key)
+    }
+
+    /// 同じ依頼を受諾し直したときに消す。ルートのレコード名が取れなかったときは、依頼者が同じものを消す。
+    nonisolated func removeForReaccept(rootRecordName: String?, ownerRecordID: String) {
+        if let root = rootRecordName, !root.isEmpty {
+            remove(root)
+        } else {
+            for (name, owner) in entries where owner == ownerRecordID { remove(name) }
+        }
     }
 }
 
@@ -244,15 +342,18 @@ nonisolated enum ShareAcceptFailure: Equatable {
     case network
     case goneOrCancelled
     case notInvited
+    /// 招待された Apple ID でサインインしているか確かめてほしい（`.participantMayNeedVerification`）。
+    case needsVerification
     case other
 
     /// CKError のコードから分類する。ここに挙げたもの以外（nil を含む）は汎用の `.other`。
     nonisolated static func classify(_ code: CKError.Code?) -> ShareAcceptFailure {
         switch code {
-        case .notAuthenticated: return .notSignedIn
+        case .notAuthenticated, .accountTemporarilyUnavailable: return .notSignedIn
         case .networkUnavailable, .networkFailure: return .network
         case .unknownItem, .zoneNotFound: return .goneOrCancelled
-        case .permissionFailure, .participantMayNeedVerification: return .notInvited
+        case .permissionFailure: return .notInvited
+        case .participantMayNeedVerification: return .needsVerification
         default: return .other
         }
     }

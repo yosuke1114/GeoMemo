@@ -5,10 +5,11 @@ import Foundation
 /// スクリーンショット用デモデータ注入
 /// 起動引数 "-seedDemoData" が渡されたときのみ実行
 enum DemoDataSeeder {
-    /// 受け取った依頼の画面確認用。起動引数 "-seedReceivedDemo"（DEBUG のみ）。自分のメモは作らない
+    /// 受け取った依頼の画面確認用。起動引数 "-UITesting -seedReceivedDemo"（DEBUG のみ・インメモリのストアのときだけ）。自分のメモは作らない
     /// （受信だけの人の簡易表示になる）。`-seedReceivedDemoWithMemo` を足すと自分のメモも 1 件入れる。
     static func seedReceivedIfNeeded(context: ModelContext) {
-        guard CommandLine.arguments.contains("-seedReceivedDemo") else { return }
+        // UI テスト（インメモリのストア）のときだけ。実データを消さないため
+        guard geomemoApp.isUITesting, CommandLine.arguments.contains("-seedReceivedDemo") else { return }
         ((try? context.fetch(FetchDescriptor<SharedMemo>())) ?? []).forEach { context.delete($0) }
         ((try? context.fetch(FetchDescriptor<GeoMemo>())) ?? []).forEach { context.delete($0) }
         func make(_ name: String, _ title: String, _ place: String, _ lat: Double, _ lon: Double,

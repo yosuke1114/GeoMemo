@@ -61,6 +61,12 @@ struct MapTabView: View {
     @State private var showReceivedList = false
     /// 既読の記録を読み直すための印（詳細・一覧を閉じたときに増やす）。
     @State private var seenTick = 0
+    /// 既読の集合・バッジ・下部の表示。body のたびには計算せず、材料が変わったとき（recomputeReceived）だけ更新する。
+    @State private var seenNames: Set<String> = []
+    @State private var badgeState: ReceivedBadgeState = .hidden
+    @State private var homeMode: HomeMode = .standard
+    /// 受信した依頼のカードの高さ（右下の丸ボタンの列をその上に置くため）。
+    @State private var receivedCardHeight: CGFloat = 0
     @State private var arrivalTask: Task<Void, Never>?
     @State private var activeDetailMemo: GeoMemo?
     @State private var pendingDetailMemo: GeoMemo?
@@ -110,13 +116,18 @@ struct MapTabView: View {
         .animation(.easeInOut(duration: 0.25), value: currentGuidance)
         .animation(.easeInOut(duration: 0.25), value: badgeState)
         .onChange(of: arrival) { _, _ in presentArrivalWhenReady() }
+        .onChange(of: seenTick) { _, _ in recomputeReceived() }
+        .onChange(of: receivedStateKey) { _, _ in recomputeReceived() }
         .onChange(of: isAnotherSheetPresented) { _, presented in
             if !presented { presentArrivalWhenReady() }
         }
         // 設定アプリから戻った直後に、通知の許可状態を読み直す。
         .onChange(of: scenePhase) { _, phase in
             permissionPerformer.scenePhaseChanged(phase)
-            if phase == .active { notificationManager.checkAuthorizationStatus() }
+            if phase == .active {
+                notificationManager.checkAuthorizationStatus()
+                recomputeReceived() // 完了から 24 時間の判定が時間で変わるため
+            }
         }
         // 許可を変えた後（設定アプリから戻った・ダイアログで許可した）に、監視を張り直す。
         // 未許可のうちに登録した領域は効かないため、未許可 → 許可済みになったら登録し直す。
@@ -130,7 +141,10 @@ struct MapTabView: View {
         .onChange(of: locationManager.isPreciseLocation) { _, _ in recomputeGuidance() }
         .onChange(of: notificationManager.authorizationStatus) { _, _ in recomputeGuidance() }
         .onChange(of: guidanceDismissalsJSON) { _, _ in recomputeGuidance() }
-        .onChange(of: mapSharedMemos.count) { _, _ in recomputeGuidance() }
+        .onChange(of: mapSharedMemos.count) { _, _ in
+            recomputeGuidance()
+            recomputeReceived()
+        }
         // 受信した依頼が増減したとき・自分のメモが増減したときに、監視を差分で合わせる。
         // 20 件あるときに新しい依頼を取り込んでも、次の起動を待たずに登録される（古いメモが外れる）。
         // 逆に依頼が完了・取り消しになって枠が空けば、外れていた自分のメモが戻る。
@@ -174,6 +188,7 @@ struct MapTabView: View {
             if let userLocation = locationManager.location?.coordinate {
                 cameraPosition = .region(streetLevelRegion(userLocation))
             }
+            recomputeReceived()
             reRegisterAllGeofences()
             // Pass-through 通知の対象を LocationManager に同期（接近時 Dynamic Island 表示）。
             // フォアグラウンド中のみ動作（バックグラウンド対応は別途審査が必要）。
@@ -197,6 +212,7 @@ struct MapTabView: View {
             }
         }
         .onChange(of: memos.count) { _, _ in
+            recomputeReceived()
             scheduleCluster()
             // メモ追加/削除で pass-through 監視対象も更新する。
             locationManager.updatePassMemos(memos)
@@ -208,7 +224,8 @@ struct MapTabView: View {
             // 到着の通知をタップしたとき: 受け取った依頼の詳細を開く（自分のメモに無ければ受け取った依頼から探す）
             if memos.first(where: { $0.id == id }) == nil,
                let shared = mapSharedMemos.first(where: { $0.id == id && !$0.isMyRequest }) {
-                mapSelectedReceived = shared
+                // ほかのシートが出ていれば、閉じるのを待ってから出す（受諾直後の表示と同じ作法）
+                arrival = .existing(recordName: shared.ckRecordName)
             }
             if let memo = memos.first(where: { $0.id == id }) {
                 calloutMemo = memo
@@ -471,7 +488,7 @@ struct MapTabView: View {
                 .padding(.trailing, 16)
                 // ADD MEMO ボタン (高さ ~72pt + bottom 16pt) や受信した依頼のカードと重ならないように、
                 // 下端をその上に十分余裕を持って配置する。
-                .padding(.bottom, homeMode == .receiverOnly ? 168 : 112)
+                .padding(.bottom, homeMode == .receiverOnly ? max(112, receivedCardHeight + 32) : 112)
             }
         }
     }
@@ -530,17 +547,22 @@ struct MapTabView: View {
 
     private var receivedSharedMemos: [SharedMemo] { mapSharedMemos.filter { !$0.isMyRequest } }
 
-    /// 地図の下部に何を出すか。受信だけの人は「ADD MEMO」の代わりに受信した依頼のカードを出す。
-    private var homeMode: HomeMode {
-        HomeMode.resolve(
-            ownMemoCount: memos.count,
-            sentRequestCount: mapSharedMemos.filter(\.isMyRequest).count,
-            receivedRequestCount: receivedSharedMemos.count)
+    /// 材料（依頼の増減・状態）が変わったかを見るための印。
+    private var receivedStateKey: [String] {
+        mapSharedMemos.map { "\($0.ckRecordName):\($0.statusRaw):\($0.isMyRequest)" }
     }
 
-    private var badgeState: ReceivedBadgeState {
-        _ = seenTick
-        return ReceivedBadgeState.resolve(receivedSharedMemos.map(\.summary), seen: ReceivedRequestSeenStore.shared.all)
+    /// 既読・バッジ・下部の表示を材料が変わったときだけ更新する。
+    /// 受信だけの表示にするのは、有効な依頼（到着待ち・到着済み）か、完了から 24 時間以内の依頼が 1 件以上あるとき
+    /// （すべて終わったら「ADD MEMO」に戻る）。
+    private func recomputeReceived() {
+        let items = receivedSharedMemos.map(\.summary)
+        seenNames = ReceivedRequestSeenStore.shared.all
+        badgeState = ReceivedBadgeState.resolve(items, seen: seenNames)
+        homeMode = HomeMode.resolve(
+            ownMemoCount: memos.count,
+            sentRequestCount: mapSharedMemos.filter(\.isMyRequest).count,
+            receivedRequestCount: ReceivedRequestSections.resolve(items, now: Date()).count)
     }
 
     /// 受け取った依頼を表示している最中か、ほかのシートが出ている間は、受け取り画面を出さずに待つ。
@@ -587,6 +609,7 @@ struct MapTabView: View {
                     }
                 }
             )
+            .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { receivedCardHeight = $0 }
             .frame(maxWidth: 480)
             .padding(.horizontal, 40)
             .padding(.bottom, 16)
