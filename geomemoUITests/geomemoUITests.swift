@@ -109,6 +109,32 @@ final class geomemoUITests: XCTestCase {
         XCTAssertTrue(addButton.waitForExistence(timeout: 5), "メモ追加ボタンが表示されるべき")
     }
 
+    // MARK: - 作成画面: 基本だけで始まり、詳細は閉じている
+
+    @MainActor
+    func testCreateEditorShowsBasicsAndCollapsedDetails() throws {
+        let addButton = app.buttons.matching(
+            NSPredicate(format: "label == 'メモ追加' OR label == 'ADD MEMO'")
+        ).firstMatch
+        XCTAssertTrue(addButton.waitForExistence(timeout: 5))
+        addButton.tap()
+
+        // 基本: 題・範囲 (スライダー)・場所
+        XCTAssertTrue(app.textFields["editorTitleField"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.sliders["radiusSlider"].exists)
+        XCTAssertTrue(app.buttons["editorLocationButton"].exists)
+
+        // 詳細は閉じていて、開くと既存の項目が出る
+        let toggle = app.buttons["editorDetailsToggle"]
+        XCTAssertTrue(toggle.exists)
+        XCTAssertFalse(app.staticTexts["TRIGGER CONDITIONS"].exists || app.staticTexts["発動条件"].exists)
+        toggle.tap()
+        let conditions = app.staticTexts.matching(
+            NSPredicate(format: "label == 'TRIGGER CONDITIONS' OR label == '発動条件'")
+        ).firstMatch
+        XCTAssertTrue(conditions.waitForExistence(timeout: 3))
+    }
+
     // MARK: - Paywall: フリー制限到達でPaywall表示
 
     @MainActor

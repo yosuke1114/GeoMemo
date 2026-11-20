@@ -30,8 +30,6 @@ enum MemoEditorMode {
 struct MemoEditorView: View {
     @Environment(\.modelContext) private var modelContext
     @Environment(\.dismiss) private var dismiss
-    @Environment(\.colorScheme) private var colorScheme
-    @AppStorage("mapStyle") private var mapStyleRaw: String = GeoMapStyle.mono.rawValue
 
     let mode: MemoEditorMode
     var onDelete: (() -> Void)?
@@ -58,7 +56,7 @@ struct MemoEditorView: View {
     @State private var activeDays: Set<Int> = [1, 2, 3, 4, 5]
 
     @State private var selectedColorIndex: Int
-    @State private var cameraPosition: MapCameraPosition
+    @State private var showDetails = false
     @State private var currentCoordinate: CLLocationCoordinate2D
 
     // Route trigger
@@ -94,7 +92,7 @@ struct MemoEditorView: View {
             let defaults = UserDefaults.standard
             _title = State(initialValue: "")
             _note = State(initialValue: "")
-            _selectedRadius = State(initialValue: defaults.object(forKey: "defaultRadius") as? Double ?? 100)
+            _selectedRadius = State(initialValue: RadiusPolicy.clamp(defaults.object(forKey: "defaultRadius") as? Double ?? RadiusPolicy.defaultValue))
             _notifyOnEntry = State(initialValue: defaults.object(forKey: "notifyOnEntry") as? Bool ?? true)
             _notifyOnExit = State(initialValue: defaults.object(forKey: "notifyOnExit") as? Bool ?? true)
             _notifyOnPass = State(initialValue: false)
@@ -104,9 +102,6 @@ struct MemoEditorView: View {
             _photoData = State(initialValue: nil)
             _selectedColorIndex = State(initialValue: 0)
             _currentCoordinate = State(initialValue: coordinate)
-            _cameraPosition = State(initialValue: .camera(
-                MapCamera(centerCoordinate: coordinate, distance: 500)
-            ))
 
         case .edit(let memo):
             _title = State(initialValue: memo.title)
@@ -119,9 +114,6 @@ struct MemoEditorView: View {
             _photoData = State(initialValue: memo.imageData)
             _selectedColorIndex = State(initialValue: memo.colorIndex)
             _currentCoordinate = State(initialValue: memo.coordinate)
-            _cameraPosition = State(initialValue: .camera(
-                MapCamera(centerCoordinate: memo.coordinate, distance: 500)
-            ))
 
             // Trigger conditions
             _hasDeadline = State(initialValue: memo.deadline != nil)
@@ -150,61 +142,27 @@ struct MemoEditorView: View {
         NavigationStack {
             ScrollView {
                 VStack(spacing: 0) {
-                    // Map Preview
-                    mapSection
+                    // 基本: 場所・範囲・題・到着／退出。これだけで保存できる
+                    MemoBasicsSection(
+                        title: $title,
+                        radius: $selectedRadius,
+                        notifyOnEntry: $notifyOnEntry,
+                        notifyOnExit: $notifyOnExit,
+                        coordinate: currentCoordinate,
+                        locationBadgeText: locationBadgeText,
+                        isRouteTrigger: isRouteTrigger,
+                        routeWaypoints: routeWaypoints,
+                        onTapLocation: {
+                            if isRouteTrigger { showRouteEditor = true } else { showLocationPicker = true }
+                        }
+                    )
 
-                    // Title Field
-                    titleSection
+                    MemoDivider()
 
-                    Divider()
-                        .background(Brand.primaryText.opacity(0.1))
-
-                    // List Mode Toggle + Content
-                    listModeToggleSection
-
-                    Divider()
-                        .background(Brand.primaryText.opacity(0.1))
-
-                    // Memo Field (hidden when list mode is on)
-                    if !isListMode {
-                        memoSection
-
-                        Divider()
-                            .background(Brand.primaryText.opacity(0.1))
+                    // 詳細: 閉じていても、設定済みの項目は要約で見える
+                    AdvancedDisclosure(isExpanded: $showDetails, summary: advancedSummaryText) {
+                        advancedContent
                     }
-
-                    // Add Photo
-                    photoSection
-
-                    Divider()
-                        .background(Brand.primaryText.opacity(0.1))
-
-                    // Radius Selector
-                    radiusSection
-
-                    Divider()
-                        .background(Brand.primaryText.opacity(0.1))
-
-                    // Color Selector
-                    colorSection
-
-                    Divider()
-                        .background(Brand.primaryText.opacity(0.1))
-
-                    // Tag Section
-                    tagSection
-
-                    Divider()
-                        .background(Brand.primaryText.opacity(0.1))
-
-                    // Notify Section
-                    notifySection
-
-                    Divider()
-                        .background(Brand.primaryText.opacity(0.1))
-
-                    // Trigger Conditions
-                    triggerConditionsSection
 
                     // Delete Button (edit mode only)
                     if case .edit = mode {
@@ -265,9 +223,6 @@ struct MemoEditorView: View {
                 onLocationSelected: { newCoordinate, newLocationName in
                     currentCoordinate = newCoordinate
                     locationName = newLocationName
-                    cameraPosition = .camera(
-                        MapCamera(centerCoordinate: newCoordinate, distance: 500)
-                    )
                 }
             )
             .presentationDetents([.large])
@@ -295,134 +250,61 @@ struct MemoEditorView: View {
         }
     }
 
-    // MARK: - Map Section
-    private var mapSection: some View {
-        ZStack(alignment: .bottomLeading) {
-            Map(position: $cameraPosition, interactionModes: []) {
-                mapContent
-            }
-            .mapStyle({
-                let style = GeoMapStyle(rawValue: mapStyleRaw) ?? .mono
-                switch style {
-                case .satellite: return .imagery
-                case .detail:    return .standard(elevation: .flat, emphasis: .automatic, pointsOfInterest: .all, showsTraffic: false)
-                case .transit:   return .standard(elevation: .flat, emphasis: .muted, pointsOfInterest: .including([.publicTransport]), showsTraffic: false)
-                default:         return .standard(elevation: .flat, emphasis: .muted, pointsOfInterest: .excludingAll, showsTraffic: false)
-                }
-            }())
-            .grayscale({
-                let style = GeoMapStyle(rawValue: mapStyleRaw) ?? .mono
-                return style == .mono && colorScheme != .dark ? 1.0 : 0
-            }())
-            .id(mapStyleRaw)
-            .frame(height: 160)
-            .allowsHitTesting(false)
-            .onChange(of: routeWaypoints) { _, newValue in
-                guard isRouteTrigger, newValue.count >= 2 else { return }
-                let coords = newValue.map { $0.coordinate }
-                let minLat = coords.map { $0.latitude }.min()!
-                let maxLat = coords.map { $0.latitude }.max()!
-                let minLon = coords.map { $0.longitude }.min()!
-                let maxLon = coords.map { $0.longitude }.max()!
-                let center = CLLocationCoordinate2D(
-                    latitude: (minLat + maxLat) / 2,
-                    longitude: (minLon + maxLon) / 2
-                )
-                cameraPosition = .region(MKCoordinateRegion(
-                    center: center,
-                    span: MKCoordinateSpan(
-                        latitudeDelta: max((maxLat - minLat) * 1.8, 0.01),
-                        longitudeDelta: max((maxLon - minLon) * 1.8, 0.01)
-                    )
-                ))
-            }
-
-            // Location Badge — 場所変更の唯一のタップ領域
-            Button {
-                HapticManager.impact(.light)
-                if isRouteTrigger {
-                    showRouteEditor = true
-                } else {
-                    showLocationPicker = true
-                }
-            } label: {
-                HStack(spacing: 6) {
-                    Image("ph-map-pin-fill")
-                        .resizable()
-                        .frame(width: 14, height: 14)
-                        .foregroundColor(Brand.primaryText)
-
-                    Group {
-                        if isRouteTrigger {
-                            Text(routeWaypoints.isEmpty
-                                ? String(localized: "TAP TO ADD ROUTE")
-                                : String(format: String(localized: "%d WAYPOINTS"), routeWaypoints.count))
-                        } else {
-                            Text(locationName.uppercased())
-                        }
-                    }
-                    .font(.caption.weight(.bold))
-                    .foregroundColor(Brand.primaryText)
-
-                    Image(systemName: "pencil")
-                        .font(.caption2.weight(.semibold))
-                        .foregroundColor(Brand.primaryText.opacity(0.7))
-                }
-                .padding(.horizontal, 12)
-                .padding(.vertical, 8)
-                .background(Brand.background)
-                .clipShape(Capsule())
-                .overlay(
-                    Capsule()
-                        .stroke(Brand.primaryText, lineWidth: 1)
-                )
-            }
-            .padding(.leading, 16)
-            .padding(.bottom, 16)
-        }
-    }
-
-    // MARK: - Map Content (extracted to avoid type-checker timeout)
-    @MapContentBuilder
-    private var mapContent: some MapContent {
+    // MARK: - 基本・詳細のまとめ
+    private var locationBadgeText: String {
         if isRouteTrigger {
-            if routeWaypoints.count >= 2 {
-                MapPolyline(coordinates: routeWaypoints.map { $0.coordinate })
-                    .stroke(Brand.blue.opacity(0.7), style: StrokeStyle(lineWidth: 2.5, dash: [6, 4]))
-            }
-            ForEach(Array(routeWaypoints.enumerated()), id: \.element.id) { index, wp in
-                Annotation("", coordinate: wp.coordinate) {
-                    routePin(number: index + 1, size: 22)
-                }
-            }
-        } else {
-            Annotation("", coordinate: currentCoordinate) {
-                ZStack {
-                    Circle().fill(Brand.primaryText).frame(width: 12, height: 12)
-                    Circle().stroke(Brand.background, lineWidth: 2).frame(width: 12, height: 12)
-                }
-            }
-            MapCircle(center: currentCoordinate, radius: selectedRadius)
-                .foregroundStyle(Brand.blue.opacity(0.15))
-                .stroke(Brand.blue, lineWidth: 2)
+            return routeWaypoints.isEmpty
+                ? String(localized: "TAP TO ADD ROUTE")
+                : String(format: String(localized: "%d WAYPOINTS"), routeWaypoints.count)
         }
+        return locationName.uppercased()
     }
 
-    private func routePin(number: Int, size: CGFloat) -> some View {
-        ZStack {
-            Circle().fill(Brand.blue).frame(width: size, height: size)
-            Text("\(number)").font(.system(size: size * 0.45, weight: .bold)).foregroundColor(.white)
-        }
+    private var advancedState: MemoAdvancedState {
+        let cal = Calendar.current
+        func minutes(_ d: Date) -> Int { cal.component(.hour, from: d) * 60 + cal.component(.minute, from: d) }
+        return MemoAdvancedState(
+            note: note,
+            isListMode: isListMode,
+            listItemCount: listItems.count,
+            hasPhoto: photoData != nil,
+            colorIndex: selectedColorIndex,
+            tagCount: selectedTags.count + customTags.count,
+            hasDeadline: hasDeadline,
+            timeWindow: hasTimeWindow ? (minutes(timeStart), minutes(timeEnd)) : nil,
+            activeDayCount: hasDayFilter ? activeDays.count : nil,
+            isRouteTrigger: isRouteTrigger,
+            waypointCount: routeWaypoints.count,
+            notifyOnEntry: notifyOnEntry,
+            notifyOnExit: notifyOnExit,
+            dwellMinutes: dwellMinutes,
+            exitDelayMinutes: exitDelayMinutes,
+            notifyOnPass: notifyOnPass
+        )
     }
 
-    // MARK: - Title Section
-    private var titleSection: some View {
-        TextField("Title", text: $title)
-            .font(.title3.weight(.semibold))
-            .foregroundColor(Brand.primaryText)
-            .padding(.horizontal, 20)
-            .padding(.vertical, 16)
-            .background(Brand.background)
+    private var advancedSummaryText: String {
+        MemoAdvancedSummary.text(for: MemoAdvancedSummary.items(for: advancedState))
+    }
+
+    /// 詳細に入る項目 (従来の並びのまま)
+    @ViewBuilder
+    private var advancedContent: some View {
+        listModeToggleSection
+        MemoDivider()
+        if !isListMode {
+            memoSection
+            MemoDivider()
+        }
+        photoSection
+        MemoDivider()
+        colorSection
+        MemoDivider()
+        tagSection
+        MemoDivider()
+        notifySection
+        MemoDivider()
+        triggerConditionsSection
     }
 
     // MARK: - List Mode Toggle + Item Editor
@@ -550,45 +432,6 @@ struct MemoEditorView: View {
     // PhotoSectionView は独立した struct のため、photoData 変更時のみ再レンダリングされる
     private var photoSection: some View {
         PhotoSectionView(photoData: $photoData)
-    }
-
-    // MARK: - Radius Section
-    private var radiusSection: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Text("RADIUS")
-                .font(.footnote.weight(.semibold))
-                .foregroundColor(Brand.primaryText.opacity(0.5))
-                .padding(.horizontal, 20)
-                .padding(.top, 16)
-
-            HStack(spacing: 0) {
-                radiusButton(value: 50, label: "50M")
-                radiusButton(value: 100, label: "100M")
-                radiusButton(value: 500, label: "500M")
-                radiusButton(value: 1000, label: "1KM")
-            }
-            .background(Brand.secondaryBackground)
-            .clipShape(RoundedRectangle(cornerRadius: 8))
-            .padding(.horizontal, 20)
-            .padding(.bottom, 16)
-        }
-    }
-
-    private func radiusButton(value: Double, label: String) -> some View {
-        Button(action: {
-            HapticManager.selection()
-            selectedRadius = value
-        }) {
-            Text(label)
-                .font(.subheadline.weight(selectedRadius == value ? .bold : .semibold))
-                .foregroundColor(selectedRadius == value ? Brand.blue : Brand.secondaryText)
-                .frame(maxWidth: .infinity)
-                .frame(minHeight: 44)
-                .padding(.vertical, 4)
-                .background(selectedRadius == value ? Brand.background : Color.clear)
-                .clipShape(RoundedRectangle(cornerRadius: 6))
-                .padding(2)
-        }
     }
 
     // MARK: - Color Section
@@ -838,23 +681,6 @@ struct MemoEditorView: View {
                 }
                 .transition(.opacity.combined(with: .move(edge: .top)))
             } else {
-                Divider()
-                    .background(Brand.primaryText.opacity(0.1))
-                    .padding(.horizontal, 20)
-
-                // ON ENTRY
-                HStack {
-                    Text("ON ENTRY")
-                        .font(.body.weight(.semibold))
-                        .foregroundColor(Brand.primaryText)
-                    Spacer()
-                    Toggle("", isOn: $notifyOnEntry)
-                        .labelsHidden()
-                        .tint(Brand.blue)
-                }
-                .padding(.horizontal, 20)
-                .padding(.vertical, 12)
-
                 if notifyOnEntry {
                     Divider()
                         .background(Brand.primaryText.opacity(0.1))
@@ -884,23 +710,6 @@ struct MemoEditorView: View {
                     .padding(.vertical, 12)
                     .transition(.opacity.combined(with: .move(edge: .top)))
                 }
-
-                Divider()
-                    .background(Brand.primaryText.opacity(0.1))
-                    .padding(.horizontal, 20)
-
-                // ON EXIT
-                HStack {
-                    Text("ON EXIT")
-                        .font(.body.weight(.semibold))
-                        .foregroundColor(Brand.primaryText)
-                    Spacer()
-                    Toggle("", isOn: $notifyOnExit)
-                        .labelsHidden()
-                        .tint(Brand.blue)
-                }
-                .padding(.horizontal, 20)
-                .padding(.vertical, 12)
 
                 if notifyOnExit {
                     Divider()
