@@ -230,7 +230,9 @@ struct ContentView: View {
     }
 
     private func syncSharedMemos() async {
-        guard !isSyncing, let me = profiles.first else { return }
+        // プロフィール（表示名）が無くても取り込む。受信者としての名前の書き込みだけ、プロフィールがあるときに行う
+        guard !isSyncing else { return }
+        let me = profiles.first
         isSyncing = true
         defer { isSyncing = false }
         do {
@@ -246,8 +248,9 @@ struct ContentView: View {
                 // 招待で送られた依頼は受信者が未定。監視中なら自分の名前を書き込み、依頼者側に表示させる。
                 // 依頼者側はこの値を共有の参加者と突き合わせてから使う。到着・完了後は書き込まない
                 // （更新が依頼者への通知を再び出すため）。初回の取り込みでも書き込む。
-                let shouldClaim = data.recipientRecordID.isEmpty && data.status == .active
-                    && !me.iCloudRecordID.isEmpty
+                let shouldClaim = SharedImportPolicy.shouldClaim(
+                    recipientRecordID: data.recipientRecordID, status: data.status,
+                    myICloudRecordID: me?.iCloudRecordID)
                 if let existing = allSharedMemos.first(where: { $0.ckRecordName == recordName }) {
                     if existing.requesterRecordID.isEmpty && !zoneOwner.isEmpty {
                         existing.requesterRecordID = zoneOwner
@@ -260,7 +263,7 @@ struct ContentView: View {
                             LocationManager.shared.stopMonitoring(memoID: existing.geofenceIdentifier)
                         }
                     }
-                    if shouldClaim {
+                    if shouldClaim, let me {
                         existing.recipientRecordID = me.iCloudRecordID
                         existing.recipientName = me.displayName
                         didChange = true
@@ -270,6 +273,7 @@ struct ContentView: View {
                     // まだ取り込んでいない依頼が既に取り消されていれば取り込まない
                     continue
                 } else {
+                    let claimingMe = shouldClaim ? me : nil
                     let shared = SharedMemo(
                         ckRecordName:        recordName,
                         memoTitle:           data.memoTitle,
@@ -284,8 +288,8 @@ struct ContentView: View {
                         // sharedDB への書き戻し時に CKRecord.ID(zoneID:) の ownerName で必要なため永続化する。
                         requesterRecordID:   zoneOwner,
                         requesterName:       data.requesterName,
-                        recipientRecordID:   shouldClaim ? me.iCloudRecordID : data.recipientRecordID,
-                        recipientName:       shouldClaim ? me.displayName : data.recipientName,
+                        recipientRecordID:   claimingMe?.iCloudRecordID ?? data.recipientRecordID,
+                        recipientName:       claimingMe?.displayName ?? data.recipientName,
                         autoComplete:        data.autoComplete,
                         isMyRequest:         false,
                         status:              data.status,
@@ -294,8 +298,8 @@ struct ContentView: View {
                     )
                     modelContext.insert(shared)
                     didChange = true
-                    if shouldClaim {
-                        claimRecipient(data.ckRecordID, me: me)
+                    if let claimingMe {
+                        claimRecipient(data.ckRecordID, me: claimingMe)
                     }
                     if data.status == .active {
                         LocationManager.shared.startMonitoring(region: shared.monitoringRegion)

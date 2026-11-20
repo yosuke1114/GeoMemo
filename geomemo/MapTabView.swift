@@ -683,26 +683,30 @@ struct MapTabView: View {
     private func reRegisterAllGeofences() {
         locationManager.stopAllMonitoring()
         var registeredRegionCount = 0
-        for memo in memos where !memo.isDone {
-            if memo.isRouteTrigger {
-                locationManager.startMonitoringRoute(for: memo)
-                registeredRegionCount += memo.routeWaypoints.count
-            } else {
-                let region = CLCircularRegion(
-                    center: CLLocationCoordinate2D(latitude: memo.latitude, longitude: memo.longitude),
-                    radius: memo.radius,
-                    identifier: memo.id.uuidString
-                )
-                region.notifyOnEntry = memo.notifyOnEntry
-                region.notifyOnExit = memo.notifyOnExit
-                locationManager.startMonitoring(region: region)
+        // 上限（20 件）を超えると後ろは登録されない。受信した依頼を先に、自分のメモを後に登録する。
+        let receivedActive = mapSharedMemos.filter { !$0.isMyRequest && $0.status == .active }
+        let ownActive = memos.filter { !$0.isDone }
+        for entry in GeofenceRegistrationOrder.prioritized(received: receivedActive, own: ownActive) {
+            switch entry {
+            case .received(let shared):
+                locationManager.startMonitoring(region: shared.monitoringRegion)
                 registeredRegionCount += 1
+            case .own(let memo):
+                if memo.isRouteTrigger {
+                    locationManager.startMonitoringRoute(for: memo)
+                    registeredRegionCount += memo.routeWaypoints.count
+                } else {
+                    let region = CLCircularRegion(
+                        center: CLLocationCoordinate2D(latitude: memo.latitude, longitude: memo.longitude),
+                        radius: memo.radius,
+                        identifier: memo.id.uuidString
+                    )
+                    region.notifyOnEntry = memo.notifyOnEntry
+                    region.notifyOnExit = memo.notifyOnExit
+                    locationManager.startMonitoring(region: region)
+                    registeredRegionCount += 1
+                }
             }
-        }
-        // 受信した依頼（`shared_...`）も登録し直す。stopAllMonitoring で外れたまま戻らないため。
-        for shared in mapSharedMemos where !shared.isMyRequest && shared.status == .active {
-            locationManager.startMonitoring(region: shared.monitoringRegion)
-            registeredRegionCount += 1
         }
         if registeredRegionCount > 20 {
             print("⚠️ Geofencing limit warning: \(registeredRegionCount) regions registered (iOS limit is 20)")

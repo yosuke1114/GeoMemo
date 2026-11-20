@@ -777,3 +777,66 @@ struct RequesterSubscriptionPolicyTests {
         #expect(RequesterSubscriptionPolicy.isFailure(CKError(.permissionFailure), deleting: false))
     }
 }
+
+// MARK: - 受信した依頼の取り込み（プロフィールなし）
+
+@Suite("受信した依頼の取り込み")
+struct SharedImportPolicyTests {
+
+    @Test("プロフィールが無い（または iCloud ID が空）なら、取り込みは行うが claim はしない", arguments: [
+        (nil as String?, ""),
+        ("" as String?, ""),
+        (nil as String?, "someone"),
+    ])
+    func noProfileDoesNotClaim(me: String?, recipient: String) {
+        #expect(!SharedImportPolicy.shouldClaim(recipientRecordID: recipient, status: .active, myICloudRecordID: me))
+    }
+
+    @Test("プロフィールがあり、受信者が未定で監視中なら claim する")
+    func claimsWhenUnclaimedAndActive() {
+        #expect(SharedImportPolicy.shouldClaim(recipientRecordID: "", status: .active, myICloudRecordID: "me"))
+    }
+
+    @Test("受信者が既に決まっている、または到着・完了・取り消し後は claim しない", arguments: [
+        ("other", ShareStatus.active), ("", .fired), ("", .completed), ("", .cancelled),
+    ])
+    func doesNotClaimOtherwise(recipient: String, status: ShareStatus) {
+        #expect(!SharedImportPolicy.shouldClaim(recipientRecordID: recipient, status: status, myICloudRecordID: "me"))
+    }
+}
+
+// MARK: - 監視の登録順
+
+@Suite("監視の登録順")
+struct GeofenceRegistrationOrderTests {
+
+    private func labels(_ entries: [GeofenceRegistrationOrder.Entry<String, Int>]) -> [String] {
+        entries.map {
+            switch $0 {
+            case .received(let r): return "r:\(r)"
+            case .own(let o): return "o:\(o)"
+            }
+        }
+    }
+
+    @Test("受信した依頼を先に、自分のメモを後に並べる。それぞれの順序は保つ")
+    func receivedFirst() {
+        let result = GeofenceRegistrationOrder.prioritized(received: ["a", "b"], own: [1, 2, 3])
+        #expect(labels(result) == ["r:a", "r:b", "o:1", "o:2", "o:3"])
+    }
+
+    @Test("上限 20 件で切ると、溢れるのは自分のメモ側")
+    func overflowDropsOwn() {
+        let received = (0..<3).map { "s\($0)" }
+        let own = Array(0..<25)
+        let kept = labels(GeofenceRegistrationOrder.prioritized(received: received, own: own)).prefix(20)
+        #expect(kept.filter { $0.hasPrefix("r:") }.count == 3)
+        #expect(kept.filter { $0.hasPrefix("o:") }.count == 17)
+    }
+
+    @Test("片方が空でも並ぶ")
+    func emptySides() {
+        #expect(labels(GeofenceRegistrationOrder.prioritized(received: [], own: [1])) == ["o:1"])
+        #expect(labels(GeofenceRegistrationOrder.prioritized(received: ["a"], own: [])) == ["r:a"])
+    }
+}

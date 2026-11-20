@@ -520,3 +520,41 @@ nonisolated enum RequesterSubscriptionPolicy {
         return true
     }
 }
+
+
+// MARK: - 受信した依頼の取り込み（受信者側）
+
+nonisolated enum SharedImportPolicy {
+    /// 受信した依頼に、自分を受信者として書き込む（claim する）か。
+    ///
+    /// 取り込み自体はプロフィール（表示名）の有無に関係なく行う。名前を設定していない人は claim だけを
+    /// 見送る。依頼者の側は、受信者を共有の参加者（CKShare.participants）から決めるので、名前が書き込まれなくても
+    /// 受け取った人を認識できる（表示名は CloudKit の名前、無ければ「相手」）。
+    /// プロフィールを後で設定すると、次の同期で（監視中の依頼に限り）書き込まれる。
+    nonisolated static func shouldClaim(
+        recipientRecordID: String,
+        status: ShareStatus,
+        myICloudRecordID: String?
+    ) -> Bool {
+        guard let myICloudRecordID, !myICloudRecordID.isEmpty else { return false }
+        return recipientRecordID.isEmpty && status == .active
+    }
+}
+
+// MARK: - 監視の登録順
+
+nonisolated enum GeofenceRegistrationOrder {
+    enum Entry<Received, Own> {
+        case received(Received)
+        case own(Own)
+    }
+
+    /// iOS の監視は 20 件までで、`LocationManager.startMonitoring` は上限に達すると黙って登録しない。
+    /// 受信した依頼は、場所に着いたことが依頼者に伝わらなくなると相手の用が果たせないので、先に登録する。
+    /// 溢れるのは自分のメモの後ろ（それぞれの並びは入力のまま）。
+    nonisolated static func prioritized<Received, Own>(
+        received: [Received], own: [Own]
+    ) -> [Entry<Received, Own>] {
+        received.map { .received($0) } + own.map { .own($0) }
+    }
+}
