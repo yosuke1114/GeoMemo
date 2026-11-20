@@ -109,6 +109,77 @@ final class geomemoUITests: XCTestCase {
         XCTAssertTrue(addButton.waitForExistence(timeout: 5), "メモ追加ボタンが表示されるべき")
     }
 
+    // MARK: - 作成画面: 基本だけで始まり、詳細は閉じている
+
+    @MainActor
+    func testCreateEditorShowsBasicsAndCollapsedDetails() throws {
+        let addButton = app.buttons.matching(
+            NSPredicate(format: "label == 'メモ追加' OR label == 'ADD MEMO'")
+        ).firstMatch
+        XCTAssertTrue(addButton.waitForExistence(timeout: 5))
+        addButton.tap()
+
+        // 基本: 題・範囲 (スライダー)・場所
+        XCTAssertTrue(app.textFields["editorTitleField"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.sliders["radiusSlider"].exists)
+        XCTAssertTrue(app.buttons["editorLocationButton"].exists)
+
+        // 詳細は閉じていて、開くと既存の項目が出る
+        let toggle = app.buttons["editorDetailsToggle"]
+        XCTAssertTrue(toggle.exists)
+        XCTAssertFalse(app.staticTexts["TRIGGER CONDITIONS"].exists || app.staticTexts["発動条件"].exists)
+        toggle.tap()
+        let conditions = app.staticTexts.matching(
+            NSPredicate(format: "label == 'TRIGGER CONDITIONS' OR label == '発動条件'")
+        ).firstMatch
+        XCTAssertTrue(conditions.waitForExistence(timeout: 3))
+    }
+
+    // MARK: - 編集画面: 設定済みの詳細は要約で見え、開いて即保存しても範囲は変わらない
+
+    @MainActor
+    func testEditEditorShowsSummaryAndKeepsRadius() throws {
+        app.terminate()
+        app.launchArguments = ["-UITesting", "-hasCompletedOnboarding", "YES", "-seedDemoData"]
+        app.launch()
+
+        let listButton = app.buttons["listViewButton"]
+        XCTAssertTrue(listButton.waitForExistence(timeout: 8))
+        listButton.tap()
+        // 範囲 200m・曜日・メモ・タグつきのデモメモ
+        let row = app.staticTexts["ゴミ出し — 燃えるゴミ"]
+        XCTAssertTrue(row.waitForExistence(timeout: 8))
+        row.tap()
+
+        func openEditor() {
+            let edit = app.buttons.matching(
+                NSPredicate(format: "label == 'EDIT' OR label == '編集'")).firstMatch
+            XCTAssertTrue(edit.waitForExistence(timeout: 8))
+            edit.tap()
+        }
+        openEditor()
+
+        let toggle = app.buttons["editorDetailsToggle"]
+        XCTAssertTrue(toggle.waitForExistence(timeout: 8))
+        // 閉じていても、設定済みの項目 (曜日 2) が要約に出る
+        let summary = (toggle.value as? String) ?? ""
+        XCTAssertTrue(summary.contains("曜日（2）") || summary.contains("Days (2)"), "要約: \(summary)")
+        let slider = app.sliders["radiusSlider"]
+        XCTAssertTrue(slider.exists)
+        XCTAssertTrue(((slider.value as? String) ?? "").contains("200"))
+
+        // 触らずに保存
+        let save = app.buttons.matching(
+            NSPredicate(format: "label == 'UPDATE' OR label == '更新'")).firstMatch
+        XCTAssertTrue(save.exists)
+        save.tap()
+
+        // 開き直しても 200m のまま
+        openEditor()
+        XCTAssertTrue(app.sliders["radiusSlider"].waitForExistence(timeout: 8))
+        XCTAssertTrue(((app.sliders["radiusSlider"].value as? String) ?? "").contains("200"))
+    }
+
     // MARK: - Paywall: フリー制限到達でPaywall表示
 
     @MainActor

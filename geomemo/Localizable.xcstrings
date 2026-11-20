@@ -6731,6 +6731,206 @@
           }
         }
       }
+    },
+    "DETAILS" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "詳細"
+          }
+        }
+      }
+    },
+    "Time, expiry, memo, photo, tags and more" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "時間帯・期限・メモ・写真・タグなど"
+          }
+        }
+      }
+    },
+    "Expanded" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "開いています"
+          }
+        }
+      }
+    },
+    "Collapsed" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "閉じています"
+          }
+        }
+      }
+    },
+    "Shows the detail items" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "詳細の項目を表示します"
+          }
+        }
+      }
+    },
+    "Hides the detail items" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "詳細の項目を隠します"
+          }
+        }
+      }
+    },
+    "Change location" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "場所を変更"
+          }
+        }
+      }
+    },
+    "%d meters" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%dメートル"
+          }
+        }
+      }
+    },
+    "Under 100 m may not trigger inside buildings." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "100m未満だと、建物の中では反応しにくいことがあります。"
+          }
+        }
+      }
+    },
+    "Photo" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "写真"
+          }
+        }
+      }
+    },
+    "Color" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "色"
+          }
+        }
+      }
+    },
+    "Expiry" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "期限"
+          }
+        }
+      }
+    },
+    "Time %@" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "時間帯 %@"
+          }
+        }
+      }
+    },
+    "Days (%d)" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "曜日（%d）"
+          }
+        }
+      }
+    },
+    "Checklist (%d)" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "チェックリスト（%d）"
+          }
+        }
+      }
+    },
+    "Tags (%d)" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "タグ（%d）"
+          }
+        }
+      }
+    },
+    "Route (%d)" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ルート（%d）"
+          }
+        }
+      }
+    },
+    "Dwell %d min" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "滞在 %d分"
+          }
+        }
+      }
+    },
+    "Exit delay %d min" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "遅延 %d分"
+          }
+        }
+      }
+    },
+    "Pass-through" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "通りかかり"
+          }
+        }
+      }
     }
   },
   "version" : "1.1"
