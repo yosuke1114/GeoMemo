@@ -17,7 +17,8 @@ class NotificationManager: NSObject, ObservableObject {
     static let actionSnooze5  = "SNOOZE_5"
     static let actionSnooze30 = "SNOOZE_30"
 
-    @Published var authorizationStatus: UNAuthorizationStatus = .notDetermined
+    /// 通知の許可状態。システムから読み込むまでは nil（「未設定」と取り違えないため）。
+    @Published var authorizationStatus: UNAuthorizationStatus?
 
     override init() {
         super.init()

@@ -1,7 +1,5 @@
 import SwiftUI
 import SwiftData
-import CoreLocation
-import UserNotifications
 
 struct SplashView: View {
     @AppStorage("hasCompletedOnboarding") private var hasCompletedOnboarding = false
@@ -33,38 +31,14 @@ struct SplashView: View {
         .animation(.easeOut(duration: 0.3), value: showSplash)
         .task {
             guard !isAnyTesting else { return }
-            let granted = await checkPermissionsGranted()
 
-            // 既に onboarding 完了済みなら拒否されていても再度オンボーディングへ戻さない
-            // （旧実装は hasCompletedOnboarding=false に戻していたが、これが
-            //  オンボーディング後に Settings で拒否したユーザを無限ループに陥らせていた。
-            //  権限不足は SettingsView の Permissions 行から誘導する）。
-            if granted && hasCompletedOnboarding {
-                LocationManager.shared.requestAuthorization()
+            // 起動時に許可ダイアログは出さない（旧実装は「常に許可」を要求し直していた）。
+            // 許可が足りない場合は、地図のバナーから本人の操作で案内する。
+            // ここでは許可済みのときの現在地・方位のウォームアップだけ行う。
+            if hasCompletedOnboarding {
+                LocationManager.shared.warmUp()
             }
         }
-    }
-
-    private func checkPermissionsGranted() async -> Bool {
-        let locStatus = CLLocationManager().authorizationStatus
-        let locGranted = locStatus == .authorizedWhenInUse || locStatus == .authorizedAlways
-
-        // タイムアウト付きで通知設定を取得（テスト環境でのハング防止）
-        let notifGranted: Bool = await withTaskGroup(of: Bool.self) { group in
-            group.addTask {
-                let s = await UNUserNotificationCenter.current().notificationSettings()
-                return s.authorizationStatus == .authorized
-            }
-            group.addTask {
-                try? await Task.sleep(nanoseconds: 3_000_000_000) // 3秒タイムアウト
-                return false
-            }
-            let result = await group.next() ?? false
-            group.cancelAll()
-            return result
-        }
-
-        return locGranted && notifGranted
     }
 }
 

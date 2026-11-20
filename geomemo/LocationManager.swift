@@ -17,6 +17,8 @@ class LocationManager: NSObject, ObservableObject {
     private let manager = CLLocationManager()
 
     @Published var authorizationStatus: CLAuthorizationStatus = .notDetermined
+    /// 「正確な位置情報」がオフ（おおよその位置のみ）のとき false。
+    @Published var isPreciseLocation: Bool = true
     @Published var location: CLLocation?
     @Published var heading: CLHeading?
 
@@ -143,24 +145,33 @@ class LocationManager: NSObject, ObservableObject {
         manager.desiredAccuracy = kCLLocationAccuracyHundredMeters
         manager.headingFilter = kCLHeadingFilterNone // すべての変化を即通知
         authorizationStatus = manager.authorizationStatus
+        isPreciseLocation = manager.accuracyAuthorization == .fullAccuracy
     }
 
-    /// Request authorization and one-shot location if already authorized.
-    /// Call this early (e.g. during splash) to overlap permission flow with splash animation.
-    func requestAuthorization() {
-        switch manager.authorizationStatus {
-        case .notDetermined:
-            manager.requestWhenInUseAuthorization()
-        case .authorizedWhenInUse:
-            manager.requestAlwaysAuthorization()
-            manager.requestLocation()
-            manager.startUpdatingHeading() // スプラッシュ中にウォームアップ開始
-        case .authorizedAlways:
-            manager.requestLocation()
-            manager.startUpdatingHeading() // スプラッシュ中にウォームアップ開始
-        default:
-            break
-        }
+    // 許可ダイアログは「説明を読んだユーザーがボタンを押したとき」だけ出す。
+    // 起動時やデリゲートからの自動要求はしない（オンボーディングと地図のバナーから呼ぶ）。
+
+    /// 「使用中のみ許可」を求める。未決定のときだけダイアログが出る。
+    func requestWhenInUseAuthorization() {
+        guard manager.authorizationStatus == .notDetermined else { return }
+        manager.requestWhenInUseAuthorization()
+    }
+
+    /// 「常に許可」への昇格を求める。使用中のときだけ有効で、iOS は 1 回しか出さない。
+    /// 要求を出したら true（ダイアログが実際に出るかは iOS 次第）。使用中でなければ何もせず false。
+    @discardableResult
+    func requestAlwaysAuthorization() -> Bool {
+        guard manager.authorizationStatus == .authorizedWhenInUse else { return false }
+        manager.requestAlwaysAuthorization()
+        return true
+    }
+
+    /// 許可済みなら現在地と方位のウォームアップを始める。ダイアログは出さない。
+    func warmUp() {
+        guard manager.authorizationStatus == .authorizedWhenInUse ||
+              manager.authorizationStatus == .authorizedAlways else { return }
+        manager.requestLocation()
+        manager.startUpdatingHeading()
     }
 
     /// マップ表示中のみ呼び出す。非表示時は stopHeading() で停止すること。
@@ -306,14 +317,10 @@ extension LocationManager: @MainActor CLLocationManagerDelegate {
     func locationManagerDidChangeAuthorization(_ manager: CLLocationManager) {
         MainActor.assumeIsolated {
             authorizationStatus = manager.authorizationStatus
+            isPreciseLocation = manager.accuracyAuthorization == .fullAccuracy
             switch manager.authorizationStatus {
-            case .authorizedWhenInUse:
-                manager.requestLocation()
-                manager.startUpdatingHeading()
-                // ユーザが WhenInUse を許可した直後に Always への昇格ダイアログを出す。
-                // 既に Always なら iOS 側で no-op。
-                manager.requestAlwaysAuthorization()
-            case .authorizedAlways:
+            case .authorizedWhenInUse, .authorizedAlways:
+                // 「常に許可」の要求はここでは行わない（説明を読んだ後のボタンからだけ）。
                 manager.requestLocation()
                 manager.startUpdatingHeading()
             default:
