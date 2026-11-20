@@ -777,3 +777,126 @@ struct RequesterSubscriptionPolicyTests {
         #expect(RequesterSubscriptionPolicy.isFailure(CKError(.permissionFailure), deleting: false))
     }
 }
+
+// MARK: - 受信した依頼の取り込み（プロフィールなし）
+
+@Suite("受信した依頼の取り込み")
+struct SharedImportPolicyTests {
+
+    @Test("プロフィールが無い（または iCloud ID が空）なら、取り込みは行うが claim はしない", arguments: [
+        (nil as String?, ""),
+        ("" as String?, ""),
+        (nil as String?, "someone"),
+    ])
+    func noProfileDoesNotClaim(me: String?, recipient: String) {
+        #expect(!SharedImportPolicy.shouldClaim(recipientRecordID: recipient, status: .active, myICloudRecordID: me))
+    }
+
+    @Test("プロフィールがあり、受信者が未定で監視中なら claim する")
+    func claimsWhenUnclaimedAndActive() {
+        #expect(SharedImportPolicy.shouldClaim(recipientRecordID: "", status: .active, myICloudRecordID: "me"))
+    }
+
+    @Test("受信者が既に決まっている、または到着・完了・取り消し後は claim しない", arguments: [
+        ("other", ShareStatus.active), ("", .fired), ("", .completed), ("", .cancelled),
+    ])
+    func doesNotClaimOtherwise(recipient: String, status: ShareStatus) {
+        #expect(!SharedImportPolicy.shouldClaim(recipientRecordID: recipient, status: status, myICloudRecordID: "me"))
+    }
+}
+
+// MARK: - 監視の登録順
+
+@Suite("監視の登録順")
+struct GeofenceRegistrationOrderTests {
+
+    private func labels(_ entries: [GeofenceRegistrationOrder.Entry<String, Int>]) -> [String] {
+        entries.map {
+            switch $0 {
+            case .received(let r): return "r:\(r)"
+            case .own(let o): return "o:\(o)"
+            }
+        }
+    }
+
+    @Test("受信した依頼を先に、自分のメモを後に並べる。それぞれの順序は保つ")
+    func receivedFirst() {
+        let result = GeofenceRegistrationOrder.prioritized(received: ["a", "b"], own: [1, 2, 3])
+        #expect(labels(result) == ["r:a", "r:b", "o:1", "o:2", "o:3"])
+    }
+
+    @Test("上限 20 件で切ると、溢れるのは自分のメモ側")
+    func overflowDropsOwn() {
+        let received = (0..<3).map { "s\($0)" }
+        let own = Array(0..<25)
+        let kept = labels(GeofenceRegistrationOrder.prioritized(received: received, own: own)).prefix(20)
+        #expect(kept.filter { $0.hasPrefix("r:") }.count == 3)
+        #expect(kept.filter { $0.hasPrefix("o:") }.count == 17)
+    }
+
+    @Test("片方が空でも並ぶ")
+    func emptySides() {
+        #expect(labels(GeofenceRegistrationOrder.prioritized(received: [], own: [1])) == ["o:1"])
+        #expect(labels(GeofenceRegistrationOrder.prioritized(received: ["a"], own: [])) == ["r:a"])
+    }
+}
+
+// MARK: - 監視の差分での登録
+
+@Suite("GeofenceReconcilePlanner")
+struct GeofenceReconcilePlannerTests {
+
+    private func own(_ n: Int) -> [GeofenceItem] { (0..<n).map { GeofenceItem(key: "own\($0)", regionIDs: ["own\($0)"]) } }
+    private func received(_ n: Int) -> [GeofenceItem] { (0..<n).map { GeofenceItem(key: "shared_\($0)", regionIDs: ["shared_\($0)"]) } }
+    private func ids(_ items: [GeofenceItem]) -> Set<String> { Set(items.flatMap(\.regionIDs)) }
+
+    @Test("20 件登録済みのところへ新しい依頼が来たら、優先順で最後の自分のメモを外して依頼を入れる")
+    func newRequestEvictsLastOwn() {
+        // 優先順: 依頼 1 件 → 自分のメモ 20 件（own19 が最も古い）。登録済みは自分のメモ 20 件だけ
+        let items = received(1) + own(20)
+        let plan = GeofenceReconcilePlanner.plan(items: items, monitored: ids(own(20)))
+        #expect(plan.start == ["shared_0"])
+        #expect(plan.stop == ["own19"])
+    }
+
+    @Test("依頼が完了・取り消しで枠が空いたら、外れていた自分のメモが戻る")
+    func freedSlotRestoresOwn() {
+        // 依頼は完了して監視が止まり（完了時の処理）、登録済みは自分のメモ 19 件（own19 が外れていた）
+        let plan = GeofenceReconcilePlanner.plan(items: own(20), monitored: ids(own(19)))
+        #expect(plan.start == ["own19"])
+        #expect(plan.stop.isEmpty)
+    }
+
+    @Test("すでに合っていれば何もしない（登録し直さない）")
+    func stableIsEmpty() {
+        let items = received(2) + own(18)
+        #expect(GeofenceReconcilePlanner.plan(items: items, monitored: ids(items)).isEmpty)
+        #expect(GeofenceReconcilePlanner.plan(items: items, monitored: ids(items)).isEmpty)
+    }
+
+    @Test("20 件に満たなければ、足りない分だけ登録する")
+    func startsMissingOnly() {
+        let items = own(5)
+        let plan = GeofenceReconcilePlanner.plan(items: items, monitored: ["own0", "own1", "own2"])
+        #expect(plan.start == ["own3", "own4"])
+        #expect(plan.stop.isEmpty)
+    }
+
+    @Test("どの項目にも属さない領域は、枠を使っているものとして数える")
+    func foreignRegionsTakeSlots() {
+        let items = own(20)
+        let monitored = ids(own(19)).union(["stale"])
+        let plan = GeofenceReconcilePlanner.plan(items: items, monitored: monitored)
+        #expect(plan.start.isEmpty)
+        #expect(plan.stop.isEmpty)
+    }
+
+    @Test("ルートは領域がすべて収まるときだけ選ぶ。収まらなければ飛ばして後ろの小さい項目を入れる")
+    func routeIsAllOrNothing() {
+        let route = GeofenceItem(key: "route", regionIDs: (0..<4).map { "route|wp|\($0)" })
+        let items = own(17) + [route] + [GeofenceItem(key: "tail", regionIDs: ["tail"])]
+        let plan = GeofenceReconcilePlanner.plan(items: items, monitored: ids(own(17)))
+        #expect(plan.start == ["tail"])
+        #expect(plan.stop.isEmpty)
+    }
+}

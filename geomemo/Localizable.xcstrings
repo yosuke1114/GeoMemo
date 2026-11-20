@@ -5434,12 +5434,12 @@
         }
       }
     },
-    "iOS can watch up to 20 places. %lld won't send alerts. Complete or delete some memos." : {
+    "iOS can watch up to 20 places. %lld won't send alerts: received requests are watched first, and your oldest memos drop off first. Complete or delete some memos." : {
       "localizations" : {
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "iOS が監視できる場所は20件までです。%lld件は通知されません。完了済みにするか、削除してください。"
+            "value" : "iOS が監視できる場所は20件までです。%lld件は通知されません。受信した依頼が優先され、自分のメモは古いものから外れます。完了済みにするか、削除してください。"
           }
         }
       }
@@ -5510,6 +5510,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "案内を閉じる"
+          }
+        }
+      }
+    },
+    "Received requests added: %lld" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "取り込んだ依頼: %lld 件"
           }
         }
       }

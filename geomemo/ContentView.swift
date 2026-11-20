@@ -120,6 +120,10 @@ struct ContentView: View {
                 Task { await handleSharedMemoFired(geofenceIdentifier: identifier) }
             }
         }
+        // プロフィールを設定した直後に、既に取り込んだ依頼へ名前を書き込む（claim）。
+        .onChange(of: profiles.count) { _, _ in
+            Task { await syncSharedMemos() }
+        }
         .onReceive(NotificationCenter.default.publisher(for: .didAcceptSharedMemo)) { _ in
             processPendingShares()
             Task { await syncSharedMemos() }
@@ -162,6 +166,7 @@ struct ContentView: View {
     // MARK: - Sync Received SharedMemos
 
     @State private var isSyncing = false
+    @State private var needsResync = false
 
     /// 依頼者向け通知の購読を、起動ごとに 1 回だけ確認・登録する（旧版の購読 -v1 もここで消す）。
     /// 全項目が成功したときだけ済みにする。一部でも失敗したら、次回のアクティブ化で再試行する。
@@ -229,10 +234,25 @@ struct ContentView: View {
         try? modelContext.save()
     }
 
+    /// 同期中に要求が来たら捨てずに覚えておき、終わったあとにもう一度だけ実行する
+    /// （受諾の直後は、先に走っていた同期が受諾前のデータを取り終えていることがあるため）。
     private func syncSharedMemos() async {
-        guard !isSyncing, let me = profiles.first else { return }
+        guard !isSyncing else {
+            needsResync = true
+            return
+        }
         isSyncing = true
         defer { isSyncing = false }
+        repeat {
+            needsResync = false
+            await syncSharedMemosOnce()
+        } while needsResync
+    }
+
+    private func syncSharedMemosOnce() async {
+        // プロフィール（表示名）が無くても取り込む。受信者としての名前の書き込みだけ、プロフィールがあるときに行う
+        let me = profiles.first
+        var importedCount = 0
         do {
             let received = try await CKShareService.shared.fetchReceivedSharedMemos()
             var didChange = false
@@ -246,8 +266,9 @@ struct ContentView: View {
                 // 招待で送られた依頼は受信者が未定。監視中なら自分の名前を書き込み、依頼者側に表示させる。
                 // 依頼者側はこの値を共有の参加者と突き合わせてから使う。到着・完了後は書き込まない
                 // （更新が依頼者への通知を再び出すため）。初回の取り込みでも書き込む。
-                let shouldClaim = data.recipientRecordID.isEmpty && data.status == .active
-                    && !me.iCloudRecordID.isEmpty
+                let shouldClaim = SharedImportPolicy.shouldClaim(
+                    recipientRecordID: data.recipientRecordID, status: data.status,
+                    myICloudRecordID: me?.iCloudRecordID)
                 if let existing = allSharedMemos.first(where: { $0.ckRecordName == recordName }) {
                     if existing.requesterRecordID.isEmpty && !zoneOwner.isEmpty {
                         existing.requesterRecordID = zoneOwner
@@ -260,7 +281,7 @@ struct ContentView: View {
                             LocationManager.shared.stopMonitoring(memoID: existing.geofenceIdentifier)
                         }
                     }
-                    if shouldClaim {
+                    if shouldClaim, let me {
                         existing.recipientRecordID = me.iCloudRecordID
                         existing.recipientName = me.displayName
                         didChange = true
@@ -270,6 +291,7 @@ struct ContentView: View {
                     // まだ取り込んでいない依頼が既に取り消されていれば取り込まない
                     continue
                 } else {
+                    let claimingMe = shouldClaim ? me : nil
                     let shared = SharedMemo(
                         ckRecordName:        recordName,
                         memoTitle:           data.memoTitle,
@@ -284,8 +306,8 @@ struct ContentView: View {
                         // sharedDB への書き戻し時に CKRecord.ID(zoneID:) の ownerName で必要なため永続化する。
                         requesterRecordID:   zoneOwner,
                         requesterName:       data.requesterName,
-                        recipientRecordID:   shouldClaim ? me.iCloudRecordID : data.recipientRecordID,
-                        recipientName:       shouldClaim ? me.displayName : data.recipientName,
+                        recipientRecordID:   claimingMe?.iCloudRecordID ?? data.recipientRecordID,
+                        recipientName:       claimingMe?.displayName ?? data.recipientName,
                         autoComplete:        data.autoComplete,
                         isMyRequest:         false,
                         status:              data.status,
@@ -294,8 +316,9 @@ struct ContentView: View {
                     )
                     modelContext.insert(shared)
                     didChange = true
-                    if shouldClaim {
-                        claimRecipient(data.ckRecordID, me: me)
+                    importedCount += 1
+                    if let claimingMe {
+                        claimRecipient(data.ckRecordID, me: claimingMe)
                     }
                     if data.status == .active {
                         LocationManager.shared.startMonitoring(region: shared.monitoringRegion)
@@ -303,6 +326,10 @@ struct ContentView: View {
                 }
             }
             if didChange { try? modelContext.save() }
+            if importedCount > 0 {
+                // 旧版で受諾済みだった依頼が、この版で初めてまとめて取り込まれることがある
+                ToastCenter.shared.show(.info(String(localized: "Received requests added: \(importedCount)")))
+            }
         } catch {
             // ネットワーク不可は通常運用の一部なので、UI を遮るのは "今ユーザー操作で
             // 取得を期待していたとき" だけにする。ここはバックグラウンド同期なので silent。
