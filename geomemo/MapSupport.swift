@@ -24,6 +24,27 @@ nonisolated struct HeadingCone: Shape {
     }
 }
 
+/// 現在地の向きを示す扇形。degrees が負（方位が未取得）のときは何も描かない。
+struct HeadingConeIndicator: View {
+    let degrees: Double
+
+    var body: some View {
+        if degrees >= 0 {
+            HeadingCone()
+                .fill(
+                    LinearGradient(
+                        colors: [Brand.blue.opacity(0.5), Brand.blue.opacity(0.0)],
+                        startPoint: UnitPoint(x: 0.5, y: 0.5),
+                        endPoint: .top
+                    )
+                )
+                .frame(width: 36, height: 56)
+                .padding(.bottom, 56)
+                .rotationEffect(.degrees(degrees))
+        }
+    }
+}
+
 // MARK: - Map Item (single pin or cluster)
 enum MapItem: Identifiable {
     case single(GeoMemo)

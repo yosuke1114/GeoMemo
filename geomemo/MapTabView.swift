@@ -199,23 +199,10 @@ struct MapTabView: View {
             Map(position: $cameraPosition, interactionModes: .all) {
                 UserAnnotation {
                     ZStack {
-                        // TimelineView で描画レート（60/120fps）に同期し、
-                        // EMA の滑らかな値をフレームごとに読み取って補間効果を得る
-                        TimelineView(.animation) { _ in
-                            if locationManager.smoothedHeadingDegrees >= 0 {
-                                HeadingCone()
-                                    .fill(
-                                        LinearGradient(
-                                            colors: [Brand.blue.opacity(0.5), Brand.blue.opacity(0.0)],
-                                            startPoint: UnitPoint(x: 0.5, y: 0.5),
-                                            endPoint: .top
-                                        )
-                                    )
-                                    .frame(width: 36, height: 56)
-                                    .padding(.bottom, 56)
-                                    .rotationEffect(.degrees(locationManager.smoothedHeadingDegrees))
-                            }
-                        }
+                        // 方位の値（EMA で平滑化済み）は更新のたびに再描画される。
+                        // TimelineView(.animation) は地図の注釈の中では描画スレッドから呼ばれ、
+                        // Swift 6 のメインアクター検査でクラッシュするため使わない。
+                        HeadingConeIndicator(degrees: locationManager.smoothedHeadingDegrees)
                         Circle()
                             .stroke(Brand.blue.opacity(0.5), lineWidth: 2.5)
                             .frame(width: 36, height: 36)
