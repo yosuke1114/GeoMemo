@@ -5503,6 +5503,16 @@
           }
         }
       }
+    },
+    "Dismiss Notice" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "案内を閉じる"
+          }
+        }
+      }
     }
   },
   "version" : "1.1"

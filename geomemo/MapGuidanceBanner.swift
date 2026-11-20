@@ -119,7 +119,7 @@ struct MapGuidanceBanner: View {
             .buttonStyle(.plain)
             .padding(.trailing, -8)
             .padding(.top, -10)
-            .accessibilityLabel(String(localized: "Dismiss"))
+            .accessibilityLabel(String(localized: "Dismiss Notice"))
             .accessibilityIdentifier("mapGuidance.dismiss")
         }
         .padding(.horizontal, 14)
