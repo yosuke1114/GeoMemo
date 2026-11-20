@@ -899,4 +899,48 @@ struct GeofenceReconcilePlannerTests {
         #expect(plan.start == ["tail"])
         #expect(plan.stop.isEmpty)
     }
+
+    // MARK: Watch で完了・削除したメモの領域
+
+    @Test("消した・完了したメモの領域（UUID 形式）は、枠を使うものとして数えず外す")
+    func staleOwnRegionIsStopped() {
+        let stale = UUID().uuidString
+        let plan = GeofenceReconcilePlanner.plan(items: own(2), monitored: ids(own(2)).union([stale]))
+        #expect(plan.stopRegionIDs == [stale])
+        #expect(plan.start.isEmpty)
+        #expect(plan.stop.isEmpty)
+    }
+
+    @Test("ルートの経由地と shared_ の領域も、属する項目がなければ外す")
+    func staleRouteAndSharedRegionsAreStopped() {
+        let id = UUID().uuidString
+        let monitored: Set<String> = ["\(id)|wp|0", "\(id)|wp|1", "shared_\(id)"]
+        let plan = GeofenceReconcilePlanner.plan(items: [], monitored: monitored)
+        #expect(Set(plan.stopRegionIDs) == monitored)
+    }
+
+    @Test("このアプリの形式でない領域には触らない")
+    func unknownFormatIsLeftAlone() {
+        let plan = GeofenceReconcilePlanner.plan(items: [], monitored: ["stale", "shared_notauuid", "x|wp|1", "\(UUID().uuidString)|wp|x"])
+        #expect(plan.stopRegionIDs.isEmpty)
+    }
+
+    @Test("外した領域の分だけ枠が空く")
+    func stoppedStaleFreesSlots() {
+        let stale = (0..<3).map { _ in UUID().uuidString }
+        let items = own(20)
+        let plan = GeofenceReconcilePlanner.plan(items: items, monitored: ids(own(17)).union(stale))
+        #expect(plan.start == ["own17", "own18", "own19"])
+        #expect(Set(plan.stopRegionIDs) == Set(stale))
+    }
+
+    @Test("識別子の形式の判定")
+    func identifierFormat() {
+        let id = UUID().uuidString
+        #expect(isAppRegionIdentifier(id))
+        #expect(isAppRegionIdentifier("\(id)|wp|3"))
+        #expect(isAppRegionIdentifier("shared_\(id)"))
+        #expect(!isAppRegionIdentifier("shared_"))
+        #expect(!isAppRegionIdentifier("home"))
+    }
 }

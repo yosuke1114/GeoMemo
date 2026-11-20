@@ -137,9 +137,10 @@
 				GeoMemo.swift,
 				GeoMemoMigrationPlan.swift,
 				GeoMemoStoreConfig.swift,
+				MemoLimitPolicy.swift,
 				SharedMemo.swift,
 				SharedMemoCKData.swift,
-				SharingPolicy.swift,
+				SharingModelSupport.swift,
 				UserProfile.swift,
 			);
 			target = 40DF00DF2F80805000F92924 /* geomemoWatch Watch App */;
@@ -1007,6 +1008,7 @@
 				DEVELOPMENT_TEAM = 65X8BH2L5R;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = "geomemoWatch-Info.plist";
 				INFOPLIST_KEY_CFBundleDisplayName = geomemoWatch;
 				INFOPLIST_KEY_NSLocationWhenInUseUsageDescription = "GeoMemo uses your location to show nearby memos and let you quick-add memos at your current spot.";
 				INFOPLIST_KEY_UISupportedInterfaceOrientations = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown";
@@ -1042,6 +1044,7 @@
 				DEVELOPMENT_TEAM = 65X8BH2L5R;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = "geomemoWatch-Info.plist";
 				INFOPLIST_KEY_CFBundleDisplayName = geomemoWatch;
 				INFOPLIST_KEY_NSLocationWhenInUseUsageDescription = "GeoMemo uses your location to show nearby memos and let you quick-add memos at your current spot.";
 				INFOPLIST_KEY_UISupportedInterfaceOrientations = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown";

@@ -163,5 +163,5 @@ class StoreKitManager: ObservableObject {
 // MARK: - Free Tier Limit
 
 extension GeoMemoLimits {
-    static let freeMemoLimit = 5
+    static let freeMemoLimit = MemoLimitPolicy.freeMemoLimit
 }

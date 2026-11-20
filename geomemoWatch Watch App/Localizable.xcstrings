@@ -1,36 +1,6 @@
 {
   "sourceLanguage" : "en",
   "strings" : {
-    "Complete" : {
-      "localizations" : {
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "完了"
-          }
-        }
-      }
-    },
-    "Complete (%lld)" : {
-      "localizations" : {
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "完了済み（%lld）"
-          }
-        }
-      }
-    },
-    "Restore" : {
-      "localizations" : {
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "元に戻す"
-          }
-        }
-      }
-    },
     "Add Memo" : {
       "localizations" : {
         "ja" : {
@@ -47,6 +17,26 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "キャンセル"
+          }
+        }
+      }
+    },
+    "Complete" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "完了"
+          }
+        }
+      }
+    },
+    "Complete (%lld)" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "完了済み（%lld）"
           }
         }
       }
@@ -77,6 +67,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "お気に入り"
+          }
+        }
+      }
+    },
+    "Free plan limit reached. Add more on iPhone." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "無料プランの上限です。iPhone で追加してください。"
           }
         }
       }
@@ -134,12 +134,32 @@
         }
       }
     },
+    "Not saved. Changes will be lost when the app closes." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "保存されません。アプリを閉じると変更は消えます。"
+          }
+        }
+      }
+    },
     "Remove from favorites" : {
       "localizations" : {
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "お気に入り解除"
+          }
+        }
+      }
+    },
+    "Restore" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "元に戻す"
           }
         }
       }

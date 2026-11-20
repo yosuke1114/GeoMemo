@@ -1,5 +1,6 @@
 import Foundation
 import SwiftData
+import os
 
 /// iPhone 本体・App Intents・Apple Watch が共有する SwiftData ストアの構成。
 ///
@@ -23,8 +24,25 @@ enum GeoMemoStoreConfig {
     }
 
     /// CloudKit 同期を使うか。シミュレーターと、iCloud 未サインイン（トークンなし）のときは使わない。
-    nonisolated static func shouldUseCloudKit(isSimulator: Bool, hasICloudAccount: Bool) -> Bool {
-        !isSimulator && hasICloudAccount
+    /// `cachedAccountAvailable` は Watch 用。watchOS では `ubiquityIdentityToken` が当てにならない
+    /// 可能性があるため、前回起動で `CKContainer.accountStatus` が `.available` だったかも合わせて見る。
+    nonisolated static func shouldUseCloudKit(
+        isSimulator: Bool,
+        hasICloudAccount: Bool,
+        cachedAccountAvailable: Bool = false
+    ) -> Bool {
+        !isSimulator && (hasICloudAccount || cachedAccountAvailable)
+    }
+
+    /// Watch が前回起動で確かめた iCloud アカウントの状態を覚えておくキー（App Group の UserDefaults）。
+    nonisolated static let accountAvailableCacheKey = "watchCloudKitAccountAvailable"
+
+    nonisolated static var cachedAccountAvailable: Bool {
+        UserDefaults(suiteName: appGroupID)?.bool(forKey: accountAvailableCacheKey) ?? false
+    }
+
+    nonisolated static func cacheAccountAvailable(_ available: Bool) {
+        UserDefaults(suiteName: appGroupID)?.set(available, forKey: accountAvailableCacheKey)
     }
 
     nonisolated static var currentEnvironmentUsesCloudKit: Bool {
@@ -33,21 +51,41 @@ enum GeoMemoStoreConfig {
         #else
         let isSimulator = false
         #endif
+        #if os(watchOS)
+        let cached = cachedAccountAvailable
+        #else
+        let cached = false
+        #endif
         return shouldUseCloudKit(
             isSimulator: isSimulator,
-            hasICloudAccount: FileManager.default.ubiquityIdentityToken != nil
+            hasICloudAccount: FileManager.default.ubiquityIdentityToken != nil,
+            cachedAccountAvailable: cached
         )
     }
 
+    private nonisolated static let logger = Logger(subsystem: "com.yokuro.geomemo", category: "StoreConfig")
+
     /// App Group 上の `geomemo.store` を開く構成。App Group が見えなければ nil。
+    /// 選んだモード（CloudKit か local か）を 1 行ログに出す（定数のみ・個人情報なし）。
     nonisolated static func makeConfiguration(schema: Schema) -> ModelConfiguration? {
         guard let url = FileManager.default
             .containerURL(forSecurityApplicationGroupIdentifier: appGroupID)?
-            .appendingPathComponent("geomemo.store") else { return nil }
-        return ModelConfiguration(
+            .appendingPathComponent("geomemo.store") else {
+            logger.error("store mode: unavailable (no app group container)")
+            return nil
+        }
+        let useCloudKit = currentEnvironmentUsesCloudKit
+        let token = FileManager.default.ubiquityIdentityToken != nil
+        logger.notice("store mode: \(useCloudKit ? "cloudkit" : "local", privacy: .public) (ubiquityToken: \(token, privacy: .public))")
+        return makeConfiguration(schema: schema, url: url, useCloudKit: useCloudKit)
+    }
+
+    /// URL と同期の有無を指定して構成を作る（テスト・フォールバック用）。
+    nonisolated static func makeConfiguration(schema: Schema, url: URL, useCloudKit: Bool) -> ModelConfiguration {
+        ModelConfiguration(
             schema: schema,
             url: url,
-            cloudKitDatabase: currentEnvironmentUsesCloudKit ? .private(cloudKitContainerID) : .none
+            cloudKitDatabase: useCloudKit ? .private(cloudKitContainerID) : .none
         )
     }
 }

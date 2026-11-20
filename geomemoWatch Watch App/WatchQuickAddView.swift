@@ -5,6 +5,8 @@ import MapKit
 
 struct WatchQuickAddView: View {
     @Environment(\.modelContext) private var modelContext
+    @Environment(\.watchStoreStatus) private var storeStatus
+    @Query private var allMemos: [GeoMemo]
     @State private var locationHelper = QuickAddLocationHelper()
     @State private var title = ""
     @State private var selectedColorIndex = 0
@@ -15,6 +17,14 @@ struct WatchQuickAddView: View {
         NavigationStack {
             ScrollView {
                 VStack(spacing: 12) {
+                    if !storeStatus.isPersistent {
+                        WatchNotSavedBanner()
+                    } else if isAtFreeLimit {
+                        Label("Free plan limit reached. Add more on iPhone.", systemImage: "lock.fill")
+                            .font(.caption2)
+                            .foregroundStyle(.orange)
+                    }
+
                     // Title input
                     TextField("Title", text: $title)
                         .textFieldStyle(.plain)
@@ -68,7 +78,7 @@ struct WatchQuickAddView: View {
                     }
                     .buttonStyle(.borderedProminent)
                     .tint(WatchBrand.blue)
-                    .disabled(title.isEmpty || locationHelper.coordinate == nil || isSaving)
+                    .disabled(!canSave)
 
                     if showSaved {
                         HStack {
@@ -90,8 +100,19 @@ struct WatchQuickAddView: View {
         }
     }
 
+    /// 無料版のメモ数の上限（iPhone と同じ判定）。Watch は Pro かどうかを知らないので無料版として扱う。
+    private var isAtFreeLimit: Bool {
+        MemoLimitPolicy.isAtLimit(currentCount: allMemos.count, isPro: false)
+    }
+
+    /// 保存されない状態・上限のときは作らせない。
+    private var canSave: Bool {
+        storeStatus.isPersistent && !isAtFreeLimit
+            && !title.isEmpty && locationHelper.coordinate != nil && !isSaving
+    }
+
     private func saveMemo() {
-        guard let coordinate = locationHelper.coordinate else { return }
+        guard canSave, let coordinate = locationHelper.coordinate else { return }
         isSaving = true
 
         let memo = GeoMemo(
