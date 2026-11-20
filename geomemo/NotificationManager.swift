@@ -37,7 +37,8 @@ class NotificationManager: NSObject, ObservableObject {
         let done = UNNotificationAction(
             identifier: actionDone,
             title: String(localized: "Complete"),
-            options: .destructive
+            // ロック中に第三者が完了にできないよう、解除を求める（スヌーズはそのまま）
+            options: [.destructive, .authenticationRequired]
         )
         let snooze5 = UNNotificationAction(
             identifier: actionSnooze5,

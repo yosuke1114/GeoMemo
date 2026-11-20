@@ -2,6 +2,7 @@ import Foundation
 import SwiftData
 import CloudKit
 import UIKit
+import WidgetKit
 
 // 領域に入った・出たときの処理（通知・滞在・遅延・受信した依頼の到着の書き込み・通知からの「完了」）。
 // 画面（SwiftUI）に頼らない。アプリが終了した状態から位置イベントでバックグラウンド起動され、
@@ -99,6 +100,11 @@ protocol RegionEventEffects {
     func enqueuePending(_ event: PendingShareEvent)
     func stopMonitoring(identifier: String)
     func stopMonitoringRoute(memoID: String)
+    /// CloudKit への書き込みに成功した未送信イベントを外す。
+    func dequeuePending(_ event: PendingShareEvent)
+    /// 溜まっている未送信イベントを送る（領域イベントのたびに試す）。
+    func drainPending() async
+    func reloadWidgets()
 }
 
 @MainActor
@@ -133,17 +139,53 @@ struct LiveRegionEventEffects: RegionEventEffects {
     func stopMonitoringRoute(memoID: String) {
         LocationManager.shared.stopMonitoringRoute(memoID: memoID)
     }
+    func dequeuePending(_ event: PendingShareEvent) {
+        PendingEventQueue.shared.dequeue(event)
+    }
+    func drainPending() async {
+        await PendingEventQueue.shared.drain()
+    }
+    func reloadWidgets() {
+        WidgetCenter.shared.reloadAllTimelines()
+    }
+}
+
+/// `LocationManager` が領域の入退出を渡す先。テストで差し替える。
+@MainActor
+protocol RegionEventHandling {
+    func handleEntered(memoID: String)
+    func handleExited(memoID: String)
+    func handleSharedEntered(identifier: String)
+}
+
+/// バックグラウンドの実行時間の確保（UIKit の `beginBackgroundTask` を包む。テストで差し替える）。
+@MainActor
+protocol BackgroundTaskControlling {
+    /// 開始する。`expiration` は時間切れのときに呼ばれる。
+    func begin(name: String, expiration: @escaping @MainActor () -> Void) -> UIBackgroundTaskIdentifier
+    func end(_ id: UIBackgroundTaskIdentifier)
+}
+
+@MainActor
+struct UIKitBackgroundTasks: BackgroundTaskControlling {
+    func begin(name: String, expiration: @escaping @MainActor () -> Void) -> UIBackgroundTaskIdentifier {
+        UIApplication.shared.beginBackgroundTask(withName: name, expirationHandler: expiration)
+    }
+    func end(_ id: UIBackgroundTaskIdentifier) {
+        UIApplication.shared.endBackgroundTask(id)
+    }
 }
 
 // MARK: - サービス
 
 @MainActor
-final class RegionEventService {
+final class RegionEventService: RegionEventHandling {
     static let shared = RegionEventService()
 
     /// テストで差し替える。通常はアプリのコンテナ（`GeoMemoStore.sharedContainer()`、画面の `@Query` と同じ）。
     var container: ModelContainer?
     var effects: RegionEventEffects
+    var backgroundTasks: BackgroundTaskControlling = UIKitBackgroundTasks()
     var now: () -> Date = { Date() }
     var calendar: Calendar = .current
 
@@ -152,13 +194,14 @@ final class RegionEventService {
         self.container = container
     }
 
-    private var context: ModelContext? {
+    /// 画面の `@Query` と同じコンテキスト。アプリが起動時に `container` を渡す（UI テスト・in-memory でも実ストアを開かない）。
+    var mainContext: ModelContext? {
         if let container { return container.mainContext }
         return try? GeoMemoStore.sharedContainer().mainContext
     }
 
     private func memo(id: String) -> GeoMemo? {
-        guard let uuid = UUID(uuidString: id), let context else { return nil }
+        guard let uuid = UUID(uuidString: id), let context = mainContext else { return nil }
         let descriptor = FetchDescriptor<GeoMemo>(predicate: #Predicate { $0.id == uuid })
         return try? context.fetch(descriptor).first
     }
@@ -195,7 +238,7 @@ final class RegionEventService {
 
     /// 受信した依頼の領域に入った（到着）。CloudKit へ状態を書き、書けなければ未送信キューに積む。
     func sharedEntered(identifier: String) async {
-        guard let context,
+        guard let context = mainContext,
               let shared = (try? context.fetch(FetchDescriptor<SharedMemo>()))?
                 .first(where: { $0.geofenceIdentifier == identifier }) else { return }
         switch RegionEventPlanner.sharedFire(isActive: shared.status == .active, autoComplete: shared.autoComplete) {
@@ -207,15 +250,20 @@ final class RegionEventService {
             let finalStatus: ShareStatus = completes ? .completed : .fired
             shared.status = finalStatus
             if completes { shared.completedAt = date }
-            try? context.save()   // 先にローカルへ。以降で落ちても再進入で二重に発火しない
+            let owner = shared.zoneOwnerName
+            let event: PendingShareEvent = completes
+                ? .completed(ckRecordName: shared.ckRecordName, zoneOwnerName: owner, completedAt: date)
+                : .fired(ckRecordName: shared.ckRecordName, zoneOwnerName: owner, firedAt: date)
+            // ローカル保存と同時に未送信キューへ。CloudKit へ書く前にプロセスが止まっても、
+            // 次の機会（起動・前面復帰・領域イベント）に送られ、依頼者へ「到着」が届く。
+            effects.enqueuePending(event)
+            try? context.save()
 
             do {
                 try await effects.updateSharedStatus(recordID: shared.cloudKitRecordID, status: finalStatus, date: date)
+                effects.dequeuePending(event)
             } catch {
-                let owner = shared.zoneOwnerName
-                effects.enqueuePending(completes
-                    ? .completed(ckRecordName: shared.ckRecordName, zoneOwnerName: owner, completedAt: date)
-                    : .fired(ckRecordName: shared.ckRecordName, zoneOwnerName: owner, firedAt: date))
+                // 失敗時はキューに残る
             }
             await effects.scheduleSharedFired(
                 memoTitle: shared.memoTitle, requesterName: shared.requesterName, sharedID: shared.id.uuidString)
@@ -225,32 +273,49 @@ final class RegionEventService {
 
     // MARK: 完了（通知の「完了」・ショートカット）
 
-    /// 完了にして保存し、監視を外す。見つからなければ何もしない。
-    func markDone(id: String) {
-        guard let memo = memo(id: id) else { return }
+    /// 完了にして保存し、成功したときだけ監視を外し、画面・ウィジェットへ知らせる。
+    /// 見つからない・保存に失敗したら何もせず false。
+    @discardableResult
+    func markDone(id: String) -> Bool {
+        guard let memo = memo(id: id), let context = mainContext else { return false }
         memo.isDone = true
-        try? context?.save()
+        do {
+            try context.save()
+        } catch {
+            memo.isDone = false
+            return false
+        }
         didMarkDone(id: id)
+        return true
     }
 
-    /// 別の経路（ショートカットなど）で完了にしたあとの後始末。監視を外し、画面へ知らせる（触覚・案内の更新）。
+    /// 完了が保存されたあとの後始末。監視を外し、画面（触覚・案内）とウィジェットへ知らせる。
     func didMarkDone(id: String) {
         effects.stopMonitoring(identifier: id)
         effects.stopMonitoringRoute(memoID: id)
+        effects.reloadWidgets()
         NotificationCenter.default.post(name: .geoMemoMarkDone, object: id)
     }
+
+    // MARK: 領域イベントの受け口（`LocationManager` から）
+
+    func handleEntered(memoID: String) { run { await self.memoEntered(id: memoID) } }
+    func handleExited(memoID: String) { run { await self.memoExited(id: memoID) } }
+    func handleSharedEntered(identifier: String) { run { await self.sharedEntered(identifier: identifier) } }
 
     // MARK: バックグラウンドでの実行
 
     /// 位置イベントのコールバックから呼ぶ。非同期の処理が終わるまで、バックグラウンドの実行時間を確保する。
+    /// 処理のあとに、溜まっている未送信イベント（到着・完了）も送ってみる。
     func run(_ work: @escaping @MainActor () async -> Void) {
-        let box = BackgroundTaskBox()
-        box.id = UIApplication.shared.beginBackgroundTask(withName: "geomemo-region-event") {
+        let box = BackgroundTaskBox(controller: backgroundTasks)
+        box.id = backgroundTasks.begin(name: "geomemo-region-event") {
             // 時間切れ: これ以上は待てない
-            MainActor.assumeIsolated { box.end() }
+            box.end()
         }
         Task { @MainActor in
             await work()
+            await effects.drainPending()
             box.end()
         }
     }
@@ -259,9 +324,13 @@ final class RegionEventService {
 @MainActor
 private final class BackgroundTaskBox {
     var id: UIBackgroundTaskIdentifier = .invalid
+    private let controller: BackgroundTaskControlling
+    init(controller: BackgroundTaskControlling) { self.controller = controller }
+
+    /// 一度だけ終える（時間切れと通常の終了が重なっても二重に終えない）。
     func end() {
         guard id != .invalid else { return }
-        UIApplication.shared.endBackgroundTask(id)
+        controller.end(id)
         id = .invalid
     }
 }

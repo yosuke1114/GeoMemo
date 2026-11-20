@@ -99,11 +99,10 @@ struct MarkMemoDoneIntent: AppIntent {
     var target: GeoMemoEntity
 
     func perform() async throws -> some IntentResult & ProvidesDialog {
-        try GeoMemoStore.markDone(id: target.id)
-        // アプリがフォアグラウンドにいる場合は NotificationCenter でも同期
-        await MainActor.run {
-            RegionEventService.shared.didMarkDone(id: target.id.uuidString)
-        }
+        // アプリのコンテナの mainContext で保存し（前面の画面の `@Query` も更新される）、
+        // 監視の停止・画面とウィジェットへの通知まで一括で行う。
+        let saved = await MainActor.run { RegionEventService.shared.markDone(id: target.id.uuidString) }
+        guard saved else { return .result(dialog: "Could not complete that memo.") }
         return .result(dialog: "\"\(target.title)\" \(String(localized: "marked as complete"))")
     }
 }

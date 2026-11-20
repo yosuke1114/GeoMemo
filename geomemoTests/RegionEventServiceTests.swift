@@ -2,6 +2,8 @@ import Testing
 import Foundation
 import SwiftData
 import CloudKit
+import CoreLocation
+import UIKit
 @testable import geomemo
 
 // MARK: - 純粋ロジック
@@ -80,6 +82,11 @@ private final class FakeEffects: RegionEventEffects {
     var stopped: [String] = []
     var stoppedRoutes: [String] = []
     var failUpdate = false
+    var dequeued: [PendingShareEvent] = []
+    var drainCount = 0
+    var widgetReloads = 0
+    /// 書き込みの時点でキューに積まれていたか（保存と同時に積むことの確認）
+    var pendingAtWrite = 0
 
     func scheduleImmediate(title: String, body: String, memoID: String) async { immediate.append(memoID) }
     func scheduleDwell(title: String, body: String, memoID: String, minutes: Int) async { dwell.append((memoID, minutes)) }
@@ -87,12 +94,50 @@ private final class FakeEffects: RegionEventEffects {
     func cancelDwell(memoID: String) { cancelledDwell.append(memoID) }
     func scheduleSharedFired(memoTitle: String, requesterName: String, sharedID: String) async { sharedFired.append(sharedID) }
     func updateSharedStatus(recordID: CKRecord.ID, status: ShareStatus, date: Date) async throws {
+        pendingAtWrite = pending.count
         if failUpdate { throw CKError(.networkUnavailable) }
         statusUpdates.append(status)
     }
     func enqueuePending(_ event: PendingShareEvent) { pending.append(event) }
     func stopMonitoring(identifier: String) { stopped.append(identifier) }
     func stopMonitoringRoute(memoID: String) { stoppedRoutes.append(memoID) }
+    func dequeuePending(_ event: PendingShareEvent) {
+        dequeued.append(event)
+        pending.removeAll { Self.same($0, event) }
+    }
+    func drainPending() async { drainCount += 1 }
+    func reloadWidgets() { widgetReloads += 1 }
+
+    private static func same(_ a: PendingShareEvent, _ b: PendingShareEvent) -> Bool {
+        switch (a, b) {
+        case (.fired(let n1, _, _), .fired(let n2, _, _)): return n1 == n2
+        case (.completed(let n1, _, _), .completed(let n2, _, _)): return n1 == n2
+        default: return false
+        }
+    }
+}
+
+@MainActor
+private final class FakeBackgroundTasks: BackgroundTaskControlling {
+    var begun: [String] = []
+    var ended: [UIBackgroundTaskIdentifier] = []
+    var expiration: (@MainActor () -> Void)?
+    func begin(name: String, expiration: @escaping @MainActor () -> Void) -> UIBackgroundTaskIdentifier {
+        begun.append(name)
+        self.expiration = expiration
+        return UIBackgroundTaskIdentifier(rawValue: 42)
+    }
+    func end(_ id: UIBackgroundTaskIdentifier) { ended.append(id) }
+}
+
+@MainActor
+private final class FakeHandler: RegionEventHandling {
+    var entered: [String] = []
+    var exited: [String] = []
+    var shared: [String] = []
+    func handleEntered(memoID: String) { entered.append(memoID) }
+    func handleExited(memoID: String) { exited.append(memoID) }
+    func handleSharedEntered(identifier: String) { shared.append(identifier) }
 }
 
 @MainActor
@@ -173,7 +218,9 @@ struct RegionEventServiceTests {
         #expect(fx.statusUpdates == [.fired])
         #expect(fx.sharedFired == [s.id.uuidString])
         #expect(fx.stopped == [s.geofenceIdentifier])
-        #expect(fx.pending.isEmpty)
+        // 保存と同時に積み（書き込みの時点で 1 件）、成功したら外す
+        #expect(fx.pendingAtWrite == 1)
+        #expect(fx.pending.isEmpty && fx.dequeued.count == 1)
     }
 
     @Test("受信した依頼: 自動完了なら completed を一度だけ書く")
@@ -185,6 +232,18 @@ struct RegionEventServiceTests {
         #expect(fx.statusUpdates == [.completed])
     }
 
+    @Test("受信した依頼: 自動完了の書き込みに失敗したら completed が積まれたまま残る")
+    func sharedAutoCompleteFailureQueuesCompleted() async throws {
+        let (service, fx, ctx) = try makeService()
+        fx.failUpdate = true
+        let s = shared(ctx, autoComplete: true)
+        await service.sharedEntered(identifier: s.geofenceIdentifier)
+        #expect(fx.pending.count == 1)
+        if case .completed = fx.pending[0] {} else { Issue.record("completed が積まれるはず") }
+        #expect(fx.dequeued.isEmpty)
+        #expect(s.status == .completed)
+    }
+
     @Test("受信した依頼: 書き込みに失敗したら未送信キューに積む（通知は出す）")
     func sharedFailureQueues() async throws {
         let (service, fx, ctx) = try makeService()
@@ -193,6 +252,7 @@ struct RegionEventServiceTests {
         await service.sharedEntered(identifier: s.geofenceIdentifier)
         #expect(fx.pending.count == 1)
         if case .fired = fx.pending[0] {} else { Issue.record("fired が積まれるはず") }
+        #expect(fx.dequeued.isEmpty)
         #expect(fx.sharedFired.count == 1)
     }
 
@@ -202,7 +262,7 @@ struct RegionEventServiceTests {
         let s = shared(ctx, status: .fired)
         await service.sharedEntered(identifier: s.geofenceIdentifier)
         #expect(s.status == .fired)
-        #expect(fx.statusUpdates.isEmpty && fx.sharedFired.isEmpty)
+        #expect(fx.statusUpdates.isEmpty && fx.sharedFired.isEmpty && fx.pending.isEmpty)
         #expect(fx.stopped == [s.geofenceIdentifier])
     }
 
@@ -215,12 +275,138 @@ struct RegionEventServiceTests {
             if let id = n.object as? String { received.append(id) }
         }
         defer { NotificationCenter.default.removeObserver(token) }
-        service.markDone(id: m.id.uuidString)
+        #expect(service.markDone(id: m.id.uuidString))
         #expect(m.isDone)
         #expect(fx.stopped == [m.id.uuidString] && fx.stoppedRoutes == [m.id.uuidString])
+        #expect(fx.widgetReloads == 1)
         #expect(received == [m.id.uuidString])
-        // 存在しない ID は何もしない
-        service.markDone(id: UUID().uuidString)
-        #expect(fx.stopped.count == 1)
+        // 存在しない・不正な ID は何もしない（監視停止・通知・ウィジェット更新も無し）
+        #expect(!service.markDone(id: UUID().uuidString))
+        #expect(!service.markDone(id: "x"))
+        #expect(fx.stopped.count == 1 && fx.widgetReloads == 1)
+    }
+
+    @Test("didMarkDone 単独: 監視（通常・ルート）を止め、ウィジェットと画面へ知らせる")
+    func didMarkDoneAlone() throws {
+        let (service, fx, _) = try makeService()
+        var received: [String] = []
+        let token = NotificationCenter.default.addObserver(forName: .geoMemoMarkDone, object: nil, queue: nil) { n in
+            if let id = n.object as? String { received.append(id) }
+        }
+        defer { NotificationCenter.default.removeObserver(token) }
+        service.didMarkDone(id: "abc")
+        #expect(fx.stopped == ["abc"] && fx.stoppedRoutes == ["abc"] && fx.widgetReloads == 1)
+        #expect(received == ["abc"])
+    }
+
+    @Test("run: バックグラウンドタスクを開始し、処理後に未送信を送って 1 回だけ終える")
+    func runBeginsAndEnds() async throws {
+        let (service, fx, _) = try makeService()
+        let bg = FakeBackgroundTasks()
+        service.backgroundTasks = bg
+        var worked = false
+        let done = AsyncStream<Void>.makeStream()
+        service.run { worked = true; done.continuation.finish() }
+        #expect(bg.begun == ["geomemo-region-event"])
+        for await _ in done.stream {}
+        for _ in 0..<50 where bg.ended.isEmpty { try? await Task.sleep(for: .milliseconds(20)) }
+        #expect(worked)
+        #expect(fx.drainCount == 1)
+        #expect(bg.ended.count == 1)
+    }
+
+    @Test("run: 時間切れで終えたあと、処理が終わっても二重に終えない")
+    func runExpiration() async throws {
+        let (service, _, _) = try makeService()
+        let bg = FakeBackgroundTasks()
+        service.backgroundTasks = bg
+        let gate = AsyncStream<Void>.makeStream()
+        let finished = AsyncStream<Void>.makeStream()
+        service.run {
+            for await _ in gate.stream {}
+            finished.continuation.finish()
+        }
+        bg.expiration?()
+        #expect(bg.ended.count == 1)
+        gate.continuation.finish()
+        for await _ in finished.stream {}
+        try? await Task.sleep(for: .milliseconds(100))
+        #expect(bg.ended.count == 1)
+    }
+
+    @Test("handleEntered/Exited/SharedEntered はサービスの処理を走らせる")
+    func handlersRun() async throws {
+        let (service, fx, ctx) = try makeService()
+        service.backgroundTasks = FakeBackgroundTasks()
+        let m = memo(ctx)
+        service.handleEntered(memoID: m.id.uuidString)
+        for _ in 0..<100 where fx.immediate.isEmpty { try? await Task.sleep(for: .milliseconds(20)) }
+        #expect(fx.immediate == [m.id.uuidString])
+    }
+}
+
+// MARK: - デリゲートからサービスへの振り分け
+
+@MainActor
+@Suite("LocationManager 領域イベントの振り分け", .serialized)
+struct RegionDispatchTests {
+    private func region(_ id: String) -> CLCircularRegion {
+        CLCircularRegion(center: CLLocationCoordinate2D(latitude: 35.68, longitude: 139.76), radius: 100, identifier: id)
+    }
+
+    private func makeManager(progress: [String: Int] = [:], counts: [String: Int] = [:]) -> (LocationManager, FakeHandler) {
+        UserDefaults.standard.set(progress, forKey: "routeProgress")
+        UserDefaults.standard.set(counts, forKey: "routeWaypointCounts")
+        let lm = LocationManager()
+        let handler = FakeHandler()
+        lm.eventHandler = handler
+        // 保存先（実ストア）を開く Live Activity の処理は、ここでは呼ばない
+        lm.triggerLiveActivity = { _ in }
+        lm.updateRouteLiveActivity = { _, _, _ in }
+        return (lm, handler)
+    }
+
+    private func cleanUp() {
+        UserDefaults.standard.removeObject(forKey: "routeProgress")
+        UserDefaults.standard.removeObject(forKey: "routeWaypointCounts")
+    }
+
+    @Test("通常の領域: 入ったら memoID で、出たら memoID で渡す")
+    func normal() {
+        defer { cleanUp() }
+        let (lm, handler) = makeManager()
+        let id = UUID().uuidString
+        lm.locationManager(CLLocationManager(), didEnterRegion: region(id))
+        lm.locationManager(CLLocationManager(), didExitRegion: region(id))
+        #expect(handler.entered == [id] && handler.exited == [id])
+    }
+
+    @Test("受信した依頼の領域: 入ったら識別子で渡し、出たときは何もしない")
+    func shared() {
+        defer { cleanUp() }
+        let (lm, handler) = makeManager()
+        let id = "\(SharedMemo.geofencePrefix)\(UUID().uuidString)"
+        lm.locationManager(CLLocationManager(), didEnterRegion: region(id))
+        lm.locationManager(CLLocationManager(), didExitRegion: region(id))
+        #expect(handler.shared == [id] && handler.entered.isEmpty && handler.exited.isEmpty)
+    }
+
+    @Test("ルート: 最後の経由地に入ったときだけ、メモの ID で渡す")
+    func routeFinalWaypoint() {
+        defer { cleanUp() }
+        let memo = UUID().uuidString
+        let (lm, handler) = makeManager(progress: [memo: 1], counts: [memo: 3])
+        // 順序が違う（まだ 2 番目を待っている）→ 何もしない
+        lm.locationManager(CLLocationManager(), didEnterRegion: region("\(memo)|wp|2"))
+        #expect(handler.entered.isEmpty)
+        // 2 番目 → 次へ（まだ発火しない）
+        lm.locationManager(CLLocationManager(), didEnterRegion: region("\(memo)|wp|1"))
+        #expect(handler.entered.isEmpty)
+        // 最後 → 発火
+        lm.locationManager(CLLocationManager(), didEnterRegion: region("\(memo)|wp|2"))
+        #expect(handler.entered == [memo])
+        // ルートの退出は無視
+        lm.locationManager(CLLocationManager(), didExitRegion: region("\(memo)|wp|2"))
+        #expect(handler.exited.isEmpty)
     }
 }

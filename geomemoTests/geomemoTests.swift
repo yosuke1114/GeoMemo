@@ -461,50 +461,6 @@ struct NotificationActionTests {
         #expect(name.rawValue == "geoMemoMarkDone")
     }
 
-    // MARK: - isDone フラグ更新（NotificationCenter 経由）
-
-    @Test("geoMemoMarkDone 受信で isDone が true になる")
-    @MainActor
-    func markDoneViaNotificationCenter() async {
-        let memo = GeoMemo(title: "テスト", note: "", latitude: 35.6895, longitude: 139.6917, radius: 100)
-        let memoID = memo.id.uuidString
-        #expect(memo.isDone == false)
-
-        // NotificationCenter で購読して isDone を更新（ContentView と同じロジック）
-        let expectation = AsyncStream<Void>.makeStream()
-        var cancellable: NSObjectProtocol?
-        cancellable = NotificationCenter.default.addObserver(
-            forName: .geoMemoMarkDone,
-            object: nil,
-            queue: .main
-        ) { notification in
-            if let id = notification.object as? String, id == memoID {
-                memo.isDone = true
-                expectation.continuation.finish()
-            }
-        }
-
-        NotificationCenter.default.post(name: .geoMemoMarkDone, object: memoID)
-
-        // 通知が処理されるまで待機
-        for await _ in expectation.stream { break }
-        NotificationCenter.default.removeObserver(cancellable!)
-
-        #expect(memo.isDone == true)
-    }
-
-    @Test("異なる memoID の geoMemoMarkDone は isDone を変えない")
-    func markDoneIgnoresDifferentID() {
-        let memo = GeoMemo(title: "テスト", note: "", latitude: 35.6895, longitude: 139.6917, radius: 100)
-        #expect(memo.isDone == false)
-
-        // 別の ID で通知を送る
-        NotificationCenter.default.post(name: .geoMemoMarkDone, object: UUID().uuidString)
-
-        // isDone は変わらない（このテストは同期で確認）
-        #expect(memo.isDone == false)
-    }
-
     // MARK: - カテゴリ登録
 
     @Test("registerCategories でカテゴリが登録される")
@@ -522,6 +478,12 @@ struct NotificationActionTests {
         #expect(actionIDs.contains(NotificationManager.actionDone))
         #expect(actionIDs.contains(NotificationManager.actionSnooze5))
         #expect(actionIDs.contains(NotificationManager.actionSnooze30))
+
+        // 「完了」だけは解除を求める（ロック中に第三者が完了にできない）。スヌーズはそのまま。
+        let done = registered?.actions.first { $0.identifier == NotificationManager.actionDone }
+        let snooze = registered?.actions.first { $0.identifier == NotificationManager.actionSnooze5 }
+        #expect(done?.options.contains(.authenticationRequired) == true)
+        #expect(snooze?.options.contains(.authenticationRequired) == false)
     }
 }
 

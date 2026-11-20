@@ -1,5 +1,6 @@
 import Foundation
 import CoreLocation
+import UIKit
 import Combine
 import os
 
@@ -8,6 +9,18 @@ class LocationManager: NSObject, ObservableObject {
     static let shared = LocationManager()
 
     private let manager = CLLocationManager()
+
+    /// 領域の入退出の受け手。テストで差し替える。
+    var eventHandler: RegionEventHandling = RegionEventService.shared
+    /// Live Activity へ「発火したメモ」を伝える（保存先を読むので、テストでは差し替える）。
+    var triggerLiveActivity: (String) -> Void = { LiveActivityManager.shared.triggerMemo(id: $0) }
+    /// Live Activity へルートの進行を伝える。
+    var updateRouteLiveActivity: (String, Int, Int) -> Void = {
+        LiveActivityManager.shared.updateRouteProgress(memoID: $0, current: $1, total: $2)
+    }
+
+    /// バックグラウンド起動（領域の入退出・ウィジェットなど）では false。位置・方位の更新を始めない判断に使う。
+    static var isForeground: Bool { UIApplication.shared.applicationState != .background }
 
     @Published var authorizationStatus: CLAuthorizationStatus = .notDetermined
     /// 「正確な位置情報」がオフ（おおよその位置のみ）のとき false。
@@ -161,7 +174,8 @@ class LocationManager: NSObject, ObservableObject {
 
     /// 許可済みなら現在地と方位のウォームアップを始める。ダイアログは出さない。
     func warmUp() {
-        guard manager.authorizationStatus == .authorizedWhenInUse ||
+        guard Self.isForeground,
+              manager.authorizationStatus == .authorizedWhenInUse ||
               manager.authorizationStatus == .authorizedAlways else { return }
         manager.requestLocation()
         manager.startUpdatingHeading()
@@ -169,7 +183,8 @@ class LocationManager: NSObject, ObservableObject {
 
     /// マップ表示中のみ呼び出す。非表示時は stopHeading() で停止すること。
     func startHeading() {
-        guard manager.authorizationStatus == .authorizedWhenInUse ||
+        guard Self.isForeground,
+              manager.authorizationStatus == .authorizedWhenInUse ||
               manager.authorizationStatus == .authorizedAlways else { return }
         manager.startUpdatingHeading()
     }
@@ -182,7 +197,8 @@ class LocationManager: NSObject, ObservableObject {
 
     /// Request a fresh one-shot location update (e.g. for the "center on me" button).
     func refreshLocation() {
-        guard manager.authorizationStatus == .authorizedWhenInUse ||
+        guard Self.isForeground,
+              manager.authorizationStatus == .authorizedWhenInUse ||
               manager.authorizationStatus == .authorizedAlways else { return }
         manager.requestLocation()
     }
@@ -288,11 +304,9 @@ extension LocationManager: @MainActor CLLocationManagerDelegate {
     // CLLocationManager はデリゲートを生成したスレッド（main）で呼ぶため、適合を MainActor に隔離する
     // （Swift 6 の isolated conformance）。もし main 以外から呼ばれれば実行時チェックで検出される。
     func locationManager(_ manager: CLLocationManager, didUpdateLocations locations: [CLLocation]) {
-        MainActor.assumeIsolated {
-            guard let latest = locations.last else { return }
-            location = latest
-            evaluateProximity(to: latest)
-        }
+        guard let latest = locations.last else { return }
+        location = latest
+        evaluateProximity(to: latest)
     }
 
     func locationManager(_ manager: CLLocationManager, didFailWithError error: Error) {
@@ -300,60 +314,52 @@ extension LocationManager: @MainActor CLLocationManagerDelegate {
     }
 
     func locationManagerDidChangeAuthorization(_ manager: CLLocationManager) {
-        MainActor.assumeIsolated {
-            authorizationStatus = manager.authorizationStatus
-            isPreciseLocation = manager.accuracyAuthorization == .fullAccuracy
-            switch manager.authorizationStatus {
-            case .authorizedWhenInUse, .authorizedAlways:
-                // 「常に許可」の要求はここでは行わない（説明を読んだ後のボタンからだけ）。
+        authorizationStatus = manager.authorizationStatus
+        isPreciseLocation = manager.accuracyAuthorization == .fullAccuracy
+        switch manager.authorizationStatus {
+        case .authorizedWhenInUse, .authorizedAlways:
+            // 「常に許可」の要求はここでは行わない（説明を読んだ後のボタンからだけ）。
+            // バックグラウンド起動（領域の入退出）では、現在地の要求も方位の更新も始めない。
+            if Self.isForeground {
                 manager.requestLocation()
                 manager.startUpdatingHeading()
-            default:
-                break
             }
+        default:
+            break
         }
     }
 
     func locationManager(_ manager: CLLocationManager, didUpdateHeading newHeading: CLHeading) {
         guard newHeading.headingAccuracy >= 0 else { return }
-        MainActor.assumeIsolated {
-            heading = newHeading
+        heading = newHeading
 
-            let raw = newHeading.trueHeading >= 0 ? newHeading.trueHeading : newHeading.magneticHeading
+        let raw = newHeading.trueHeading >= 0 ? newHeading.trueHeading : newHeading.magneticHeading
 
-            // 初回は即セット
-            if smoothedHeadingDegrees < 0 {
-                _smoothed = raw
-                smoothedHeadingDegrees = raw
-                return
-            }
-
-            // 0/360 の折り返しを考慮した最短経路で EMA を適用
-            var delta = raw - _smoothed
-            if delta > 180  { delta -= 360 }
-            if delta < -180 { delta += 360 }
-            _smoothed += headingSmoothingAlpha * delta
-            if _smoothed < 0   { _smoothed += 360 }
-            if _smoothed >= 360 { _smoothed -= 360 }
-
-            smoothedHeadingDegrees = _smoothed
+        // 初回は即セット
+        if smoothedHeadingDegrees < 0 {
+            _smoothed = raw
+            smoothedHeadingDegrees = raw
+            return
         }
+
+        // 0/360 の折り返しを考慮した最短経路で EMA を適用
+        var delta = raw - _smoothed
+        if delta > 180  { delta -= 360 }
+        if delta < -180 { delta += 360 }
+        _smoothed += headingSmoothingAlpha * delta
+        if _smoothed < 0   { _smoothed += 360 }
+        if _smoothed >= 360 { _smoothed -= 360 }
+
+        smoothedHeadingDegrees = _smoothed
     }
 
     /// 領域に入った通知を、画面に頼らず出す（アプリが終了した状態からの起動でも動く）。
     @MainActor
     private func notifyEntered(memoID: String) {
-        RegionEventService.shared.run { await RegionEventService.shared.memoEntered(id: memoID) }
+        eventHandler.handleEntered(memoID: memoID)
     }
 
     func locationManager(_ manager: CLLocationManager, didEnterRegion region: CLRegion) {
-        MainActor.assumeIsolated {
-            didEnterRegionMainActor(region)
-        }
-    }
-
-    @MainActor
-    private func didEnterRegionMainActor(_ region: CLRegion) {
         guard let circularRegion = region as? CLCircularRegion else { return }
         // ウィジェットで完了にしたのに監視が残っていた場合に備え、通知・Live Activity より先に取り込む
         WidgetCompletion.drainPending()
@@ -386,22 +392,22 @@ extension LocationManager: @MainActor CLLocationManagerDelegate {
                 progress.removeValue(forKey: memoID)
                 routeProgress = progress
                 notifyEntered(memoID: memoID)
-                LiveActivityManager.shared.triggerMemo(id: memoID)
+                triggerLiveActivity(memoID)
             } else {
                 // 次のウェイポイントを待つ
                 progress[memoID] = next
                 routeProgress = progress
                 // Live Activity にルート進行状況を反映（次に向かうWP番号を1始まりで表示）
-                LiveActivityManager.shared.updateRouteProgress(memoID: memoID, current: next + 1, total: total)
+                updateRouteLiveActivity(memoID, next + 1, total)
             }
         } else if identifier.hasPrefix(SharedMemo.geofencePrefix) {
             // ── 共有メモジオフェンス（おつかい / 見守り）──────────────
-            RegionEventService.shared.run { await RegionEventService.shared.sharedEntered(identifier: identifier) }
+            eventHandler.handleSharedEntered(identifier: identifier)
         } else {
             // ── 通常ジオフェンス ─────────────────────────────────────
             let memoID = identifier
             notifyEntered(memoID: memoID)
-            LiveActivityManager.shared.triggerMemo(id: memoID)
+            triggerLiveActivity(memoID)
         }
     }
 
@@ -412,7 +418,7 @@ extension LocationManager: @MainActor CLLocationManagerDelegate {
         let identifier = circularRegion.identifier
         // ルートウェイポイントと共有メモの退出は無視
         guard !identifier.contains("|wp|") && !identifier.hasPrefix(SharedMemo.geofencePrefix) else { return }
-        RegionEventService.shared.run { await RegionEventService.shared.memoExited(id: identifier) }
+        eventHandler.handleExited(memoID: identifier)
     }
 
     func locationManager(_ manager: CLLocationManager, monitoringDidFailFor region: CLRegion?, withError error: Error) {

@@ -228,6 +228,12 @@ struct geomemoApp: App {
     // StoreKit: 起動時に Pro ステータスを復元
     private let storeKit = StoreKitManager.shared
 
+    init() {
+        // 領域イベント・ウィジェットの完了待ちは、アプリと同じコンテナを使う
+        // （UI テスト・in-memory のときに、サービスが実ストアを開かないように）。
+        RegionEventService.shared.container = sharedModelContainer
+    }
+
     var body: some Scene {
         WindowGroup {
             SplashView()
