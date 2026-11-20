@@ -33,12 +33,32 @@
         }
       }
     },
+    "Add Memo" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "メモを追加"
+          }
+        }
+      }
+    },
     "Blue" : {
       "localizations" : {
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "ブルー"
+          }
+        }
+      }
+    },
+    "Complete Memo" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "メモを完了"
           }
         }
       }
@@ -104,6 +124,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "メモなし"
+          }
+        }
+      }
+    },
+    "Open GeoMemo to add a new memo" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "GeoMemo を開いて新しいメモを追加します"
           }
         }
       }
@@ -358,6 +388,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "タップして開く"
+          }
+        }
+      }
+    },
+    "Tap to open" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "タップで開く"
           }
         }
       }

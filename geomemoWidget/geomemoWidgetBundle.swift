@@ -6,5 +6,6 @@ struct geomemoWidgetBundle: WidgetBundle {
     var body: some Widget {
         geomemoWidget()
         GeoMemoLiveActivity()
+        GeoMemoAddControl()
     }
 }

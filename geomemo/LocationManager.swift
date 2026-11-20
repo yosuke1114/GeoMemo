@@ -375,6 +375,8 @@ extension LocationManager: @MainActor CLLocationManagerDelegate {
     @MainActor
     private func didEnterRegionMainActor(_ region: CLRegion) {
         guard let circularRegion = region as? CLCircularRegion else { return }
+        // ウィジェットで完了にしたのに監視が残っていた場合に備え、通知・Live Activity より先に取り込む
+        WidgetCompletion.drainPending()
         DiagnosticsLog.shared.recordRegionEvent()
         let identifier = circularRegion.identifier
 
@@ -425,6 +427,7 @@ extension LocationManager: @MainActor CLLocationManagerDelegate {
 
     func locationManager(_ manager: CLLocationManager, didExitRegion region: CLRegion) {
         guard let circularRegion = region as? CLCircularRegion else { return }
+        WidgetCompletion.drainPending()
         DiagnosticsLog.shared.recordRegionEvent()
         let identifier = circularRegion.identifier
         // ルートウェイポイントと共有メモの退出は無視

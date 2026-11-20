@@ -1,6 +1,7 @@
 import WidgetKit
 import SwiftUI
 import SwiftData
+import AppIntents
 
 // MARK: - Shared ModelContainer
 
@@ -12,7 +13,7 @@ private func makeSharedContainer() -> ModelContainer? {
     if let url = FileManager.default
         .containerURL(forSecurityApplicationGroupIdentifier: appGroupID)?
         .appendingPathComponent("geomemo.store") {
-        let config = ModelConfiguration(schema: schema, url: url, cloudKitDatabase: .none)
+        let config = ModelConfiguration(schema: schema, url: url, allowsSave: false, cloudKitDatabase: .none)
         return try? ModelContainer(for: schema, configurations: [config])
     }
 
@@ -24,9 +25,12 @@ private func makeSharedContainer() -> ModelContainer? {
 
 /// `geomemoApp.deepLinkScheme` / `DeepLinkHost` と同期した widget 側の定数。
 /// （Widget 拡張は別ターゲットなのでアプリ側の static を直接参照できない）
-private enum WidgetDeepLink {
+enum WidgetDeepLink {
     static let scheme = "geomemo"
     static let memoHost = "memo"
+    /// 新しいメモを作る（`DeepLinkRoute.Host.new` と同じ）。
+    static let newHost = "new"
+    static let newMemoURL = URL(string: "\(scheme)://\(newHost)")!
     /// memos が空の時の Link 用フォールバック URL。`URL(string:)!` の force-unwrap を
     /// 1 箇所に閉じ込めるための定数（"geomemo://" は常に valid な URL）。
     static let fallback = URL(string: "\(scheme)://")!
@@ -37,6 +41,8 @@ private enum WidgetDeepLink {
 struct MemoEntry: TimelineEntry {
     let date: Date
     let memos: [MemoSnapshot]
+    /// 未完了のメモの件数（ロック画面ウィジェット用）。メモの題や場所名は出さず、この数だけを出す。
+    var activeCount: Int = 0
 
     struct MemoSnapshot {
         let id: UUID
@@ -112,7 +118,8 @@ struct MemoEntry: TimelineEntry {
             MemoSnapshot(id: UUID(), title: "Park Bench Note", note: "Great spot to read on weekends", locationName: "YOYOGI PARK", colorIndex: 3, isFavorite: false, tags: [], customTags: [], deadline: nil, routeCurrentWaypoint: nil, routeTotalWaypoints: nil),
             MemoSnapshot(id: UUID(), title: "Train Station", note: "Exit B2 for the shortcut", locationName: "SHINJUKU", colorIndex: 2, isFavorite: false, tags: [7], customTags: [], deadline: nil, routeCurrentWaypoint: nil, routeTotalWaypoints: nil),
             MemoSnapshot(id: UUID(), title: "Lunch Spot", note: "Set meal is best value here", locationName: "HARAJUKU", colorIndex: 4, isFavorite: true, tags: [3], customTags: [], deadline: nil, routeCurrentWaypoint: nil, routeTotalWaypoints: nil),
-        ]
+        ],
+        activeCount: 5
     )
 
     static let empty = MemoEntry(date: .now, memos: [])
@@ -146,7 +153,7 @@ struct GeoMemoProvider: TimelineProvider {
         dates.append(contentsOf: checkpoints)
         dates.sort()
 
-        let entries = dates.map { MemoEntry(date: $0, memos: base.memos) }
+        let entries = dates.map { MemoEntry(date: $0, memos: base.memos, activeCount: base.activeCount) }
         // 最後の entry 時刻で再フェッチを依頼（メモ追加/削除を反映）。
         completion(Timeline(entries: entries, policy: .after(dates.last ?? now.addingTimeInterval(1800))))
     }
@@ -165,7 +172,24 @@ struct GeoMemoProvider: TimelineProvider {
         )
         descriptor.fetchLimit = 20
 
-        guard let memos = try? context.fetch(descriptor) else { return .empty }
+        guard let fetched = try? context.fetch(descriptor) else { return .empty }
+
+        // ウィジェットの「完了」は拡張のプロセスでは保存せず、完了待ちに積むだけ（`WidgetCompletion.swift`）。
+        // アプリが保存するまでの間も、押した行がすぐ消えるよう、完了待ちを除いて描く。
+        let pending = WidgetCompletionQueue.shared.pending()
+        let memos = fetched.filter { !pending.contains($0.id) }
+
+        // 未完了の件数（20 件で切らない）。完了待ちのうち、まだ保存上は未完了のものを引く。
+        let storedActive = (try? context.fetchCount(FetchDescriptor<GeoMemo>(predicate: #Predicate { !$0.isDone }))) ?? memos.count
+        let pendingActive: Int
+        if pending.isEmpty {
+            pendingActive = 0
+        } else {
+            let ids = Array(pending)
+            pendingActive = (try? context.fetchCount(FetchDescriptor<GeoMemo>(
+                predicate: #Predicate { !$0.isDone && ids.contains($0.id) }))) ?? 0
+        }
+        let activeCount = max(0, storedActive - pendingActive)
 
         let snapshots = memos.map { memo -> MemoEntry.MemoSnapshot in
             let memoID = memo.id.uuidString
@@ -194,7 +218,7 @@ struct GeoMemoProvider: TimelineProvider {
             return false
         }
 
-        return MemoEntry(date: .now, memos: Array(snapshots.prefix(5)))
+        return MemoEntry(date: .now, memos: Array(snapshots.prefix(5)), activeCount: activeCount)
     }
 }
 
@@ -255,6 +279,28 @@ private struct MemoRowTrailingIcon: View {
     }
 }
 
+// MARK: - Done Button
+
+/// 行の右端の「完了」ボタン（インタラクティブ ウィジェット）。押すとアプリを開かずに完了にできる。
+private struct DoneButton: View {
+    let memoID: UUID
+    var iconSize: CGFloat = 20
+    /// タップ領域の高さ。幅は 44pt。中サイズは 3 行入れるため少し低くしている。
+    var height: CGFloat = 44
+
+    var body: some View {
+        Button(intent: CompleteMemoFromWidgetIntent(memoID: memoID)) {
+            Image(systemName: "checkmark.circle")
+                .font(.system(size: iconSize, weight: .regular))
+                .foregroundStyle(Brand.blue)
+                .frame(width: 44, height: height)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(Text("Complete Memo"))
+    }
+}
+
 // MARK: - Deadline Badge View
 
 private struct DeadlineBadge: View {
@@ -302,6 +348,8 @@ struct SmallWidgetView: View {
                             .font(.system(size: 10))
                             .foregroundStyle(Color(hex: "E5484D"))
                     }
+                    DoneButton(memoID: memo.id, iconSize: 18)
+                        .padding(.trailing, -10)
                 }
 
                 Spacer()
@@ -315,6 +363,7 @@ struct SmallWidgetView: View {
                     Text(memo.title)
                         .font(.system(size: 15, weight: .bold))
                         .foregroundStyle(Brand.primaryText)
+                        .privacySensitive()
                         .lineLimit(2)
                 }
 
@@ -322,6 +371,7 @@ struct SmallWidgetView: View {
                     Text(memo.locationName)
                         .font(.system(size: 11, weight: .medium))
                         .foregroundStyle(Brand.secondaryText)
+                        .privacySensitive()
                         .lineLimit(1)
                 }
 
@@ -359,6 +409,7 @@ struct SmallWidgetView: View {
                 Text(String(localized: "No memos"))
                     .font(.system(size: 13))
                     .foregroundStyle(Brand.secondaryText)
+                    .privacySensitive()
             }
         }
     }
@@ -378,6 +429,7 @@ struct MediumWidgetView: View {
                 Text(String(localized: "No memos"))
                     .font(.system(size: 13))
                     .foregroundStyle(Brand.secondaryText)
+                    .privacySensitive()
             }
             .frame(maxWidth: .infinity)
         } else {
@@ -388,7 +440,8 @@ struct MediumWidgetView: View {
                     .padding(.bottom, 6)
 
                 ForEach(Array(entry.memos.prefix(3).enumerated()), id: \.offset) { index, memo in
-                    // 各行を Link で wrap して個別の memo へディープリンクする。
+                    // 行の本体は Link で個別の memo へディープリンクし、右端に「完了」ボタンを並べる。
+                    HStack(spacing: 0) {
                     Link(destination: memo.deepLinkURL ?? WidgetDeepLink.fallback) {
                         HStack(spacing: 6) {
                             Circle()
@@ -399,6 +452,7 @@ struct MediumWidgetView: View {
                                 Text(memo.title)
                                     .font(.system(size: 14, weight: .semibold))
                                     .foregroundStyle(Brand.primaryText)
+                                    .privacySensitive()
                                     .lineLimit(1)
                                 MemoRowBadge(memo: memo, tagLabelSize: 10)
                             }
@@ -411,6 +465,7 @@ struct MediumWidgetView: View {
                                 Text(memo.locationName)
                                     .font(.system(size: 11, weight: .medium))
                                     .foregroundStyle(Brand.secondaryText)
+                                    .privacySensitive()
                                     .lineLimit(1)
                             }
                         }
@@ -419,6 +474,8 @@ struct MediumWidgetView: View {
                             memo.hasUrgentDeadline ? Color(hex: "E5484D").opacity(0.05) :
                             memo.isRouteInProgress ? Brand.blue.opacity(0.05) : Color.clear
                         )
+                    }
+                    DoneButton(memoID: memo.id, iconSize: 18, height: 40)
                     }
 
                     if index < entry.memos.prefix(3).count - 1 {
@@ -447,6 +504,7 @@ struct LargeWidgetView: View {
                 Text(String(localized: "No memos"))
                     .font(.system(size: 14))
                     .foregroundStyle(Brand.secondaryText)
+                    .privacySensitive()
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         } else {
@@ -457,7 +515,8 @@ struct LargeWidgetView: View {
                     .padding(.bottom, 8)
 
                 ForEach(Array(entry.memos.prefix(5).enumerated()), id: \.offset) { index, memo in
-                    // 各行を Link で wrap して個別の memo へディープリンクする。
+                    // 行の本体は Link で個別の memo へディープリンクし、右端に「完了」ボタンを並べる。
+                    HStack(spacing: 0) {
                     Link(destination: memo.deepLinkURL ?? WidgetDeepLink.fallback) {
                         HStack(alignment: .top, spacing: 10) {
                             // カラードット
@@ -472,6 +531,7 @@ struct LargeWidgetView: View {
                                     Text(memo.title)
                                         .font(.system(size: 14, weight: .semibold))
                                         .foregroundStyle(Brand.primaryText)
+                                        .privacySensitive()
                                         .lineLimit(1)
 
                                     Spacer()
@@ -482,6 +542,7 @@ struct LargeWidgetView: View {
                                         Text(memo.locationName)
                                             .font(.system(size: 10, weight: .medium))
                                             .foregroundStyle(Brand.secondaryText)
+                                            .privacySensitive()
                                             .lineLimit(1)
                                     }
                                 }
@@ -491,6 +552,7 @@ struct LargeWidgetView: View {
                                     Text(memo.note)
                                         .font(.system(size: 12, weight: .regular))
                                         .foregroundStyle(Brand.secondaryText)
+                                        .privacySensitive()
                                         .lineLimit(1)
                                 }
 
@@ -503,6 +565,8 @@ struct LargeWidgetView: View {
                             memo.isRouteInProgress  ? Brand.blue.opacity(0.05) : Color.clear
                         )
                     }
+                    DoneButton(memoID: memo.id, iconSize: 20)
+                    }
 
                     if index < entry.memos.prefix(5).count - 1 {
                         Divider()
@@ -512,6 +576,73 @@ struct LargeWidgetView: View {
                 Spacer(minLength: 0)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
+        }
+    }
+}
+
+// MARK: - Lock Screen (accessory) Views
+//
+// プライバシー: ロック画面は端末を持たない人にも見える。メモの題・場所名・メモの位置は出さず、
+// 未完了の件数だけを出す（件数も `privacySensitive` にして、ロック中は伏せられる設定に従わせる）。
+// 「近い順」は端末の位置を使わないと決まらないので扱わない。タップはアプリを開く。
+
+private struct AccessoryCircularView: View {
+    let entry: MemoEntry
+
+    var body: some View {
+        ZStack {
+            AccessoryWidgetBackground()
+            VStack(spacing: 0) {
+                Image(systemName: "mappin.and.ellipse")
+                    .font(.system(size: 14, weight: .semibold))
+                Text("\(entry.activeCount)")
+                    .font(.system(size: 16, weight: .bold, design: .rounded))
+                    .privacySensitive()
+            }
+        }
+        .widgetAccentable()
+        // 円形はコントロールのように使えるよう、タップで「新しいメモ」を開く。
+        .widgetURL(WidgetDeepLink.newMemoURL)
+    }
+}
+
+private struct AccessoryRectangularView: View {
+    let entry: MemoEntry
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Label("GeoMemo", systemImage: "mappin.and.ellipse")
+                .font(.headline)
+                .widgetAccentable()
+            if entry.activeCount > 0 {
+                Text("\(entry.activeCount) memos active")
+                    .font(.system(size: 13, weight: .medium))
+                    .privacySensitive()
+            } else {
+                Text("No memos")
+                    .font(.system(size: 13, weight: .medium))
+            }
+            Text("Tap to open")
+                .font(.system(size: 11))
+                .foregroundStyle(.secondary)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+}
+
+private struct AccessoryInlineView: View {
+    let entry: MemoEntry
+
+    var body: some View {
+        if entry.activeCount > 0 {
+            Label {
+                Text("\(entry.activeCount) memos active")
+                    .privacySensitive()
+            } icon: {
+                Image(systemName: "mappin.and.ellipse")
+            }
+        } else {
+            Label("GeoMemo", systemImage: "mappin.and.ellipse")
         }
     }
 }
@@ -527,7 +658,10 @@ struct geomemoWidget: Widget {
         }
         .configurationDisplayName("GeoMemo")
         .description("Shows your most important memos")
-        .supportedFamilies([.systemSmall, .systemMedium, .systemLarge])
+        .supportedFamilies([
+            .systemSmall, .systemMedium, .systemLarge,
+            .accessoryCircular, .accessoryRectangular, .accessoryInline,
+        ])
     }
 }
 
@@ -537,18 +671,31 @@ private struct GeoMemoWidgetEntryView: View {
     @Environment(\.widgetFamily) private var family
     let entry: MemoEntry
 
+    private var isAccessory: Bool {
+        switch family {
+        case .accessoryCircular, .accessoryRectangular, .accessoryInline: true
+        default: false
+        }
+    }
+
     var body: some View {
         Group {
             switch family {
             case .systemLarge:  LargeWidgetView(entry: entry)
             case .systemMedium: MediumWidgetView(entry: entry)
+            case .accessoryCircular:    AccessoryCircularView(entry: entry)
+            case .accessoryRectangular: AccessoryRectangularView(entry: entry)
+            case .accessoryInline:      AccessoryInlineView(entry: entry)
             default:            SmallWidgetView(entry: entry)
             }
         }
-        .containerBackground(Brand.background, for: .widget)
+        .containerBackground(for: .widget) {
+            if isAccessory { Color.clear } else { Brand.background }
+        }
         // Widget タップでトップメモへディープリンク。memos が空ならアプリ既定画面が開く。
         // Medium/Large は個別 row の Link が優先され、それ以外の余白タップでこちらが効く。
-        .widgetURL(entry.memos.first?.deepLinkURL)
+        // ロック画面（accessory）では題を出さないので、メモへの直接リンクにはしない（円形だけ別に指定）。
+        .widgetURL(isAccessory ? nil : entry.memos.first?.deepLinkURL)
     }
 }
 
@@ -567,6 +714,24 @@ private struct GeoMemoWidgetEntryView: View {
 }
 
 #Preview(as: .systemLarge) {
+    geomemoWidget()
+} timeline: {
+    MemoEntry.placeholder
+}
+
+#Preview(as: .accessoryRectangular) {
+    geomemoWidget()
+} timeline: {
+    MemoEntry.placeholder
+}
+
+#Preview(as: .accessoryCircular) {
+    geomemoWidget()
+} timeline: {
+    MemoEntry.placeholder
+}
+
+#Preview(as: .accessoryInline) {
     geomemoWidget()
 } timeline: {
     MemoEntry.placeholder
