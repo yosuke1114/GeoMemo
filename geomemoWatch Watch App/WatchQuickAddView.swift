@@ -6,7 +6,6 @@ import MapKit
 struct WatchQuickAddView: View {
     @Environment(\.modelContext) private var modelContext
     @Environment(\.watchStoreStatus) private var storeStatus
-    @Query private var allMemos: [GeoMemo]
     @State private var locationHelper = QuickAddLocationHelper()
     @State private var title = ""
     @State private var selectedColorIndex = 0
@@ -19,10 +18,6 @@ struct WatchQuickAddView: View {
                 VStack(spacing: 12) {
                     if !storeStatus.isPersistent {
                         WatchNotSavedBanner()
-                    } else if isAtFreeLimit {
-                        Label("Free plan limit reached. Add more on iPhone.", systemImage: "lock.fill")
-                            .font(.caption2)
-                            .foregroundStyle(.orange)
                     }
 
                     // Title input
@@ -100,15 +95,13 @@ struct WatchQuickAddView: View {
         }
     }
 
-    /// 無料版のメモ数の上限（iPhone と同じ判定）。Watch は Pro かどうかを知らないので無料版として扱う。
-    private var isAtFreeLimit: Bool {
-        MemoLimitPolicy.isAtLimit(currentCount: allMemos.count, isPro: false)
-    }
-
-    /// 保存されない状態・上限のときは作らせない。
+    /// 保存されない状態のときは作らせない。
+    ///
+    /// 無料版のメモ数の上限（`MemoLimitPolicy`）は Watch では掛けない。Watch は Pro かどうかを知る手段が
+    /// なく（StoreKit の状態を同期していない）、掛けると Pro の人まで 5 件に制限してしまうため。
+    /// Pro 状態を Watch に同期できたら `MemoLimitPolicy.isAtLimit` を使う（別 PR）。
     private var canSave: Bool {
-        storeStatus.isPersistent && !isAtFreeLimit
-            && !title.isEmpty && locationHelper.coordinate != nil && !isSaving
+        storeStatus.isPersistent && !title.isEmpty && locationHelper.coordinate != nil && !isSaving
     }
 
     private func saveMemo() {

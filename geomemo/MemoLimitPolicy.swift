@@ -1,6 +1,8 @@
 import Foundation
 
-/// 無料版のメモ数の上限。iPhone の追加ボタンと Watch のクイック追加で同じ判定を使う。
+/// 無料版のメモ数の上限。iPhone の追加ボタンの判定。
+/// Watch のクイック追加には使わない（Watch は Pro かどうかを知る手段がなく、Pro の人まで制限してしまうため。
+/// Pro 状態の同期は別 PR）。
 nonisolated enum MemoLimitPolicy {
     nonisolated static let freeMemoLimit = 5
 

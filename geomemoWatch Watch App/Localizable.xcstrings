@@ -71,16 +71,6 @@
         }
       }
     },
-    "Free plan limit reached. Add more on iPhone." : {
-      "localizations" : {
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "無料プランの上限です。iPhone で追加してください。"
-          }
-        }
-      }
-    },
     "GeoMemo" : {
       "shouldTranslate" : false
     },
