@@ -192,7 +192,8 @@ class LiveActivityManager {
         let descriptor = FetchDescriptor<GeoMemo>(
             predicate: #Predicate { $0.id.uuidString == id }
         )
-        guard let memo = (try? context.fetch(descriptor))?.first else { return nil }
+        // 存在しない・完了済み（Watch で完了したメモなど）は対象にしない
+        guard let memo = (try? context.fetch(descriptor))?.first, !memo.isDone else { return nil }
         return (title: memo.title, locationName: memo.locationName, colorIndex: memo.colorIndex)
     }
 }

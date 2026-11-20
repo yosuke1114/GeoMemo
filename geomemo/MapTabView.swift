@@ -529,7 +529,7 @@ struct MapTabView: View {
     private func startNewMemo() {
         HapticManager.impact(.medium)
         // Free プランかつ上限に達している場合はペイウォールを表示
-        if !store.isPro && memos.count >= GeoMemoLimits.freeMemoLimit {
+        if MemoLimitPolicy.isAtLimit(currentCount: memos.count, isPro: store.isPro) {
             showPaywall = true
             return
         }

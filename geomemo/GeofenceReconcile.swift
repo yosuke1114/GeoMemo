@@ -17,7 +17,9 @@ nonisolated enum GeofenceReconcilePlanner {
         var stop: [String] = []
         /// 登録する項目の key。
         var start: [String] = []
-        var isEmpty: Bool { stop.isEmpty && start.isEmpty }
+        /// どの項目にも属さない、このアプリが登録した形式の領域（消した・完了したメモの領域など）。外す。
+        var stopRegionIDs: [String] = []
+        var isEmpty: Bool { stop.isEmpty && start.isEmpty && stopRegionIDs.isEmpty }
     }
 
     /// `items` は優先順。`monitored` は今登録されている領域の識別子。
@@ -25,9 +27,13 @@ nonisolated enum GeofenceReconcilePlanner {
     /// 項目は領域がすべて収まるときだけ選ぶ（収まらない項目は飛ばし、後ろの小さい項目を入れる）。
     nonisolated static func plan(items: [GeofenceItem], monitored: Set<String>, limit: Int = 20) -> Plan {
         let known = Set(items.flatMap(\.regionIDs))
-        let foreign = monitored.subtracting(known).count
-        var budget = max(0, limit - foreign)
+        let unknown = monitored.subtracting(known)
+        // 消した・完了したメモ（Watch での操作を含む）の領域は、このアプリの識別子の形式なら外す。
+        // 形式に合わないもの（他の機能の領域）は触らず、枠を使っているものとして数える。
+        let stale = unknown.filter(isAppRegionIdentifier)
+        var budget = max(0, limit - (unknown.count - stale.count))
         var plan = Plan()
+        plan.stopRegionIDs = stale.sorted()
         for item in items where !item.regionIDs.isEmpty {
             let wanted = item.regionIDs.count <= budget
             if wanted {
@@ -39,6 +45,18 @@ nonisolated enum GeofenceReconcilePlanner {
         }
         return plan
     }
+}
+
+/// このアプリが登録する領域の識別子の形式か。
+/// メモ（UUID）・ルートの経由地（`UUID|wp|番号`）・受信した依頼（`shared_UUID`）に限る。
+nonisolated func isAppRegionIdentifier(_ id: String) -> Bool {
+    func isUUID(_ s: some StringProtocol) -> Bool { UUID(uuidString: String(s)) != nil }
+    if id.hasPrefix(SharedMemo.geofencePrefix) {
+        return isUUID(id.dropFirst(SharedMemo.geofencePrefix.count))
+    }
+    let parts = id.components(separatedBy: "|wp|")
+    if parts.count == 2 { return isUUID(parts[0]) && Int(parts[1]) != nil }
+    return isUUID(id)
 }
 
 @MainActor
@@ -78,6 +96,13 @@ enum GeofenceReconciler {
         let plan = GeofenceReconcilePlanner.plan(items: items, monitored: lm.monitoredRegionIdentifiers)
         guard !plan.isEmpty else { return }
         // 先に外して枠を空けてから登録する
+        for id in plan.stopRegionIDs {
+            if let range = id.range(of: "|wp|") {
+                lm.stopMonitoringRoute(memoID: String(id[..<range.lowerBound]))
+            } else {
+                lm.stopMonitoring(memoID: id)
+            }
+        }
         for key in plan.stop {
             if sharedByKey[key] != nil {
                 lm.stopMonitoring(memoID: key)

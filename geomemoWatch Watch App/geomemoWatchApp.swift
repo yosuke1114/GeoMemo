@@ -4,38 +4,27 @@ import SwiftData
 @main
 struct geomemoWatch_Watch_AppApp: App {
     let modelContainer: ModelContainer
+    let storeStatus: WatchStoreStatus
 
     init() {
-        let schema = Schema([GeoMemo.self])
-        let appGroupID = "group.com.yokuro.geomemo"
-
-        if let groupURL = FileManager.default
-            .containerURL(forSecurityApplicationGroupIdentifier: appGroupID)?
-            .appendingPathComponent("geomemo.store") {
-            let config = ModelConfiguration(
-                schema: schema,
-                url: groupURL,
-                cloudKitDatabase: .none
-            )
-            do {
-                modelContainer = try ModelContainer(for: schema, configurations: [config])
-            } catch {
-                fatalError("Failed to create ModelContainer: \(error)")
-            }
-        } else {
-            // Fallback: in-memory container for previews
-            do {
-                let config = ModelConfiguration(isStoredInMemoryOnly: true)
-                modelContainer = try ModelContainer(for: schema, configurations: [config])
-            } catch {
-                fatalError("Failed to create fallback ModelContainer: \(error)")
-            }
-        }
+        // iPhone と同じ App Group 構成・スキーマ・移行計画・CloudKit コンテナ（プライベート DB）で
+        // 開き、メモを iPhone と同期する。開けなければインメモリで起動し、画面で知らせる。
+        let schema = GeoMemoStoreConfig.makeSchema()
+        let isTest = WatchStoreFactory.isTestEnvironment
+        let result = WatchStoreFactory.makeContainer(
+            schema: schema,
+            configuration: isTest ? nil : GeoMemoStoreConfig.makeConfiguration(schema: schema),
+            isTestEnvironment: isTest
+        )
+        modelContainer = result.container
+        storeStatus = result.status
+        if !isTest { WatchStoreFactory.refreshAccountStatus() }
     }
 
     var body: some Scene {
         WindowGroup {
             WatchRootView()
+                .environment(\.watchStoreStatus, storeStatus)
         }
         .modelContainer(modelContainer)
     }

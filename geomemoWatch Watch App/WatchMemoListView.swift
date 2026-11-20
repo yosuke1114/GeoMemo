@@ -4,6 +4,7 @@ import SwiftData
 struct WatchMemoListView: View {
     @Query(sort: \GeoMemo.createdAt, order: .reverse) private var allMemos: [GeoMemo]
     @Environment(\.modelContext) private var modelContext
+    @Environment(\.watchStoreStatus) private var storeStatus
     @State private var showDeleteConfirm = false
     @State private var memoToDelete: GeoMemo?
 
@@ -15,6 +16,7 @@ struct WatchMemoListView: View {
             Group {
                 if memos.isEmpty && doneMemos.isEmpty {
                     VStack(spacing: 8) {
+                        if !storeStatus.isPersistent { WatchNotSavedBanner() }
                         Image(systemName: "mappin.slash")
                             .font(.title2)
                             .foregroundStyle(.secondary)
@@ -24,6 +26,9 @@ struct WatchMemoListView: View {
                     }
                 } else {
                     List {
+                        if !storeStatus.isPersistent {
+                            WatchNotSavedBanner()
+                        }
                         ForEach(memos) { memo in
                             NavigationLink(value: memo.id) {
                                 MemoRow(memo: memo)

@@ -5,6 +5,7 @@ import MapKit
 
 struct WatchQuickAddView: View {
     @Environment(\.modelContext) private var modelContext
+    @Environment(\.watchStoreStatus) private var storeStatus
     @State private var locationHelper = QuickAddLocationHelper()
     @State private var title = ""
     @State private var selectedColorIndex = 0
@@ -15,6 +16,10 @@ struct WatchQuickAddView: View {
         NavigationStack {
             ScrollView {
                 VStack(spacing: 12) {
+                    if !storeStatus.isPersistent {
+                        WatchNotSavedBanner()
+                    }
+
                     // Title input
                     TextField("Title", text: $title)
                         .textFieldStyle(.plain)
@@ -68,7 +73,7 @@ struct WatchQuickAddView: View {
                     }
                     .buttonStyle(.borderedProminent)
                     .tint(WatchBrand.blue)
-                    .disabled(title.isEmpty || locationHelper.coordinate == nil || isSaving)
+                    .disabled(!canSave)
 
                     if showSaved {
                         HStack {
@@ -90,8 +95,17 @@ struct WatchQuickAddView: View {
         }
     }
 
+    /// 保存されない状態のときは作らせない。
+    ///
+    /// 無料版のメモ数の上限（`MemoLimitPolicy`）は Watch では掛けない。Watch は Pro かどうかを知る手段が
+    /// なく（StoreKit の状態を同期していない）、掛けると Pro の人まで 5 件に制限してしまうため。
+    /// Pro 状態を Watch に同期できたら `MemoLimitPolicy.isAtLimit` を使う（別 PR）。
+    private var canSave: Bool {
+        storeStatus.isPersistent && !title.isEmpty && locationHelper.coordinate != nil && !isSaving
+    }
+
     private func saveMemo() {
-        guard let coordinate = locationHelper.coordinate else { return }
+        guard canSave, let coordinate = locationHelper.coordinate else { return }
         isSaving = true
 
         let memo = GeoMemo(
