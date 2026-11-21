@@ -44,7 +44,7 @@ final class GeoMemoAppDelegate: NSObject, UIApplicationDelegate {
                      fetchCompletionHandler completionHandler: @escaping (UIBackgroundFetchResult) -> Void) {
         let ckNotification = CKNotification(fromRemoteNotificationDictionary: userInfo)
         // 送った依頼が完了した（評価の依頼の頃合いの材料。記録するだけで、ここでは何も出さない）
-        ReviewPromptStore.shared.recordIfRequestCompleted(subscriptionID: ckNotification?.subscriptionID)
+        ReviewPromptStore.shared.recordIfRequestCompleted(ckNotification)
         guard RequesterSubscriptionPolicy.isLegacy(ckNotification?.subscriptionID) else {
             completionHandler(.noData)
             return

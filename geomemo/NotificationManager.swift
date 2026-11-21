@@ -272,12 +272,9 @@ extension NotificationManager: UNUserNotificationCenterDelegate {
             }
             return
         }
-        if ckNotification?.subscriptionID == CKShareService.completedSubscriptionID {
-            // 送った依頼が完了した。地図の画面に、評価の依頼を出せるか確かめてもらう（バナーと重ならないよう画面側で待つ）
-            ReviewPromptStore.shared.recordCompletedRequest()
-            Task { @MainActor in
-                NotificationCenter.default.post(name: .reviewPromptCheck, object: nil)
-            }
+        if ReviewPromptStore.shared.recordIfRequestCompleted(ckNotification) {
+            // 送った依頼が完了した。地図の画面に、評価の依頼を出せるか確かめてもらう（今出すバナーが消えるまで待つ）
+            ReviewPromptStore.requestCheck(delay: ReviewPromptCheck.afterBannerDelay)
         }
         completionHandler([.banner, .sound])
     }
@@ -294,8 +291,10 @@ extension NotificationManager: UNUserNotificationCenterDelegate {
             return
         }
         let userInfo = response.notification.request.content.userInfo
-        ReviewPromptStore.shared.recordIfRequestCompleted(
-            subscriptionID: CKNotification(fromRemoteNotificationDictionary: userInfo)?.subscriptionID)
+        // 送った依頼の完了の通知をタップした（前面・バックグラウンドで先に数えていれば数えない）
+        if ReviewPromptStore.shared.recordIfRequestCompleted(CKNotification(fromRemoteNotificationDictionary: userInfo)) {
+            ReviewPromptStore.requestCheck()
+        }
         let memoID   = userInfo["memoID"]  as? String ?? ""
         let title    = userInfo["title"]   as? String ?? ""
         let body     = userInfo["body"]    as? String ?? ""
@@ -312,7 +311,9 @@ extension NotificationManager: UNUserNotificationCenterDelegate {
             // 画面に頼らず、保存・監視の停止まで行う（画面へは触覚・案内の更新だけを通知する）
             if RegionEventService.shared.markDone(id: memoID) {
                 // 場所の通知が役に立った。評価の依頼の頃合いの材料にする（出すのは次に地図を開いたとき）
-                ReviewPromptStore.shared.recordDoneFromNotification()
+                if ReviewPromptStore.shared.recordDoneFromNotification(memoID: memoID) {
+                    ReviewPromptStore.requestCheck()
+                }
             }
 
         case Self.actionSnooze5:

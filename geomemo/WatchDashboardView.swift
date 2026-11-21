@@ -368,7 +368,7 @@ struct WatchDashboardView: View {
                 if local.apply(data) { didChange = true }
                 // 送った依頼が完了になったと分かった（評価の依頼の頃合いの材料。出すのは地図に戻ってから）
                 if !wasCompleted && local.status == .completed {
-                    ReviewPromptStore.shared.recordCompletedRequest()
+                    ReviewPromptStore.shared.recordCompletedRequest(recordName: recordName)
                 }
                 // 完了・取り消しになった依頼の本文は端末に残さない
                 if local.status.isTerminal {
