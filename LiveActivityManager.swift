@@ -1,12 +1,15 @@
 @preconcurrency import ActivityKit  // Activity が Sendable でないため（Swift 6 の sending 診断を回避）
 import SwiftData
 import Foundation
+import os
 
 @MainActor
 class LiveActivityManager {
     static let shared = LiveActivityManager()
 
     private var currentActivity: Activity<GeoMemoActivityAttributes>?
+
+    private nonisolated static let logger = Logger(subsystem: "com.yokuro.geomemo", category: "LiveActivity")
 
     /// 監視中の Activity に設定する staleDate（8 時間）。Apple の 12 時間制限の手前で
     /// stale に倒して force-kill による UX 劣化を防ぐ。アプリ起動時に startMonitoring が
@@ -72,13 +75,20 @@ class LiveActivityManager {
 
     /// Start a Live Activity showing that GeoMemo is monitoring nearby memos.
     /// Call this when the app launches and has active memos.
+    ///
+    /// 起動時（地図の表示）と、監視するメモの数が変わったとき（`MapTabView`）に呼ぶ。0 件になったら終える。
+    /// 前回の起動で始めた Activity が残っていれば引き継ぎ、余分なものは終える（起動のたびに増えないように）。
     func startMonitoring(count: Int) {
+        adoptExistingActivities()
         guard count > 0 else {
             endActivity()
             return
         }
 
-        guard ActivityAuthorizationInfo().areActivitiesEnabled else { return }
+        guard ActivityAuthorizationInfo().areActivitiesEnabled else {
+            Self.logger.info("Live Activity is disabled by the user or the system")
+            return
+        }
 
         let state = Self.idleState(monitoredCount: count)
 
@@ -98,7 +108,7 @@ class LiveActivityManager {
             )
             currentActivity = activity
         } catch {
-            print("Failed to start Live Activity: \(error)")
+            Self.logger.error("Failed to start Live Activity: \(error.localizedDescription, privacy: .public)")
         }
     }
 
@@ -174,11 +184,31 @@ class LiveActivityManager {
     // MARK: - End Activity
 
     func endActivity() {
+        adoptExistingActivities()
         guard let activity = currentActivity else { return }
         Task {
             await activity.end(ActivityContent(state: Self.endState, staleDate: nil), dismissalPolicy: .immediate)
         }
         currentActivity = nil
+    }
+
+    // MARK: - Adopt
+
+    /// システムに残っている Activity（前回の起動で始めたもの）を引き継ぐ。
+    /// `currentActivity` はプロセスが終わると失われるので、引き継がないと起動のたびに新しい Activity が増え、
+    /// 古いものは更新されないまま残る（12 時間で消えるまで）。続いているものを 1 つ残し、ほかは終える。
+    private func adoptExistingActivities() {
+        let existing = Activity<GeoMemoActivityAttributes>.activities
+        if currentActivity == nil {
+            // 終わっていないもの（表示中・古くなった・許可の確認待ちなど）を引き継ぐ
+            currentActivity = existing.first { $0.activityState != .ended && $0.activityState != .dismissed }
+        }
+        let keepID = currentActivity?.id
+        for extra in existing where extra.id != keepID {
+            Task {
+                await extra.end(ActivityContent(state: Self.endState, staleDate: nil), dismissalPolicy: .immediate)
+            }
+        }
     }
 
     // MARK: - Memo Lookup

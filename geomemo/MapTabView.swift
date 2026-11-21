@@ -219,7 +219,7 @@ struct MapTabView: View {
             recomputeGuidance()
 
             // Start Live Activity for Dynamic Island
-            LiveActivityManager.shared.startMonitoring(count: memos.count)
+            LiveActivityManager.shared.startMonitoring(count: activeMemoCount)
         }
         .onDisappear {
             locationManager.stopHeading()
@@ -282,6 +282,9 @@ struct MapTabView: View {
         }
     }
     
+    /// 監視の対象になる（完了していない）自分のメモの数。Live Activity の件数に使う。
+    private var activeMemoCount: Int { memos.reduce(0) { $1.isDone ? $0 : $0 + 1 } }
+
     // MARK: - Map View
     private var mapView: some View {
         MapReader { proxy in
@@ -401,6 +404,11 @@ struct MapTabView: View {
                     newMemoCoordinate = coordinate
                 }
             }
+        }
+        // メモを作った・完了した・消したときに Live Activity を始める・件数を更新する・終える。
+        // （body の修飾子の連なりは長く型推論が終わらなくなるので、地図の部品に付ける）
+        .onChange(of: activeMemoCount) { _, count in
+            LiveActivityManager.shared.startMonitoring(count: count)
         }
     }
     
