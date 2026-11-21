@@ -145,6 +145,8 @@ struct MapTabView: View {
             permissionPerformer.scenePhaseChanged(phase)
             if phase == .active {
                 notificationManager.checkAuthorizationStatus()
+                // バックグラウンドで 0 → N 件になって始められなかった分の再試行と、staleDate の延長
+                LiveActivityManager.shared.startMonitoring(count: activeMemoCount)
                 recomputeReceived() // 完了から 24 時間の判定が時間で変わるため
                 handleExternalNewMemoRequest() // 閉じていたシートの後ろで待たせていた要求
                 requestReviewIfAppropriate() // 通知の「完了」はアプリの外で押されるので、戻ってきたときに確かめる
@@ -219,7 +221,8 @@ struct MapTabView: View {
             recomputeGuidance()
 
             // Start Live Activity for Dynamic Island
-            LiveActivityManager.shared.startMonitoring(count: memos.count)
+            // 起動時だけ、監視中の表示に戻す（前の起動の到着などの表示が残っていても）
+            LiveActivityManager.shared.startMonitoring(count: activeMemoCount, resetToIdle: true)
         }
         .onDisappear {
             locationManager.stopHeading()
@@ -282,6 +285,9 @@ struct MapTabView: View {
         }
     }
     
+    /// 監視の対象になる（完了していない）自分のメモの数。Live Activity の件数に使う。
+    private var activeMemoCount: Int { memos.reduce(0) { $1.isDone ? $0 : $0 + 1 } }
+
     // MARK: - Map View
     private var mapView: some View {
         MapReader { proxy in
@@ -401,6 +407,11 @@ struct MapTabView: View {
                     newMemoCoordinate = coordinate
                 }
             }
+        }
+        // メモを作った・完了した・消したときに Live Activity を始める・件数を更新する・終える。
+        // （body の修飾子の連なりは長く型推論が終わらなくなるので、地図の部品に付ける）
+        .onChange(of: activeMemoCount) { _, count in
+            LiveActivityManager.shared.startMonitoring(count: count)
         }
     }
     

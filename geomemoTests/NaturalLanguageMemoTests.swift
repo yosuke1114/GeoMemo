@@ -4,14 +4,14 @@ import Foundation
 
 // 文章でメモを作る (L-4) の純粋なロジックのテスト。端末内モデルは呼ばない（偽の parser / searcher を使う）。
 
-private func calendar() -> Calendar {
+private nonisolated func calendar() -> Calendar {
     var c = Calendar(identifier: .gregorian)
     c.timeZone = TimeZone(identifier: "Asia/Tokyo")!
     c.locale = Locale(identifier: "en_US_POSIX")
     return c
 }
 /// 2026-11-21 (土) 12:00 JST
-private func now() -> Date {
+private nonisolated func now() -> Date {
     calendar().date(from: DateComponents(year: 2026, month: 11, day: 21, hour: 12))!
 }
 private func place(_ name: String, sub: String = "", icon: String = "mappin.fill",
@@ -351,7 +351,7 @@ struct NLMemoComposerTests {
     }
 
     @Test("時間切れは、入力文を題にして戻す")
-    func timeout() async {
+    @concurrent nonisolated func timeout() async {
         let slow = FakeParser(result: .success(NLParseResult(raw: NLMemoRaw(title: "遅い"))), delay: .seconds(30))
         var composer = NLMemoComposer(parser: slow, searcher: FakeSearcher())
         composer.timeout = .milliseconds(50)
@@ -359,8 +359,10 @@ struct NLMemoComposerTests {
         #expect(outcome == .fallback(title: "牛乳"))
     }
 
+    // メインアクターの外で動かす（`NLTimeoutTests` と同じ理由。ほかのスイートがメインアクターを長く使うと、
+    // 取り消し後の再開がそれを待って 100 秒以上かかることがあった）
     @Test("取り消されたら cancelled")
-    func cancelled() async {
+    @concurrent nonisolated func cancelled() async {
         let slow = FakeParser(result: .success(NLParseResult(raw: NLMemoRaw(title: "遅い"))), delay: .seconds(30))
         let composer = NLMemoComposer(parser: slow, searcher: FakeSearcher())
         let task = Task { await composer.compose("牛乳", favorites: [], near: nil, now: now(), calendar: calendar()) }
@@ -508,12 +510,33 @@ private nonisolated final class Gate: @unchecked Sendable {
     private let lock = NSLock()
     private var continuation: CheckedContinuation<Void, Never>?
     private var opened = false
+    /// 誰かが門の前に来たか（`wait()` を呼んだか）。
+    private var entered = false
+    private var enteredWaiters: [CheckedContinuation<Void, Never>] = []
     var isOpen: Bool { lock.withLock { opened } }
     func wait() async {
         await withCheckedContinuation { (c: CheckedContinuation<Void, Never>) in
             lock.lock()
-            if opened { lock.unlock(); c.resume(); return }
+            entered = true
+            let waiters = enteredWaiters
+            enteredWaiters = []
+            if opened {
+                lock.unlock()
+                waiters.forEach { $0.resume() }
+                c.resume()
+                return
+            }
             continuation = c
+            lock.unlock()
+            waiters.forEach { $0.resume() }
+        }
+    }
+    /// 誰かが門の前に来るまで待つ（時間で待たず、取り消しを確実に「止まっている最中」に送るため）。
+    func waitUntilEntered() async {
+        await withCheckedContinuation { (c: CheckedContinuation<Void, Never>) in
+            lock.lock()
+            if entered { lock.unlock(); c.resume(); return }
+            enteredWaiters.append(c)
             lock.unlock()
         }
     }
@@ -546,11 +569,15 @@ private nonisolated struct StubbornSearcher: NLPlaceSearching {
 
 /// 仕事が終わらないうちに返ったかを確かめる。時間ではなく「門が閉じたまま返ったか」で見る
 /// （テストの実行環境が止まっても、結果が変わらないように）。
+/// メインアクターの外で動かす（ほかのテストがメインアクターを長く使っていても、待たされないように）。
+@concurrent
 private nonisolated func composeWhileStuck(_ composer: NLMemoComposer, gate: Gate, cal: Calendar, date: Date,
-                                           cancelAfter: Duration? = nil) async -> (outcome: NLMemoOutcome, gateWasClosed: Bool) {
+                                           cancelWhenStuck: Bool = false) async -> (outcome: NLMemoOutcome, gateWasClosed: Bool) {
     let task = Task { await composer.compose("牛乳", favorites: [], near: nil, now: date, calendar: cal) }
-    if let cancelAfter {
-        try? await Task.sleep(for: cancelAfter)
+    if cancelWhenStuck {
+        // モデルが門の前で止まったのを確かめてから取り消す（決まった時間を待つと、重い環境では
+        // 止まる前に取り消してしまい、時間切れまで待つことがあった）
+        await gate.waitUntilEntered()
         task.cancel()
     }
     let outcome = await task.value
@@ -559,10 +586,12 @@ private nonisolated func composeWhileStuck(_ composer: NLMemoComposer, gate: Gat
     return (outcome, closed)
 }
 
+// メインアクターで動かさない。ほかのスイート（SharedMemo の CRUD など）がメインアクターを長く使うと、
+// 取り消し・時間切れの後の再開がそれを待ってしまい、何百秒もかかることがあった。
 @Suite("時間切れと取り消し")
-struct NLTimeoutTests {
+nonisolated struct NLTimeoutTests {
     @Test("取り消しに応じないモデルでも、時間切れで先に返る（遅れた結果は捨てる）")
-    func stubbornParserTimesOut() async {
+    @concurrent func stubbornParserTimesOut() async {
         let gate = Gate()
         var composer = NLMemoComposer(parser: StubbornParser(gate: gate), searcher: FakeSearcher())
         composer.timeout = .milliseconds(100)
@@ -572,7 +601,7 @@ struct NLTimeoutTests {
     }
 
     @Test("補いの検索が止まっていても、上限の内側で返る")
-    func stubbornSearchTimesOut() async {
+    @concurrent func stubbornSearchTimesOut() async {
         let gate = Gate()
         let parser = FakeParser(result: .success(NLParseResult(raw: NLMemoRaw(title: "洗剤", placeQuery: "ドラッグストア"))))
         var composer = NLMemoComposer(parser: parser, searcher: StubbornSearcher(gate: gate))
@@ -582,11 +611,11 @@ struct NLTimeoutTests {
         #expect(r.gateWasClosed)
     }
 
-    @Test("取り消しに応じないモデルでも、取り消しで先に返る")
-    func stubbornParserCancelled() async {
+    @Test("取り消しに応じないモデルでも、取り消しで先に返る", .timeLimit(.minutes(1)))
+    @concurrent func stubbornParserCancelled() async {
         let gate = Gate()
         let composer = NLMemoComposer(parser: StubbornParser(gate: gate), searcher: FakeSearcher())
-        let r = await composeWhileStuck(composer, gate: gate, cal: calendar(), date: now(), cancelAfter: .milliseconds(100))
+        let r = await composeWhileStuck(composer, gate: gate, cal: calendar(), date: now(), cancelWhenStuck: true)
         #expect(r.outcome == .cancelled)
         #expect(r.gateWasClosed)
     }
