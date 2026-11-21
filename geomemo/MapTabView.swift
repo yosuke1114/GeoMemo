@@ -145,6 +145,8 @@ struct MapTabView: View {
             permissionPerformer.scenePhaseChanged(phase)
             if phase == .active {
                 notificationManager.checkAuthorizationStatus()
+                // バックグラウンドで 0 → N 件になって始められなかった分の再試行と、staleDate の延長
+                LiveActivityManager.shared.startMonitoring(count: activeMemoCount)
                 recomputeReceived() // 完了から 24 時間の判定が時間で変わるため
                 handleExternalNewMemoRequest() // 閉じていたシートの後ろで待たせていた要求
                 requestReviewIfAppropriate() // 通知の「完了」はアプリの外で押されるので、戻ってきたときに確かめる
@@ -219,7 +221,8 @@ struct MapTabView: View {
             recomputeGuidance()
 
             // Start Live Activity for Dynamic Island
-            LiveActivityManager.shared.startMonitoring(count: activeMemoCount)
+            // 起動時だけ、監視中の表示に戻す（前の起動の到着などの表示が残っていても）
+            LiveActivityManager.shared.startMonitoring(count: activeMemoCount, resetToIdle: true)
         }
         .onDisappear {
             locationManager.stopHeading()

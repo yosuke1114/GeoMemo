@@ -351,7 +351,7 @@ struct NLMemoComposerTests {
     }
 
     @Test("時間切れは、入力文を題にして戻す")
-    func timeout() async {
+    @concurrent nonisolated func timeout() async {
         let slow = FakeParser(result: .success(NLParseResult(raw: NLMemoRaw(title: "遅い"))), delay: .seconds(30))
         var composer = NLMemoComposer(parser: slow, searcher: FakeSearcher())
         composer.timeout = .milliseconds(50)
@@ -359,8 +359,10 @@ struct NLMemoComposerTests {
         #expect(outcome == .fallback(title: "牛乳"))
     }
 
+    // メインアクターの外で動かす（`NLTimeoutTests` と同じ理由。ほかのスイートがメインアクターを長く使うと、
+    // 取り消し後の再開がそれを待って 100 秒以上かかることがあった）
     @Test("取り消されたら cancelled")
-    func cancelled() async {
+    @concurrent nonisolated func cancelled() async {
         let slow = FakeParser(result: .success(NLParseResult(raw: NLMemoRaw(title: "遅い"))), delay: .seconds(30))
         let composer = NLMemoComposer(parser: slow, searcher: FakeSearcher())
         let task = Task { await composer.compose("牛乳", favorites: [], near: nil, now: now(), calendar: calendar()) }

@@ -8,6 +8,12 @@ class LiveActivityManager {
     static let shared = LiveActivityManager()
 
     private var currentActivity: Activity<GeoMemoActivityAttributes>?
+    /// 終了を頼んだ Activity の id（まだ一覧に生きて見えても、引き継がない）。
+    private var endingIDs: Set<String> = []
+    /// このプロセスの間に、ユーザーがロック画面で消した（または許可の確認で「許可しない」を選んだ）。
+    /// その間は件数の変化・前面への復帰で出し直さない（消したものがすぐ戻ってくるのは不自然なため）。
+    /// プロセスの中だけで覚えるので、次の起動から再開する。
+    private var userDismissedInThisProcess = false
 
     private nonisolated static let logger = Logger(subsystem: "com.yokuro.geomemo", category: "LiveActivity")
 
@@ -73,43 +79,49 @@ class LiveActivityManager {
 
     // MARK: - Start Monitoring
 
-    /// Start a Live Activity showing that GeoMemo is monitoring nearby memos.
-    /// Call this when the app launches and has active memos.
+    /// 監視中のメモの数を Live Activity に出す。0 件なら終える。
     ///
-    /// 起動時（地図の表示）と、監視するメモの数が変わったとき（`MapTabView`）に呼ぶ。0 件になったら終える。
-    /// 前回の起動で始めた Activity が残っていれば引き継ぎ、余分なものは終える（起動のたびに増えないように）。
-    func startMonitoring(count: Int) {
-        adoptExistingActivities()
-        guard count > 0 else {
-            endActivity()
-            return
-        }
-
-        guard ActivityAuthorizationInfo().areActivitiesEnabled else {
-            Self.logger.info("Live Activity is disabled by the user or the system")
-            return
-        }
-
-        let state = Self.idleState(monitoredCount: count)
-
-        // If already running, just update the count
-        if let activity = currentActivity {
-            Task {
-                await activity.update(ActivityContent(state: state, staleDate: monitoringStaleDate))
+    /// 呼ぶのは、起動時（地図の表示）・監視するメモの数が変わったとき・前面に戻ったとき（`MapTabView`）。
+    /// 前面に戻ったときは、バックグラウンドで 0 → N 件になって始められなかった分の再試行と、staleDate の延長を兼ねる。
+    /// - Parameter resetToIdle: 監視中の表示に戻す（起動時だけ）。それ以外は今の表示（到着・接近・ルート）のまま件数だけ変える。
+    func startMonitoring(count: Int, resetToIdle: Bool = false) {
+        let plan = resolve(count: count)
+        switch plan.action {
+        case .none:
+            if count > 0 && userDismissedInThisProcess {
+                Self.logger.info("Live Activity was dismissed by the user; not restarting until next launch")
             }
-            return
+        case .update:
+            guard let activity = currentActivity else { return }
+            let content: ActivityContent<State>
+            if resetToIdle {
+                content = ActivityContent(state: Self.idleState(monitoredCount: count), staleDate: monitoringStaleDate)
+            } else {
+                var state = activity.content.state
+                state.monitoredCount = count
+                // 監視中の表示なら staleDate を延ばす。到着などの表示は、その表示の staleDate のまま
+                let staleDate = Self.isIdle(state) ? monitoringStaleDate : activity.content.staleDate
+                content = ActivityContent(state: state, staleDate: staleDate)
+            }
+            Task { await activity.update(content) }
+        case .request:
+            guard ActivityAuthorizationInfo().areActivitiesEnabled else {
+                Self.logger.info("Live Activity is disabled by the user or the system")
+                return
+            }
+            do {
+                currentActivity = try Activity.request(
+                    attributes: GeoMemoActivityAttributes(monitoredCount: count),
+                    content: ActivityContent(state: Self.idleState(monitoredCount: count), staleDate: monitoringStaleDate)
+                )
+            } catch {
+                Self.logger.error("Failed to start Live Activity: \(error.localizedDescription, privacy: .public)")
+            }
         }
+    }
 
-        let attributes = GeoMemoActivityAttributes(monitoredCount: count)
-        do {
-            let activity = try Activity.request(
-                attributes: attributes,
-                content: ActivityContent(state: state, staleDate: monitoringStaleDate)
-            )
-            currentActivity = activity
-        } catch {
-            Self.logger.error("Failed to start Live Activity: \(error.localizedDescription, privacy: .public)")
-        }
+    private static func isIdle(_ state: State) -> Bool {
+        !state.isTriggered && state.approachingTitle == nil && state.routeCurrentWaypoint == nil
     }
 
     // MARK: - Trigger Memo
@@ -120,7 +132,8 @@ class LiveActivityManager {
         guard let memo = lookupMemo(id: id) else { return }
 
         Task { @MainActor in
-            guard let activity = currentActivity else { return }
+            // バックグラウンドで起動された（地図の画面が無い）ときも、前の起動で始めた Activity を引き継いで更新する
+            guard let activity = resolveActivity() else { return }
             let state = Self.triggeredState(memo: memo, monitoredCount: activity.content.state.monitoredCount)
             await activity.update(
                 ActivityContent(state: state, staleDate: Date().addingTimeInterval(60 * 30)),
@@ -140,7 +153,7 @@ class LiveActivityManager {
     ///   - memoID: 接近中メモのUUID文字列。nil を渡すと接近表示をクリアする。
     ///   - distance: ジオフェンス境界までの距離（メートル）
     func updateApproaching(memoID: String?, distance: Int = 0) {
-        guard let activity = currentActivity else { return }
+        guard let activity = resolveActivity() else { return }
         let count = activity.content.state.monitoredCount
         let state: State
         if let memoID, let memo = lookupMemo(id: memoID) {
@@ -170,7 +183,7 @@ class LiveActivityManager {
         guard let memo = lookupMemo(id: memoID) else { return }
 
         Task { @MainActor in
-            guard let activity = currentActivity else { return }
+            guard let activity = resolveActivity() else { return }
             let state = Self.routeState(
                 memo: memo,
                 current: current,
@@ -181,34 +194,54 @@ class LiveActivityManager {
         }
     }
 
-    // MARK: - End Activity
+    // MARK: - Adopt / End
 
-    func endActivity() {
-        adoptExistingActivities()
-        guard let activity = currentActivity else { return }
+    /// 今の Activity を返す（引き継ぎ込み）。`currentActivity` を直接使わず、更新の前には必ずこれを通す。
+    private func resolveActivity() -> Activity<GeoMemoActivityAttributes>? {
+        resolve(count: nil)
+        return currentActivity
+    }
+
+    /// システムに残っている Activity から、引き継ぐもの・終えるものを決めて、そのとおりにする（判断は `LiveActivityPlan`）。
+    ///
+    /// `currentActivity` はプロセスが終わると失われるので、引き継がないと起動のたびに新しい Activity が増え、
+    /// 古いものは更新されないまま残る（12 時間で消えるまで）。
+    @discardableResult
+    private func resolve(count: Int?) -> LiveActivityPlan {
+        // 今の Activity が終わっていれば外す。終了を頼んでいないのに消えていれば、ユーザーがロック画面で消した
+        // （許可の確認で「許可しない」を選んだときも同じ）。そのプロセスの間は出し直さない。
+        if let current = currentActivity, !Self.isAlive(current.activityState) {
+            if current.activityState == .dismissed && !endingIDs.contains(current.id) {
+                userDismissedInThisProcess = true
+            }
+            currentActivity = nil
+        }
+        var all = Activity<GeoMemoActivityAttributes>.activities
+        if let current = currentActivity, !all.contains(where: { $0.id == current.id }) {
+            all.append(current)
+        }
+        let plan = LiveActivityPlan.make(
+            existing: all.map { LiveActivityPlan.Existing(id: $0.id, isAlive: Self.isAlive($0.activityState)) },
+            currentID: currentActivity?.id,
+            count: count,
+            endingIDs: endingIDs,
+            userDismissed: userDismissedInThisProcess)
+        currentActivity = all.first { $0.id == plan.keepID }
+        for activity in all where plan.endIDs.contains(activity.id) {
+            end(activity)
+        }
+        return plan
+    }
+
+    private func end(_ activity: Activity<GeoMemoActivityAttributes>) {
+        endingIDs.insert(activity.id)
         Task {
             await activity.end(ActivityContent(state: Self.endState, staleDate: nil), dismissalPolicy: .immediate)
         }
-        currentActivity = nil
     }
 
-    // MARK: - Adopt
-
-    /// システムに残っている Activity（前回の起動で始めたもの）を引き継ぐ。
-    /// `currentActivity` はプロセスが終わると失われるので、引き継がないと起動のたびに新しい Activity が増え、
-    /// 古いものは更新されないまま残る（12 時間で消えるまで）。続いているものを 1 つ残し、ほかは終える。
-    private func adoptExistingActivities() {
-        let existing = Activity<GeoMemoActivityAttributes>.activities
-        if currentActivity == nil {
-            // 終わっていないもの（表示中・古くなった・許可の確認待ちなど）を引き継ぐ
-            currentActivity = existing.first { $0.activityState != .ended && $0.activityState != .dismissed }
-        }
-        let keepID = currentActivity?.id
-        for extra in existing where extra.id != keepID {
-            Task {
-                await extra.end(ActivityContent(state: Self.endState, staleDate: nil), dismissalPolicy: .immediate)
-            }
-        }
+    private static func isAlive(_ state: ActivityState) -> Bool {
+        state != .ended && state != .dismissed
     }
 
     // MARK: - Memo Lookup
