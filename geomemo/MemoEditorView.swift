@@ -79,9 +79,26 @@ struct MemoEditorView: View {
     @ObservedObject private var locationManager = LocationManager.shared
     @State private var showProPaywall = false
 
+    // 文章でメモを作る (L-4)。作成のときだけ使う。
+    @State private var nlFlow = NLFlow()
+    /// 読み取りを始めたときの題（読み取り中に手で打った題を上書きしないため）。
+    @State private var nlTitleAtStart = ""
+    /// 場所の検索の起点。画面を開いたときの座標で固定する。
+    private let nlOrigin: NLPoint
+    @State private var showPlaceConfirmationAlert = false
+    /// 文章から読み取った場所は、地図で確かめるまで保存させない。
+    private var needsPlaceConfirmation: Bool { nlFlow.needsConfirmation }
+
     init(mode: MemoEditorMode, onDelete: (() -> Void)? = nil) {
         self.mode = mode
         self.onDelete = onDelete
+        switch mode {
+        case .create(let coordinate):
+            let c = LocationManager.shared.location?.coordinate ?? coordinate
+            nlOrigin = NLPoint(latitude: c.latitude, longitude: c.longitude)
+        case .edit(let memo):
+            nlOrigin = NLPoint(latitude: memo.latitude, longitude: memo.longitude)
+        }
         if case .edit(let memo) = mode {
             radiusCeiling = RadiusPolicy.ceiling(forOriginal: memo.radius)
         } else {
@@ -143,6 +160,25 @@ struct MemoEditorView: View {
         NavigationStack {
             ScrollView {
                 VStack(spacing: 0) {
+                    // 文章でメモを作る: 端末内モデルが使えるときだけ。使えないときは何も出さない
+                    if case .create = mode {
+                        NaturalLanguageComposerView(
+                            origin: nlOrigin,
+                            onBegin: { nlTitleAtStart = title },
+                            onOutcome: applyNaturalLanguage
+                        )
+                        if needsPlaceConfirmation || !nlFlow.choices.isEmpty {
+                            NLPlaceConfirmationCard(
+                                choices: nlFlow.choices,
+                                selectedID: nlFlow.selectedID,
+                                isConfirmed: !needsPlaceConfirmation,
+                                onSelect: selectNaturalLanguageChoice,
+                                onConfirm: { nlFlow = NLFlowReducer.confirm(nlFlow) },
+                                onPickOnMap: { showLocationPicker = true }
+                            )
+                        }
+                    }
+
                     // 基本: 場所・範囲・題・到着／退出。これだけで保存できる
                     MemoBasicsSection(
                         title: $title,
@@ -221,6 +257,11 @@ struct MemoEditorView: View {
 
                 ToolbarItem(placement: .navigationBarTrailing) {
                     Button(action: {
+                        if needsPlaceConfirmation {
+                            HapticManager.notification(.warning)
+                            showPlaceConfirmationAlert = true
+                            return
+                        }
                         HapticManager.notification(.success)
                         saveOrUpdate()
                     }) {
@@ -245,6 +286,8 @@ struct MemoEditorView: View {
                 onLocationSelected: { newCoordinate, newLocationName in
                     currentCoordinate = newCoordinate
                     locationName = newLocationName
+                    // 自分で選び直したので、場所は確認済み
+                    nlFlow = NLFlowReducer.pickedOnMap(nlFlow)
                 }
             )
             .presentationDetents([.large])
@@ -261,6 +304,11 @@ struct MemoEditorView: View {
         .sheet(isPresented: $showProPaywall) {
             PaywallView()
         }
+        .alert("Check the place before saving", isPresented: $showPlaceConfirmationAlert) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text("Check the map, then confirm the place or choose another one.")
+        }
         .alert("Delete this memo?", isPresented: $showDeleteAlert) {
             Button("Delete", role: .destructive) {
                 HapticManager.notification(.warning)
@@ -270,6 +318,74 @@ struct MemoEditorView: View {
         } message: {
             Text("This action cannot be undone.")
         }
+    }
+
+    // MARK: - 文章でメモを作る (L-4)
+    /// 読み取りが書き換えうる項目の、いまの値。
+    private var nlFields: NLEditorFields {
+        let cal = Calendar.current
+        func minutes(_ d: Date) -> Int { cal.component(.hour, from: d) * 60 + cal.component(.minute, from: d) }
+        return NLEditorFields(
+            title: title,
+            notifyOnEntry: notifyOnEntry,
+            notifyOnExit: notifyOnExit,
+            timeWindow: hasTimeWindow ? NLTimeWindow(startMinutes: minutes(timeStart), endMinutes: minutes(timeEnd)) : nil,
+            activeDays: hasDayFilter ? activeDays.sorted() : nil,
+            deadline: hasDeadline ? deadline : nil,
+            place: NLPlace(latitude: currentCoordinate.latitude, longitude: currentCoordinate.longitude, name: locationName))
+    }
+
+    private func setNLFields(_ f: NLEditorFields) {
+        if title != f.title { title = f.title }
+        notifyOnEntry = f.notifyOnEntry
+        notifyOnExit = f.notifyOnExit
+        if let w = f.timeWindow {
+            if !hasTimeWindow || nlFields.timeWindow != w {
+                hasTimeWindow = true
+                timeStart = Self.makeTime(fromMinutes: w.startMinutes) ?? timeStart
+                timeEnd = Self.makeTime(fromMinutes: w.endMinutes) ?? timeEnd
+            }
+        } else {
+            hasTimeWindow = false
+        }
+        if let d = f.activeDays {
+            hasDayFilter = true
+            activeDays = Set(d)
+        } else {
+            hasDayFilter = false
+        }
+        if let d = f.deadline {
+            hasDeadline = true
+            deadline = d
+        } else {
+            hasDeadline = false
+        }
+        if currentCoordinate.latitude != f.place.latitude || currentCoordinate.longitude != f.place.longitude {
+            currentCoordinate = CLLocationCoordinate2D(latitude: f.place.latitude, longitude: f.place.longitude)
+        }
+        if locationName != f.place.name { locationName = f.place.name }
+    }
+
+    /// 読み取りの結果を画面の状態に写す。保存はしない（場所の確認を挟む）。規則は `NLFlowReducer`。
+    private func applyNaturalLanguage(_ outcome: NLMemoOutcome) -> NLFlowNotice {
+        let r = NLFlowReducer.reduce(flow: nlFlow, current: nlFields, titleAtStart: nlTitleAtStart, outcome: outcome)
+        setNLFields(r.fields)
+        nlFlow = r.flow
+        return r.notice
+    }
+
+    private func selectNaturalLanguageChoice(_ choice: NLPlaceChoice) {
+        let r = NLFlowReducer.select(choice, flow: nlFlow, current: nlFields)
+        setNLFields(r.fields)
+        nlFlow = r.flow
+    }
+
+    /// 逆ジオコーディングの結果を入れる。読み取りが場所を仮置きしていても、元の場所の名前は控えておく。
+    private func applyGeocodedName(_ name: String, for coordinate: CLLocationCoordinate2D) {
+        let r = NLFlowReducer.geocoded(name: name, latitude: coordinate.latitude, longitude: coordinate.longitude,
+                                       flow: nlFlow, current: nlFields)
+        nlFlow = r.flow
+        if locationName != r.fields.place.name { locationName = r.fields.place.name }
     }
 
     // MARK: - 基本・詳細のまとめ
@@ -327,13 +443,16 @@ struct MemoEditorView: View {
         case .create:
             let cal = Calendar.current
             let routeCoord = isRouteTrigger ? (routeWaypoints.first?.coordinate ?? currentCoordinate) : currentCoordinate
+            // 場所の名前がまだ取れていない（"Loading..."）まま保存しない
+            let savedLocationName = locationName == String(localized: "Loading...")
+                ? String(localized: "Unknown Location") : locationName
             let newMemo = GeoMemo(
                 title: title,
                 note: note,
                 latitude: routeCoord.latitude,
                 longitude: routeCoord.longitude,
                 radius: selectedRadius,
-                locationName: locationName,
+                locationName: savedLocationName,
                 imageData: photoData,
                 notifyOnEntry: isRouteTrigger ? true : notifyOnEntry,
                 notifyOnExit: isRouteTrigger ? false : notifyOnExit,
@@ -449,17 +568,20 @@ struct MemoEditorView: View {
 
     // MARK: - Reverse Geocoding
     private func reverseGeocode() {
+        // 読み取り・場所の選び直しで座標が変わっても、この座標の名前として扱う
+        let coordinate = currentCoordinate
         Task {
-            let location = CLLocation(latitude: currentCoordinate.latitude, longitude: currentCoordinate.longitude)
+            let unknown = String(localized: "Unknown Location")
+            let location = CLLocation(latitude: coordinate.latitude, longitude: coordinate.longitude)
             guard let request = MKReverseGeocodingRequest(location: location) else {
-                locationName = String(localized: "Unknown Location")
+                applyGeocodedName(unknown, for: coordinate)
                 return
             }
             do {
                 let items = try await request.mapItems
-                locationName = Self.locationName(from: items.first)
+                applyGeocodedName(Self.locationName(from: items.first), for: coordinate)
             } catch {
-                locationName = String(localized: "Unknown Location")
+                applyGeocodedName(unknown, for: coordinate)
             }
         }
     }
