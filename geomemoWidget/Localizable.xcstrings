@@ -487,6 +487,40 @@
           }
         }
       }
+    },
+    "あと %.1fkm" : {
+      "comment" : "Remaining distance to a memo's area in kilometers (Live Activity).",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%.1fkm away"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "あと %.1fkm"
+          }
+        }
+      }
+    },
+    "あと %dm" : {
+      "comment" : "Remaining distance to a memo's area in meters (Live Activity).",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%dm away"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "あと %dm"
+          }
+        }
+      }
     }
   },
   "version" : "1.1"

@@ -50,11 +50,7 @@ struct GeoMemoLiveActivity: Widget {
                             Text(title)
                                 .font(.system(size: 14, weight: .bold))
                                 .lineLimit(1)
-                            // String(localized: "あと \(dist)m") は補間値がそのままキーに
-                                // 入ってしまい翻訳が引けないため format ベースに統一する。
-                            Text(dist >= 1000
-                                 ? String(format: String(localized: "あと %.1fkm"), Double(dist) / 1000)
-                                 : String(format: String(localized: "あと %dm"), dist))
+                            Text(activityDistanceText(dist, withPrefix: true))
                                 .font(.system(size: 11, weight: .semibold, design: .monospaced))
                                 .foregroundStyle(memoColor(for: context.state.approachingColorIndex))
                         }
@@ -110,9 +106,7 @@ struct GeoMemoLiveActivity: Widget {
                         .lineLimit(1)
                 } else if let dist = context.state.approachingDistance {
                     // 接近中: 距離を表示
-                    Text(dist >= 1000
-                         ? String(format: "%.1fkm", Double(dist) / 1000)
-                         : "\(dist)m")
+                    Text(activityDistanceText(dist, withPrefix: false))
                         .font(.system(size: 12, weight: .bold, design: .monospaced))
                         .foregroundStyle(memoColor(for: context.state.approachingColorIndex))
                 } else if let cur = context.state.routeCurrentWaypoint,
@@ -166,6 +160,17 @@ private func activityMemoColor(_ index: Int) -> Color {
     }
 }
 
+/// 残りの距離。Dynamic Island（展開・コンパクト）と小さい表示で同じ書式にする（1km 未満は m、以上は小数 1 桁の km）。
+/// `withPrefix` は「あと」を付ける（展開・小さい表示）。String(localized: "あと \(dist)m") は補間値がそのまま
+/// キーに入ってしまい翻訳が引けないため format ベースにする。
+private func activityDistanceText(_ dist: Int, withPrefix: Bool) -> String {
+    if dist >= 1000 {
+        let km = Double(dist) / 1000
+        return withPrefix ? String(format: String(localized: "あと %.1fkm"), km) : String(format: "%.1fkm", km)
+    }
+    return withPrefix ? String(format: String(localized: "あと %dm"), dist) : "\(dist)m"
+}
+
 // MARK: - Family switch
 
 /// 表示先（`activityFamily`）で出し分ける。.small は Apple Watch の Smart Stack と CarPlay。
@@ -188,46 +193,55 @@ private struct ActivityContentView: View {
 // MARK: - Small Presentation (Apple Watch Smart Stack / CarPlay)
 
 /// 小さい表示。見るのは歩行中・運転中の一瞬なので、題（または次の経由地・距離）を大きく 1 つだけ出す。
+/// 小さい Watch では縦が足りないので、2 行目があるときは題を 1 行にし、上下の余白は付けない（枠はシステムが付ける）。
+/// 背景は暗いので、ブランドの青は明るい青に置き換え、題は `.primary` にする。文字は Dynamic Type に従う。
 private struct SmallActivityView: View {
     let context: ActivityViewContext<GeoMemoActivityAttributes>
     /// Apple Watch の常時表示（手首を下ろした暗い状態）。色を落として白黒寄りにする。
     @Environment(\.isLuminanceReduced) private var isLuminanceReduced
+    @ScaledMetric(relativeTo: .headline) private var iconSize: CGFloat = 18
 
-    private static let brandBlue = Color(hex: "3D3BF3")
+    /// 暗い背景で読めるブランドの青（Dynamic Island の濃い青 3D3BF3 の明るい版）。
+    private static let lightBrandBlue = Color(hex: "8B8AFF")
 
     var body: some View {
+        let secondary = secondaryText
         HStack(alignment: .center, spacing: 8) {
             Image("ph-map-pin-fill")
                 .resizable()
-                .frame(width: 18, height: 18)
+                .frame(width: iconSize, height: iconSize)
                 .foregroundStyle(isLuminanceReduced ? Color.secondary : accent)
                 .accessibilityHidden(true)
 
-            VStack(alignment: .leading, spacing: 2) {
+            VStack(alignment: .leading, spacing: 1) {
                 Text(primaryText)
-                    .font(.system(size: 15, weight: .bold))
-                    .lineLimit(2)
+                    .font(.headline)
+                    .foregroundStyle(.primary)
+                    .lineLimit(secondary == nil ? 2 : 1)
                     .minimumScaleFactor(0.8)
-                if let secondary = secondaryText {
+                if let secondary {
                     secondary
-                        .font(.system(size: 12, weight: .semibold, design: .monospaced))
+                        .font(.caption.weight(.semibold).monospacedDigit())
                         .foregroundStyle(isLuminanceReduced ? Color.secondary : accent)
                         .lineLimit(1)
+                        .minimumScaleFactor(0.8)
                 }
             }
             Spacer(minLength: 0)
         }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 8)
+        .padding(.horizontal, 8)
         .accessibilityElement(children: .combine)
     }
 
     private var state: GeoMemoActivityAttributes.ContentState { context.state }
 
     private var accent: Color {
-        if state.isTriggered { return activityMemoColor(state.memoColorIndex) }
-        if state.approachingTitle != nil { return activityMemoColor(state.approachingColorIndex) }
-        return Self.brandBlue
+        let index: Int
+        if state.isTriggered { index = state.memoColorIndex }
+        else if state.approachingTitle != nil { index = state.approachingColorIndex }
+        else { return Self.lightBrandBlue }
+        // 青（既定）は暗い背景で沈むので明るい青に。ほかの色はそのまま
+        return index == 0 ? Self.lightBrandBlue : activityMemoColor(index)
     }
 
     /// 1 行目：着いたメモ → 近づいているメモ → ルートのメモ → アプリ名。
@@ -245,9 +259,7 @@ private struct SmallActivityView: View {
             return state.memoLocation.isEmpty ? nil : Text(verbatim: state.memoLocation)
         }
         if state.approachingTitle != nil, let dist = state.approachingDistance {
-            return Text(verbatim: dist >= 1000
-                        ? String(format: "%.1fkm", Double(dist) / 1000)
-                        : "\(dist)m")
+            return Text(activityDistanceText(dist, withPrefix: true))
         }
         if let cur = state.routeCurrentWaypoint, let tot = state.routeTotalWaypoints {
             return Text(verbatim: "WP \(cur)/\(tot)")
