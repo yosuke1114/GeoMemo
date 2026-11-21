@@ -114,6 +114,10 @@ struct ContentView: View {
             if !blocked && NewMemoRequest.isPending {
                 NotificationCenter.default.post(name: .startNewGeoMemo, object: nil)
             }
+            // 見守りで依頼の完了を見た後など。閉じたら地図の画面に評価の依頼を出せるか確かめてもらう
+            if !blocked {
+                ReviewPromptStore.requestCheck()
+            }
         }
         .onReceive(NotificationCenter.default.publisher(for: .showGeoMemoFavorites)) { _ in
             showList = true

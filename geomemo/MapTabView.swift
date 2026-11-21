@@ -4,6 +4,7 @@ import SwiftData
 import MapKit
 import CoreLocation
 import CloudKit
+import StoreKit
 
 // 地図タブ。ContentView.swift から分離。
 
@@ -23,6 +24,10 @@ struct MapTabView: View {
     @State private var currentGuidance: MapGuidance?
     /// 「常に」のダイアログが出たかを見張る（出なかったときだけ設定アプリを開く）。
     @State private var permissionPerformer = PermissionActionPerformer()
+    @Environment(\.requestReview) private var requestReview
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
+    /// 評価の依頼を出すまでの待ち（成功の直後のアニメーション・バナーと重ねない）。
+    @State private var reviewPromptTask: Task<Void, Never>?
     @Binding var isSearching: Bool
     @Binding var deepLinkMemoID: UUID?
     @Binding var showList: Bool
@@ -80,6 +85,15 @@ struct MapTabView: View {
     @State private var searchDebounceTask: Task<Void, Never>?
     
     var body: some View {
+        // 修飾子の連なりが長く型推論が終わらないため、評価の依頼の受け口だけ外側に付ける
+        mapContent
+            .onReceive(NotificationCenter.default.publisher(for: .reviewPromptCheck)) { note in
+                let delay = note.userInfo?[ReviewPromptCheck.delayKey] as? Double ?? ReviewPromptCheck.defaultDelay
+                requestReviewIfAppropriate(delay: delay)
+            }
+    }
+
+    private var mapContent: some View {
         ZStack(alignment: .top) {
             mapView
             locationButton
@@ -123,6 +137,7 @@ struct MapTabView: View {
             if !presented {
                 presentArrivalWhenReady()
                 handleExternalNewMemoRequest()
+                requestReviewIfAppropriate()
             }
         }
         // 設定アプリから戻った直後に、通知の許可状態を読み直す。
@@ -132,6 +147,7 @@ struct MapTabView: View {
                 notificationManager.checkAuthorizationStatus()
                 recomputeReceived() // 完了から 24 時間の判定が時間で変わるため
                 handleExternalNewMemoRequest() // 閉じていたシートの後ろで待たせていた要求
+                requestReviewIfAppropriate() // 通知の「完了」はアプリの外で押されるので、戻ってきたときに確かめる
             }
         }
         // 許可を変えた後（設定アプリから戻った・ダイアログで許可した）に、監視を張り直す。
@@ -810,6 +826,56 @@ struct MapTabView: View {
             of: guidance, in: MapGuidance.decodeDismissals(guidanceDismissalsJSON))
         guidanceDismissalsJSON = MapGuidance.encodeDismissals(updated)
         recomputeGuidance()
+    }
+
+    // MARK: - Review prompt
+
+    /// うまくいった直後（通知から完了・依頼の完了）に、App Store の評価の依頼を 1 回出す。
+    /// 頃合いの判断は `ReviewPromptPolicy`、画面の条件は `ReviewPromptScreenState`。少し待ってから条件を見直す。
+    /// 許可が足りない（通知が届かない）ときは、数えた成功を捨てる。ほかの画面が出ているだけなら、次の機会に回す。
+    private func requestReviewIfAppropriate(delay: Double = ReviewPromptCheck.defaultDelay) {
+        guard !geomemoApp.isUITesting else { return }
+        let store = ReviewPromptStore.shared
+        guard store.isEligible() else { return }
+        reviewPromptTask?.cancel()
+        reviewPromptTask = Task {
+            try? await Task.sleep(for: .seconds(delay))
+            guard !Task.isCancelled, store.isEligible() else { return }
+            let screen = reviewPromptScreenState
+            guard screen.hasRequiredPermissions else {
+                store.discardSuccesses()
+                return
+            }
+            guard screen.canPresentReviewPrompt else { return }
+            store.markPrompted()
+            requestReview()
+        }
+    }
+
+    private var reviewPromptScreenState: ReviewPromptScreenState {
+        // 閉じた案内は 1 週間出ないので、バナーの有無とは別に、許可が足りているかを直接見る
+        let permissions = PermissionSnapshot(
+            location: LocationAccess(locationManager.authorizationStatus),
+            isPreciseLocation: locationManager.isPreciseLocation,
+            notification: NotificationAccess(notificationManager.authorizationStatus))
+        return ReviewPromptScreenState(
+            isAppActive: scenePhase == .active && UIApplication.shared.applicationState == .active,
+            isListCoveringMap: horizontalSizeClass != .regular && showList,
+            // 地図側のシートに加えて、リスト側のシート・詳細、設定・見守り（`ContentView`）も見る
+            isAnythingPresented: isAnotherSheetPresented || NewMemoRequest.containerBlocked
+                || Self.isAnyViewControllerPresented,
+            isSearching: isSearching,
+            hasPendingArrival: arrival != nil,
+            isGuidanceVisible: currentGuidance != nil,
+            hasRequiredPermissions: PermissionNotice.resolveAll(permissions).isEmpty)
+    }
+
+    /// どこかでシート・全画面の画面が出ているか（SwiftUI の sheet / fullScreenCover は UIKit の表示として現れる）。
+    private static var isAnyViewControllerPresented: Bool {
+        UIApplication.shared.connectedScenes
+            .compactMap { $0 as? UIWindowScene }
+            .flatMap(\.windows)
+            .contains { $0.rootViewController?.presentedViewController != nil }
     }
 
     private func reRegisterAllGeofences() {
