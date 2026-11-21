@@ -5,8 +5,8 @@ import ActivityKit
 struct GeoMemoLiveActivity: Widget {
     var body: some WidgetConfiguration {
         ActivityConfiguration(for: GeoMemoActivityAttributes.self) { context in
-            // Lock Screen / Banner presentation
-            LockScreenView(context: context)
+            // ロック画面・バナー（.medium）と、Apple Watch の Smart Stack・CarPlay（.small）
+            ActivityContentView(context: context)
         } dynamicIsland: { context in
             DynamicIsland {
                 // Expanded presentation
@@ -142,18 +142,117 @@ struct GeoMemoLiveActivity: Widget {
                 }
             }
         }
+        // iPhone のロック画面・Dynamic Island に加えて、Apple Watch の Smart Stack と CarPlay のダッシュボードにも出す。
+        // .small を指定しないと、Watch では Dynamic Island のコンパクト表示が流用される。
+        .supplementalActivityFamilies([.small])
     }
 
     private func memoColor(for index: Int) -> Color {
-        switch index {
-        case 0: return Color(hex: "3D3BF3")  // blue
-        case 1: return Color(hex: "E5484D")  // red
-        case 2: return Color(hex: "E5A000")  // amber
-        case 3: return Color(hex: "30A46C")  // green
-        case 4: return Color(hex: "8E4EC6")  // purple
-        case 5: return Color(red: 0x8B/255.0, green: 0x8D/255.0, blue: 0x98/255.0) // gray
-        default: return Color(hex: "3D3BF3")
+        activityMemoColor(index)
+    }
+}
+
+// MARK: - Colors
+
+/// メモの色（`MemoColor` の rawValue）。ロック画面・Dynamic Island・小さい表示で共通。
+private func activityMemoColor(_ index: Int) -> Color {
+    switch index {
+    case 1: return Color(hex: "E5484D")  // red
+    case 2: return Color(hex: "E5A000")  // amber
+    case 3: return Color(hex: "30A46C")  // green
+    case 4: return Color(hex: "8E4EC6")  // purple
+    case 5: return Color(red: 0x8B/255.0, green: 0x8D/255.0, blue: 0x98/255.0) // gray
+    default: return Color(hex: "3D3BF3") // blue
+    }
+}
+
+// MARK: - Family switch
+
+/// 表示先（`activityFamily`）で出し分ける。.small は Apple Watch の Smart Stack と CarPlay。
+private struct ActivityContentView: View {
+    let context: ActivityViewContext<GeoMemoActivityAttributes>
+    @Environment(\.activityFamily) private var activityFamily
+
+    var body: some View {
+        switch activityFamily {
+        case .small:
+            SmallActivityView(context: context)
+        case .medium:
+            LockScreenView(context: context)
+        @unknown default:
+            LockScreenView(context: context)
         }
+    }
+}
+
+// MARK: - Small Presentation (Apple Watch Smart Stack / CarPlay)
+
+/// 小さい表示。見るのは歩行中・運転中の一瞬なので、題（または次の経由地・距離）を大きく 1 つだけ出す。
+private struct SmallActivityView: View {
+    let context: ActivityViewContext<GeoMemoActivityAttributes>
+    /// Apple Watch の常時表示（手首を下ろした暗い状態）。色を落として白黒寄りにする。
+    @Environment(\.isLuminanceReduced) private var isLuminanceReduced
+
+    private static let brandBlue = Color(hex: "3D3BF3")
+
+    var body: some View {
+        HStack(alignment: .center, spacing: 8) {
+            Image("ph-map-pin-fill")
+                .resizable()
+                .frame(width: 18, height: 18)
+                .foregroundStyle(isLuminanceReduced ? Color.secondary : accent)
+                .accessibilityHidden(true)
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text(primaryText)
+                    .font(.system(size: 15, weight: .bold))
+                    .lineLimit(2)
+                    .minimumScaleFactor(0.8)
+                if let secondary = secondaryText {
+                    secondary
+                        .font(.system(size: 12, weight: .semibold, design: .monospaced))
+                        .foregroundStyle(isLuminanceReduced ? Color.secondary : accent)
+                        .lineLimit(1)
+                }
+            }
+            Spacer(minLength: 0)
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 8)
+        .accessibilityElement(children: .combine)
+    }
+
+    private var state: GeoMemoActivityAttributes.ContentState { context.state }
+
+    private var accent: Color {
+        if state.isTriggered { return activityMemoColor(state.memoColorIndex) }
+        if state.approachingTitle != nil { return activityMemoColor(state.approachingColorIndex) }
+        return Self.brandBlue
+    }
+
+    /// 1 行目：着いたメモ → 近づいているメモ → ルートのメモ → アプリ名。
+    private var primaryText: String {
+        if state.isTriggered { return state.memoTitle }
+        if let title = state.approachingTitle { return title }
+        if state.routeCurrentWaypoint != nil, state.routeTotalWaypoints != nil { return state.memoTitle }
+        return "GEOMEMO"
+    }
+
+    /// 2 行目：着いた時刻・残りの距離・経由地の進み具合・監視中の件数。
+    private var secondaryText: Text? {
+        if state.isTriggered {
+            if let time = state.triggeredAt { return Text(time, style: .time) }
+            return state.memoLocation.isEmpty ? nil : Text(verbatim: state.memoLocation)
+        }
+        if state.approachingTitle != nil, let dist = state.approachingDistance {
+            return Text(verbatim: dist >= 1000
+                        ? String(format: "%.1fkm", Double(dist) / 1000)
+                        : "\(dist)m")
+        }
+        if let cur = state.routeCurrentWaypoint, let tot = state.routeTotalWaypoints {
+            return Text(verbatim: "WP \(cur)/\(tot)")
+        }
+        return Text("\(state.monitoredCount) memos active")
     }
 }
 
@@ -236,15 +335,6 @@ private struct LockScreenView: View {
     }
 
     private var memoColor: Color {
-        let index = context.state.memoColorIndex
-        switch index {
-        case 0: return Color(hex: "3D3BF3")
-        case 1: return Color(hex: "E5484D")
-        case 2: return Color(hex: "E5A000")
-        case 3: return Color(hex: "30A46C")
-        case 4: return Color(hex: "8E4EC6")
-        case 5: return Color(red: 0x8B/255.0, green: 0x8D/255.0, blue: 0x98/255.0)
-        default: return Color(hex: "3D3BF3")
-        }
+        activityMemoColor(context.state.memoColorIndex)
     }
 }
