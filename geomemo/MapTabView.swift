@@ -4,6 +4,7 @@ import SwiftData
 import MapKit
 import CoreLocation
 import CloudKit
+import StoreKit
 
 // 地図タブ。ContentView.swift から分離。
 
@@ -23,6 +24,9 @@ struct MapTabView: View {
     @State private var currentGuidance: MapGuidance?
     /// 「常に」のダイアログが出たかを見張る（出なかったときだけ設定アプリを開く）。
     @State private var permissionPerformer = PermissionActionPerformer()
+    @Environment(\.requestReview) private var requestReview
+    /// 評価の依頼を出すまでの待ち（成功の直後のアニメーション・バナーと重ねない）。
+    @State private var reviewPromptTask: Task<Void, Never>?
     @Binding var isSearching: Bool
     @Binding var deepLinkMemoID: UUID?
     @Binding var showList: Bool
@@ -80,6 +84,14 @@ struct MapTabView: View {
     @State private var searchDebounceTask: Task<Void, Never>?
     
     var body: some View {
+        // 修飾子の連なりが長く型推論が終わらないため、評価の依頼の受け口だけ外側に付ける
+        mapContent
+            .onReceive(NotificationCenter.default.publisher(for: .reviewPromptCheck)) { _ in
+                requestReviewIfAppropriate()
+            }
+    }
+
+    private var mapContent: some View {
         ZStack(alignment: .top) {
             mapView
             locationButton
@@ -123,6 +135,7 @@ struct MapTabView: View {
             if !presented {
                 presentArrivalWhenReady()
                 handleExternalNewMemoRequest()
+                requestReviewIfAppropriate()
             }
         }
         // 設定アプリから戻った直後に、通知の許可状態を読み直す。
@@ -132,6 +145,7 @@ struct MapTabView: View {
                 notificationManager.checkAuthorizationStatus()
                 recomputeReceived() // 完了から 24 時間の判定が時間で変わるため
                 handleExternalNewMemoRequest() // 閉じていたシートの後ろで待たせていた要求
+                requestReviewIfAppropriate() // 通知の「完了」はアプリの外で押されるので、戻ってきたときに確かめる
             }
         }
         // 許可を変えた後（設定アプリから戻った・ダイアログで許可した）に、監視を張り直す。
@@ -263,6 +277,7 @@ struct MapTabView: View {
         .onReceive(NotificationCenter.default.publisher(for: .geoMemoMarkDone)) { _ in
             recomputeGuidance()
             HapticManager.notification(.success)
+            requestReviewIfAppropriate()
         }
     }
     
@@ -810,6 +825,36 @@ struct MapTabView: View {
             of: guidance, in: MapGuidance.decodeDismissals(guidanceDismissalsJSON))
         guidanceDismissalsJSON = MapGuidance.encodeDismissals(updated)
         recomputeGuidance()
+    }
+
+    // MARK: - Review prompt
+
+    /// うまくいった直後（通知から完了・依頼の完了）に、App Store の評価の依頼を 1 回出す。
+    /// 頃合いの判断は `ReviewPromptPolicy`。ここでは、地図が前面で、ほかのシート・検索・案内のバナーが無く、
+    /// 許可が足りている（通知が届く状態の）ときだけ出す。少し待ってから条件を見直す。
+    private func requestReviewIfAppropriate() {
+        guard !geomemoApp.isUITesting else { return }
+        let version = ReviewPromptStore.currentAppVersion
+        guard ReviewPromptStore.shared.isEligible(currentVersion: version) else { return }
+        reviewPromptTask?.cancel()
+        reviewPromptTask = Task {
+            try? await Task.sleep(for: .seconds(2))
+            guard !Task.isCancelled, isReadyForReviewPrompt,
+                  ReviewPromptStore.shared.isEligible(currentVersion: version) else { return }
+            ReviewPromptStore.shared.markPrompted(version: version)
+            requestReview()
+        }
+    }
+
+    private var isReadyForReviewPrompt: Bool {
+        guard scenePhase == .active, !isAnotherSheetPresented, !isSearching, arrival == nil,
+              !NewMemoRequest.containerBlocked, currentGuidance == nil else { return false }
+        // 閉じた案内は 1 週間出ないので、バナーの有無とは別に、許可が足りているかを直接見る
+        let permissions = PermissionSnapshot(
+            location: LocationAccess(locationManager.authorizationStatus),
+            isPreciseLocation: locationManager.isPreciseLocation,
+            notification: NotificationAccess(notificationManager.authorizationStatus))
+        return PermissionNotice.resolveAll(permissions).isEmpty
     }
 
     private func reRegisterAllGeofences() {
