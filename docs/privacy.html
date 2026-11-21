@@ -63,6 +63,9 @@ receives, stores, or processes your data.
   <li>When you explicitly share a memo with a friend, the shared record is stored in your iCloud account and made available to the invited friend via Apple's CloudKit Sharing (CKShare). Sensitive fields (title, location name, latitude/longitude) are protected by CloudKit's per-share encryption.</li>
   <li>A small amount of app preferences (theme, notification toggles, queued retry events) is stored locally on your device in <code>UserDefaults</code>.</li>
   <li>For the Notification Check screen, the app stores on your device only the time a place was last detected and the time an alert was last sent. These records contain no place or memo information, and the app does not send them anywhere. They may be included in your device backups.</li>
+  <li><strong>Place search and addresses</strong> — when you search for a place, or when the App looks up the address of a location, the search words and an approximate area are sent to Apple Maps (MapKit). When you create a memo from a sentence, the words that describe the place (up to 50 characters) are sent to Apple Maps in the same way.</li>
+  <li><strong>Creating a memo from a sentence</strong> — the sentence you type is processed on your device by Apple's on-device language model (Apple Intelligence). It is not sent to the developer or to any AI service.</li>
+  <li><strong>Monitoring more than 20 places</strong> — iOS can watch at most 20 places at a time. When you have more, the App uses your location in the background, including significant-change location updates, to switch the watched places to the ones nearest to you. This happens only on your device; the App does not keep a location history and does not send your location to the developer.</li>
 </ul>
 
 <h2>3. Data Sharing</h2>
@@ -89,7 +92,7 @@ nothing to track.
 <h2>5. Permissions the App Requests</h2>
 
 <ul>
-  <li><strong>Location (While Using / Always)</strong> — required to anchor memos to coordinates and to fire geofence-based reminders. "Always" is requested only if you choose to enable background geofences.</li>
+  <li><strong>Location (While Using / Always)</strong> — required to anchor memos to coordinates and to fire geofence-based reminders. "Always" is requested only if you choose to enable background geofences. With "Always", the App also uses your location in the background to keep the nearest places watched when you have more than 20 (see section 2).</li>
   <li><strong>Notifications</strong> — required to deliver geofence and shared-memo reminders.</li>
   <li><strong>Photo Library</strong> — required only when you choose to attach an image to a memo.</li>
   <li><strong>iCloud / CloudKit</strong> — required for sync, the friend feature, and shared memos. The App will still work locally if you decline.</li>
@@ -155,6 +158,9 @@ GeoMemo (以下「本アプリ」) は位置情報ベースのメモアプリで
   <li>明示的にメモを共有した場合、CKShare により招待した相手のみに読み取り権限が付与されます。タイトル・位置情報など機密フィールドは CloudKit の暗号化 (<code>encryptedValues</code>) で保護されます。</li>
   <li>テーマ設定、通知設定、再送キューなど少量のアプリ設定はデバイスの <code>UserDefaults</code> に保存されます。</li>
   <li>「通知のチェック」画面のために、場所への出入りを最後に検知した時刻と、最後に通知を出した時刻だけをデバイスに保存します。場所やメモの情報は含まず、アプリがこの記録を送信することはありません。デバイスのバックアップには含まれることがあります。</li>
+  <li><strong>場所の検索と住所</strong> — 場所を検索したとき、または位置から住所を調べるとき、検索語とおおよその範囲を Apple のマップ（MapKit）に送ります。文章からメモを作るときも、場所を表す語（50 文字まで）を同じように Apple のマップに送ります。</li>
+  <li><strong>文章からメモを作る機能</strong> — 入力した文章は、端末内の Apple の言語モデル（Apple Intelligence）で処理します。開発者や AI サービスには送りません。</li>
+  <li><strong>20 か所を超える場所の通知</strong> — iOS が同時に見張れる場所は 20 か所までです。それを超えるときは、近い場所に見張りを入れ替えるため、バックグラウンドで現在地（大きな移動の検知を含む）を使います。処理は端末内だけで行い、位置の履歴は残さず、開発者にも送りません。</li>
 </ul>
 
 <h2 lang="ja">3. 第三者提供</h2>
@@ -172,7 +178,7 @@ GeoMemo (以下「本アプリ」) は位置情報ベースのメモアプリで
 
 <h2 lang="ja">5. 要求する権限</h2>
 <ul lang="ja">
-  <li><strong>位置情報 (使用中 / 常に)</strong> — メモを座標に紐付けジオフェンス通知を発火させるために必要。「常に」はバックグラウンドジオフェンスを有効にした場合にのみ要求します。</li>
+  <li><strong>位置情報 (使用中 / 常に)</strong> — メモを座標に紐付けジオフェンス通知を発火させるために必要。「常に」はバックグラウンドジオフェンスを有効にした場合にのみ要求します。「常に」の場合、20 か所を超えるときに近い場所を見張り続けるためにも、バックグラウンドで現在地を使います（2 章参照）。</li>
   <li><strong>通知</strong> — ジオフェンスや共有メモのリマインダー送信に必要。</li>
   <li><strong>写真ライブラリ</strong> — ユーザーがメモに画像を添付したときにのみ要求。</li>
   <li><strong>iCloud / CloudKit</strong> — 同期・フレンド機能・共有メモに必要。拒否してもローカル機能は使えます。</li>
