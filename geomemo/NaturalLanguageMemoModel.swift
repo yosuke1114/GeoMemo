@@ -3,7 +3,8 @@ import FoundationModels
 import MapKit
 
 // 「文章でメモを作る」(L-4) の、端末内モデル (SystemLanguageModel) とツールの部分。
-// 使うのは `SystemLanguageModel` だけ。`PrivateCloudComputeLanguageModel` は使わない（文を端末の外に出さない）。
+// 使うのは `SystemLanguageModel` だけ。`PrivateCloudComputeLanguageModel` は使わない。
+// モデルの処理は端末内。場所の検索 (`MKLocalSearch`) では、検索語（短く切る）とおおよその範囲を Apple のマップに送る。
 // 使う API はすべて iOS 26.0 から（FoundationModels の swiftinterface で確認）。最小 OS は 26.2 なので `#available` は要らない。
 //
 // 実行時の隔離について:
@@ -15,11 +16,21 @@ import MapKit
 // MARK: - 使えるか
 
 nonisolated enum NLMemoAvailability {
-    /// 入力欄を出してよいか。端末が非対応・Apple Intelligence がオフ・モデルの準備中・言語が非対応のときは false。
-    /// どの理由でも案内は出さない（入力欄が無いだけ）。`availability` は Observable なので、SwiftUI の body から読めば準備完了で更新される。
+    /// モデルが使える状態か。端末が非対応・Apple Intelligence がオフ・モデルの準備中のときは false。
+    /// `availability` は Observable なので、SwiftUI の body から読めば準備完了で更新される（軽い）。
+    nonisolated static func isAvailable(model: SystemLanguageModel = .default) -> Bool {
+        if case .available = model.availability { return true }
+        return false
+    }
+
+    /// いまの言語に対応しているか。端末の設定で決まるので、画面ごとに 1 回調べれば足りる。
+    nonisolated static func supportsLocale(model: SystemLanguageModel = .default, locale: Locale = .current) -> Bool {
+        model.supportsLocale(locale)
+    }
+
+    /// 入力欄を出してよいか（両方）。案内は出さない（入力欄が無いだけ）。
     nonisolated static func isUsable(model: SystemLanguageModel = .default, locale: Locale = .current) -> Bool {
-        guard case .available = model.availability else { return false }
-        return model.supportsLocale(locale)
+        isAvailable(model: model) && supportsLocale(model: model, locale: locale)
     }
 }
 
@@ -63,8 +74,18 @@ extension NLMemoGenerated {
 
 /// ツールが引いた地図の検索結果を集める。ツールはモデルの実行スレッドから呼ばれるので actor で受ける。
 actor NLPlaceRecorder {
-    private(set) var places: [PlaceCandidate] = []
-    func add(_ new: [PlaceCandidate]) { places.append(contentsOf: new) }
+    /// モデルが 1 回の読み取りで検索できる回数。これを超える呼び出しは検索せずに断る（時間と通信を抑える）。
+    nonisolated static let maxSearches = 2
+    private(set) var searches: [NLSearchRecord] = []
+    private var callCount = 0
+
+    /// 検索してよければ true。
+    func reserve() -> Bool {
+        guard callCount < Self.maxSearches else { return false }
+        callCount += 1
+        return true
+    }
+    func add(query: String, places: [PlaceCandidate]) { searches.append(NLSearchRecord(query: query, places: places)) }
 }
 
 /// お気に入りの場所を名前で引く。結果は名前と住所の文字列で返す（座標はモデルに見せない）。
@@ -100,10 +121,11 @@ nonisolated struct NearbyPlaceSearchTool: Tool {
     }
 
     func call(arguments: Arguments) async throws -> String {
-        guard let query = NLInput.sanitize(arguments.query) else { return "Empty query." }
+        guard let query = NLInput.searchQuery(arguments.query) else { return "Empty query." }
+        guard await recorder.reserve() else { return "Search limit reached. Use the results you already have." }
         let found = await NLMapSearcher().search(query: query, near: origin)
+        await recorder.add(query: query, places: found)
         guard !found.isEmpty else { return "No places found." }
-        await recorder.add(found)
         return found.prefix(5).map { place in
             var line = place.name
             if !place.subtitle.isEmpty { line += " (\(place.subtitle))" }
@@ -118,20 +140,35 @@ nonisolated struct NearbyPlaceSearchTool: Tool {
 
 // MARK: - 地図の検索
 
+/// `MKLocalSearch` を取り消しの処理へ渡すための入れ物。`start()` と `cancel()` を別の場所から呼ぶ。
+nonisolated final class NLSearchBox: @unchecked Sendable {
+    let search: MKLocalSearch
+    init(_ search: MKLocalSearch) { self.search = search }
+}
+
 nonisolated struct NLMapSearcher: NLPlaceSearching {
     /// 検索の範囲 (m)。現在地を中心にした四角の一辺。
     nonisolated static let searchSpan: Double = 8_000
 
     func search(query: String, near: NLPoint?) async -> [PlaceCandidate] {
+        // 検索語は短く切ってから送る（Apple のマップに送られる）。
+        guard let query = NLInput.searchQuery(query) else { return [] }
         let request = MKLocalSearch.Request()
         request.naturalLanguageQuery = query
+        // regionPriority は既定のまま（.required にしない）: 範囲外の名前の場所（遠い駅など）も探せるようにし、近い順は自分で並べる。
         if let near {
             request.region = MKCoordinateRegion(
                 center: CLLocationCoordinate2D(latitude: near.latitude, longitude: near.longitude),
                 latitudinalMeters: Self.searchSpan, longitudinalMeters: Self.searchSpan)
         }
         do {
-            let response = try await MKLocalSearch(request: request).start()
+            let box = NLSearchBox(MKLocalSearch(request: request))
+            // 取り消し・時間切れのときは、進行中の検索を止める（`cancel()` はどのスレッドからでも呼べる）。
+            let response = try await withTaskCancellationHandler {
+                try await box.search.start()
+            } onCancel: {
+                box.search.cancel()
+            }
             return response.mapItems.prefix(8).compactMap { item in
                 let coordinate = item.location.coordinate
                 let place = PlaceCandidate(
@@ -163,13 +200,13 @@ nonisolated struct SystemLanguageModelParser: NLMemoParsing {
         let options = GenerationOptions(samplingMode: .greedy, maximumResponseTokens: 400)
         let response = try await session.respond(to: Self.prompt(for: text), generating: NLMemoGenerated.self,
                                                  options: options)
-        return NLParseResult(raw: response.content.raw, searchedPlaces: await recorder.places)
+        return NLParseResult(raw: response.content.raw, searches: await recorder.searches)
     }
 
     /// 指示。利用者の文はここには入れない（プロンプトにだけ入れる）。
     nonisolated static func instructions(today: Date, calendar: Calendar) -> String {
-        var cal = calendar
-        cal.locale = Locale(identifier: "en_US_POSIX")
+        // 端末が和暦などでも、日付はグレゴリオ暦で渡す（タイムゾーンだけ引き継ぐ）。
+        let cal = NLMemoNormalizer.gregorian(like: calendar)
         let f = DateFormatter()
         f.calendar = cal
         f.locale = Locale(identifier: "en_US_POSIX")
@@ -180,6 +217,7 @@ nonisolated struct SystemLanguageModelParser: NLMemoParsing {
         Today is \(f.string(from: today)).
         Rules:
         - Never invent coordinates or addresses. For the place, only copy the place name or search phrase from the sentence.
+        - Call each tool at most once or twice.
         - If the sentence names a place the user may have saved (自宅, 職場, 駅), call findFavoritePlace. \
         If it names a kind of shop or a chain, call searchNearbyPlaces.
         - 着いたら / 寄ったら / 近くに来たら means arrive. 出たら / 離れたら / 帰るとき means leave. If not said, unspecified.

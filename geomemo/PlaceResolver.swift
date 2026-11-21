@@ -53,10 +53,8 @@ nonisolated enum PlaceResolver {
         }
     }
 
-    /// 検索語に当てはまる候補を、強い順の段ごとに返す。段の中は名前順。
-    /// 1 段目: 名前が完全に一致 / 2 段目: アイコン由来の別名が一致 /
-    /// 3 段目: 名前が検索語で始まる / 4 段目: 名前が検索語を含む・検索語が名前を含む / 5 段目: 住所に含まれる
-    nonisolated static func tiers(for query: String, in candidates: [PlaceCandidate]) -> [[PlaceCandidate]] {
+    /// 段ごとの候補（空の段も残す。添字が強さ: 0=完全一致 / 1=別名 / 2=前方一致 / 3=含む / 4=住所）。
+    nonisolated static func rankedTiers(for query: String, in candidates: [PlaceCandidate]) -> [[PlaceCandidate]] {
         let q = normalize(query)
         guard !q.isEmpty else { return [] }
         let items = candidates.map { ($0, normalize($0.name), normalize($0.subtitle)) }
@@ -73,7 +71,30 @@ nonisolated enum PlaceResolver {
             // 「自宅の近く」のように、名前を含む長い言い方も拾う。1 文字の名前では誤って当たるので除く。
             tier { _, name, _ in name.contains(q) || (name.count >= 2 && q.contains(name)) },
             tier { _, _, sub in !sub.isEmpty && sub.contains(q) },
-        ].filter { !$0.isEmpty }
+        ]
+    }
+
+    /// 検索語に当てはまる候補を、強い順の段ごとに返す。段の中は名前順。
+    /// 1 段目: 名前が完全に一致 / 2 段目: アイコン由来の別名が一致 /
+    /// 3 段目: 名前が検索語で始まる / 4 段目: 名前が検索語を含む・検索語が名前を含む / 5 段目: 住所に含まれる
+    nonisolated static func tiers(for query: String, in candidates: [PlaceCandidate]) -> [[PlaceCandidate]] {
+        rankedTiers(for: query, in: candidates).filter { !$0.isEmpty }
+    }
+
+    /// 強い段（完全一致・別名・前方一致）に当たった候補。含む・住所だけの弱い一致は入れない。
+    nonisolated static func strongMatches(for query: String, in candidates: [PlaceCandidate]) -> [PlaceCandidate] {
+        dedupe(rankedTiers(for: query, in: candidates).prefix(3).flatMap { $0 })
+    }
+
+    /// 弱い段（含む・住所）だけに当たった候補（強い段に当たったものは除く）。
+    nonisolated static func weakMatches(for query: String, in candidates: [PlaceCandidate]) -> [PlaceCandidate] {
+        let strong = Set(strongMatches(for: query, in: candidates).map(\.id))
+        return dedupe(rankedTiers(for: query, in: candidates).dropFirst(3).flatMap { $0 }).filter { !strong.contains($0.id) }
+    }
+
+    nonisolated private static func dedupe(_ places: [PlaceCandidate]) -> [PlaceCandidate] {
+        var seen = Set<UUID>()
+        return places.filter { seen.insert($0.id).inserted }
     }
 
     /// 1 件に決める。最も強い段に 1 件ならその場所、複数なら聞き返し用の一覧、無ければ見つからない。

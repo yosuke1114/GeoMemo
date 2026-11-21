@@ -38,7 +38,7 @@ enum NLEvalFixtures {
         NLEvalCase(id: "ja09", language: "ja", text: "夜、コンビニに着いたら明日の朝食を買う", titleKeyword: "朝食", placeQuery: "コンビニ", placeKind: "search", trigger: "arrive", window: "19:00-23:00", days: "", deadlineRule: nil, note: ""),
         NLEvalCase(id: "ja10", language: "ja", text: "月曜と木曜の朝、駅に着いたら定期を確認", titleKeyword: "定期", placeQuery: "駅", placeKind: "fav", trigger: "arrive", window: "06:00-10:00", days: "mon,thu", deadlineRule: nil, note: ""),
         NLEvalCase(id: "ja11", language: "ja", text: "カフェを出るときに忘れ物チェック", titleKeyword: "忘れ物", placeQuery: "カフェ", placeKind: "search", trigger: "leave", window: nil, days: "", deadlineRule: nil, note: ""),
-        NLEvalCase(id: "ja12", language: "ja", text: "実家に着いたら母に荷物を渡す", titleKeyword: "荷物", placeQuery: "実家", placeKind: "fav", trigger: "arrive", window: nil, days: "", deadlineRule: nil, note: "「実家」が保存されていなければ地図で探す／候補なし"),
+        NLEvalCase(id: "ja12", language: "ja", text: "実家に着いたら母に荷物を渡す", titleKeyword: "荷物", placeQuery: "実家", placeKind: "search", trigger: "arrive", window: nil, days: "", deadlineRule: nil, note: "「実家」は未登録なので地図で探す（見つからなければ候補なし）"),
         NLEvalCase(id: "ja13", language: "ja", text: "昼、近くの薬局に寄ったら目薬", titleKeyword: "目薬", placeQuery: "薬局", placeKind: "search", trigger: "arrive", window: "11:00-14:00", days: "", deadlineRule: nil, note: ""),
         NLEvalCase(id: "ja14", language: "ja", text: "来週の日曜まで、ホームセンターに行ったら電球を買う", titleKeyword: "電球", placeQuery: "ホームセンター", placeKind: "search", trigger: "arrive", window: nil, days: "", deadlineRule: "来週の日曜", note: ""),
         NLEvalCase(id: "ja15", language: "ja", text: "会社を出たら、帰りに牛乳", titleKeyword: "牛乳", placeQuery: "会社", placeKind: "fav", trigger: "leave", window: nil, days: "", deadlineRule: nil, note: ""),

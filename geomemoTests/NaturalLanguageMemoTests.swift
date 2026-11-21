@@ -36,6 +36,24 @@ struct NLInputTests {
         #expect(NLInput.sanitize("a\u{0007}b") == "ab")
         #expect(NLInput.sanitize("a\u{202E}b\u{200B}c") == "abc")
     }
+    @Test("絵文字の結合 (ZWJ)・ZWNJ・旗のタグ文字は残す")
+    func keepsJoiners() {
+        let family = "👨\u{200D}👩\u{200D}👧"
+        #expect(NLInput.sanitize("家族 \(family)") == "家族 \(family)")
+        let scotland = "🏴\u{E0067}\u{E0062}\u{E0073}\u{E0063}\u{E0074}\u{E007F}"
+        #expect(NLInput.sanitize(scotland) == scotland)
+        #expect(NLInput.sanitize("می\u{200C}خواهم") == "می\u{200C}خواهم")
+        #expect(NLInput.sanitize("a\u{FEFF}b\u{2060}c\u{2066}d\u{2069}e\u{200E}f") == "abcdef")
+    }
+
+    @Test("地図に送る検索語は 50 字までに切る")
+    func searchQueryCap() {
+        let long = String(repeating: "あ", count: 120)
+        #expect(NLInput.searchQuery(long)?.count == NLInput.maxSearchQueryLength)
+        #expect(NLInput.searchQuery("  ドラッグストア \n") == "ドラッグストア")
+        #expect(NLInput.searchQuery("   ") == nil)
+    }
+
     @Test("長すぎる入力は上限で切る")
     func caps() {
         let long = String(repeating: "あ", count: 500)
@@ -77,6 +95,8 @@ struct NLMemoNormalizerTests {
         #expect(NLMemoNormalizer.minutes(from: "evening") == nil)
         #expect(NLMemoNormalizer.minutes(from: "") == nil)
         #expect(NLMemoNormalizer.minutes(from: "-3:00") == nil)
+        #expect(NLMemoNormalizer.minutes(from: "17:xx") == nil)     // 分が読めない
+        #expect(NLMemoNormalizer.minutes(from: "17時30分") == 1050)
     }
 
     @Test("時間帯: 始まり < 終わり だけ通す。片方だけ・またぐ指定・長さ 0 は nil")
@@ -110,6 +130,10 @@ struct NLMemoNormalizerTests {
         #expect(NLMemoNormalizer.activeDays(["everyday"]) == nil)
         #expect(NLMemoNormalizer.activeDays(["weekdays", "weekends"]) == nil)
         #expect(NLMemoNormalizer.activeDays(["blursday", "foo"]) == nil)
+        // "every" は完全一致だけ（everyone や every other week は毎日ではない）
+        #expect(NLMemoNormalizer.activeDays(["every other week"]) == nil)
+        #expect(NLMemoNormalizer.parseDays(["every other week"]).everyDay == false)
+        #expect(NLMemoNormalizer.parseDays(["every day"]).everyDay == true)
         #expect(NLMemoNormalizer.activeDays([""]) == nil)
     }
 
@@ -293,7 +317,7 @@ struct NLMemoComposerTests {
     func toolResultsUsed() async {
         let fromTool = place("ツールの店", lat: 35.2, lon: 139.2)
         let parser = FakeParser(result: .success(NLParseResult(raw: NLMemoRaw(title: "洗剤", placeQuery: "ドラッグストア"),
-                                                              searchedPlaces: [fromTool])))
+                                                              searches: [NLSearchRecord(query: "ドラッグストア", places: [fromTool])])))
         let searcher = FakeSearcher(results: [place("別の店", lat: 36, lon: 140)])
         let outcome = await NLMemoComposer(parser: parser, searcher: searcher)
             .compose("ドラッグストアで洗剤", favorites: [], near: nil, now: now(), calendar: calendar())
@@ -364,14 +388,331 @@ struct NLEvalFixtureTests {
             let raw = NLMemoRaw(
                 title: c.titleKeyword, placeQuery: c.placeQuery, trigger: c.trigger,
                 timeStart: parts?.first, timeEnd: parts?.last,
-                days: c.days.split(separator: ",").map(String.init), deadline: nil)
+                days: c.days.split(separator: ",").map(String.init),
+                deadline: c.deadlineRule == nil ? nil : "2026-11-27")
             let d = NLMemoNormalizer.draft(from: raw, originalText: c.text, now: now(), calendar: calendar())
             #expect(!d.title.isEmpty, "\(c.id)")
             if c.window != nil { #expect(d.timeWindow != nil, "\(c.id) の時間帯") }
             if !c.days.isEmpty { #expect(d.activeDays != nil, "\(c.id) の曜日") }
+            if c.deadlineRule != nil { #expect(d.deadline != nil, "\(c.id) の期限") }
             if c.trigger != "unspecified" { #expect(NLMemoNormalizer.trigger(c.trigger) != nil, "\(c.id) の通知") }
             #expect(["fav", "search", "none"].contains(c.placeKind), "\(c.id)")
             #expect((c.placeKind == "none") == c.placeQuery.isEmpty, "\(c.id) の場所")
         }
+    }
+}
+
+// MARK: - 追加（レビュー対応）
+
+private func japaneseCalendar() -> Calendar {
+    var c = Calendar(identifier: .japanese)
+    c.timeZone = TimeZone(identifier: "Asia/Tokyo")!
+    return c
+}
+
+@Suite("グレゴリオ暦への固定")
+struct NLGregorianTests {
+    @Test("和暦の端末でも、期限 \"2026-11-27\" を 2026 年として読む")
+    func deadlineJapaneseCalendar() throws {
+        let d = try #require(NLMemoNormalizer.deadline("2026-11-27", now: now(), calendar: japaneseCalendar()))
+        let c = calendar().dateComponents([.year, .month, .day, .hour, .minute], from: d)
+        #expect(c.year == 2026 && c.month == 11 && c.day == 27 && c.hour == 23 && c.minute == 59)
+    }
+
+    @Test("指示文の今日の日付も、和暦の端末でグレゴリオ暦になる")
+    func instructionsDate() {
+        let text = SystemLanguageModelParser.instructions(today: now(), calendar: japaneseCalendar())
+        #expect(text.contains("2026-11-21"))
+        #expect(text.contains("Saturday"))
+    }
+}
+
+@Suite("NLSearchRecords / 弱い一致 / 落とした項目")
+struct NLSelectionTests {
+    @Test("検索が複数回なら、場所の語に合う検索を使う。無ければ最後の検索。検索なしは nil")
+    func pick() {
+        let a = place("A店", lat: 35.1, lon: 139.1), b = place("B駅", lat: 35.2, lon: 139.2)
+        let records = [NLSearchRecord(query: "ドラッグストア", places: [a]), NLSearchRecord(query: "駅", places: [b])]
+        #expect(NLSearchRecords.pick(query: "ドラッグストア", from: records) == [a])
+        #expect(NLSearchRecords.pick(query: "駅前のドラッグストア", from: records) == [a])   // 語が含み合う
+        #expect(NLSearchRecords.pick(query: "郵便局", from: records) == [b])               // 合うものが無ければ最後
+        #expect(NLSearchRecords.pick(query: nil, from: records) == [b])
+        #expect(NLSearchRecords.pick(query: "x", from: []) == nil)
+        #expect(NLSearchRecords.pick(query: "x", from: [NLSearchRecord(query: "x", places: [])]) == [])
+    }
+
+    @Test("ツールの検索は 2 回まで")
+    func toolLimit() async {
+        let recorder = NLPlaceRecorder()
+        #expect(await recorder.reserve())
+        #expect(await recorder.reserve())
+        #expect(await recorder.reserve() == false)
+    }
+
+    @Test("弱い一致のお気に入りは、検索結果の後ろに出る。強い一致は前")
+    func weakAfterSearch() {
+        let weak = place("駅前ドラッグ", lat: 35.0, lon: 139.0)
+        let strong = place("ドラッグ", lat: 35.5, lon: 139.5)
+        let found = place("検索の店", lat: 35.2, lon: 139.2)
+        #expect(PlaceResolver.strongMatches(for: "ドラッグ", in: [weak, strong]) == [strong])
+        #expect(PlaceResolver.weakMatches(for: "ドラッグ", in: [weak, strong]) == [weak])
+        let r = NLPlaceSelector.choose(query: "ドラッグ", favorites: [weak, strong], searched: [found], near: nil)
+        #expect(r.map(\.place.name) == ["ドラッグ", "検索の店", "駅前ドラッグ"])
+    }
+
+    @Test("弱い一致だけでは補いの検索を省かない／強い一致なら省く")
+    func weakDoesNotSkipSearch() async {
+        let weak = place("駅前ドラッグ", lat: 35.0, lon: 139.0)
+        let found = place("検索の店", lat: 35.2, lon: 139.2)
+        let parser = FakeParser(result: .success(NLParseResult(raw: NLMemoRaw(title: "洗剤", placeQuery: "ドラッグ"))))
+        let s1 = FakeSearcher(results: [found])
+        let o1 = await NLMemoComposer(parser: parser, searcher: s1)
+            .compose("ドラッグで洗剤", favorites: [weak], near: nil, now: now(), calendar: calendar())
+        #expect(s1.log.queries == ["ドラッグ"])
+        guard case .draft(let d1) = o1 else { Issue.record("draft ではない"); return }
+        #expect(d1.candidates.map(\.place.name) == ["検索の店", "駅前ドラッグ"])
+
+        let strong = place("ドラッグ", lat: 35.5, lon: 139.5)
+        let s2 = FakeSearcher(results: [found])
+        _ = await NLMemoComposer(parser: parser, searcher: s2)
+            .compose("ドラッグで洗剤", favorites: [strong], near: nil, now: now(), calendar: calendar())
+        #expect(s2.log.queries.isEmpty)
+    }
+
+    @Test("補いの検索に渡す語は 50 字に切る")
+    func searchQueryTruncated() async {
+        let long = String(repeating: "あ", count: 120)
+        let parser = FakeParser(result: .success(NLParseResult(raw: NLMemoRaw(title: "t", placeQuery: long))))
+        let searcher = FakeSearcher(results: [])
+        _ = await NLMemoComposer(parser: parser, searcher: searcher)
+            .compose("x", favorites: [], near: nil, now: now(), calendar: calendar())
+        #expect(searcher.log.queries.first?.count == NLInput.maxSearchQueryLength)
+    }
+
+    @Test("捨てた項目: 片方だけの時刻・日をまたぐ時間帯・読めない曜日と期限")
+    func dropped() {
+        let raw = NLMemoRaw(title: "t", timeStart: "22:00", timeEnd: "06:00", days: ["blursday"], deadline: "soon")
+        let d = NLMemoNormalizer.draft(from: raw, originalText: "x", now: now(), calendar: calendar())
+        #expect(d.dropped == [.timeWindow, .days, .deadline])
+        let half = NLMemoNormalizer.draft(from: NLMemoRaw(title: "t", timeStart: "16:00"), originalText: "x", now: now(), calendar: calendar())
+        #expect(half.dropped == [.timeWindow])
+        let ok = NLMemoNormalizer.draft(from: NLMemoRaw(title: "t", days: ["毎日"]), originalText: "x", now: now(), calendar: calendar())
+        #expect(ok.dropped.isEmpty)   // 毎日は読めている
+    }
+}
+
+// MARK: - 時間切れ・取り消し
+
+/// テストが開けるまで待ち続ける門。取り消しには応じない（`withCheckedContinuation` は取り消しで抜けない）。
+private nonisolated final class Gate: @unchecked Sendable {
+    private let lock = NSLock()
+    private var continuation: CheckedContinuation<Void, Never>?
+    private var opened = false
+    var isOpen: Bool { lock.withLock { opened } }
+    func wait() async {
+        await withCheckedContinuation { (c: CheckedContinuation<Void, Never>) in
+            lock.lock()
+            if opened { lock.unlock(); c.resume(); return }
+            continuation = c
+            lock.unlock()
+        }
+    }
+    func open() {
+        lock.lock()
+        opened = true
+        let c = continuation
+        continuation = nil
+        lock.unlock()
+        c?.resume()
+    }
+}
+
+/// 取り消しに応じないモデル（門が開くまで返らない）。
+private nonisolated struct StubbornParser: NLMemoParsing {
+    let gate: Gate
+    func parse(text: String, today: Date, calendar: Calendar, favorites: [PlaceCandidate], near: NLPoint?) async throws -> NLParseResult {
+        await gate.wait()
+        return NLParseResult(raw: NLMemoRaw(title: "遅れて届いた"))
+    }
+}
+/// 取り消しに応じない地図の検索。
+private nonisolated struct StubbornSearcher: NLPlaceSearching {
+    let gate: Gate
+    func search(query: String, near: NLPoint?) async -> [PlaceCandidate] {
+        await gate.wait()
+        return []
+    }
+}
+
+/// 仕事が終わらないうちに返ったかを確かめる。時間ではなく「門が閉じたまま返ったか」で見る
+/// （テストの実行環境が止まっても、結果が変わらないように）。
+private nonisolated func composeWhileStuck(_ composer: NLMemoComposer, gate: Gate, cal: Calendar, date: Date,
+                                           cancelAfter: Duration? = nil) async -> (outcome: NLMemoOutcome, gateWasClosed: Bool) {
+    let task = Task { await composer.compose("牛乳", favorites: [], near: nil, now: date, calendar: cal) }
+    if let cancelAfter {
+        try? await Task.sleep(for: cancelAfter)
+        task.cancel()
+    }
+    let outcome = await task.value
+    let closed = !gate.isOpen
+    gate.open()   // 後片付け
+    return (outcome, closed)
+}
+
+@Suite("時間切れと取り消し")
+struct NLTimeoutTests {
+    @Test("取り消しに応じないモデルでも、時間切れで先に返る（遅れた結果は捨てる）")
+    func stubbornParserTimesOut() async {
+        let gate = Gate()
+        var composer = NLMemoComposer(parser: StubbornParser(gate: gate), searcher: FakeSearcher())
+        composer.timeout = .milliseconds(100)
+        let r = await composeWhileStuck(composer, gate: gate, cal: calendar(), date: now())
+        #expect(r.outcome == .fallback(title: "牛乳"))
+        #expect(r.gateWasClosed)
+    }
+
+    @Test("補いの検索が止まっていても、上限の内側で返る")
+    func stubbornSearchTimesOut() async {
+        let gate = Gate()
+        let parser = FakeParser(result: .success(NLParseResult(raw: NLMemoRaw(title: "洗剤", placeQuery: "ドラッグストア"))))
+        var composer = NLMemoComposer(parser: parser, searcher: StubbornSearcher(gate: gate))
+        composer.timeout = .milliseconds(100)
+        let r = await composeWhileStuck(composer, gate: gate, cal: calendar(), date: now())
+        #expect(r.outcome == .fallback(title: "牛乳"))
+        #expect(r.gateWasClosed)
+    }
+
+    @Test("取り消しに応じないモデルでも、取り消しで先に返る")
+    func stubbornParserCancelled() async {
+        let gate = Gate()
+        let composer = NLMemoComposer(parser: StubbornParser(gate: gate), searcher: FakeSearcher())
+        let r = await composeWhileStuck(composer, gate: gate, cal: calendar(), date: now(), cancelAfter: .milliseconds(100))
+        #expect(r.outcome == .cancelled)
+        #expect(r.gateWasClosed)
+    }
+}
+
+// MARK: - 画面の状態の遷移
+
+@Suite("NLFlowReducer")
+struct NLFlowReducerTests {
+    private let home = NLPlace(latitude: 35.0, longitude: 139.0, name: "Loading...")
+    private func fields(title: String = "", place: NLPlace? = nil) -> NLEditorFields {
+        NLEditorFields(title: title, notifyOnEntry: true, notifyOnExit: true, timeWindow: nil, activeDays: nil,
+                       deadline: nil, place: place ?? home)
+    }
+    private func draft(title: String = "牛乳", window: NLTimeWindow? = nil, days: [Int]? = nil, deadline: Date? = nil,
+                       entry: Bool? = nil, exit: Bool? = nil, candidates: [PlaceCandidate] = []) -> NLMemoOutcome {
+        .draft(NLMemoDraft(title: title, placeQuery: nil, notifyOnEntry: entry, notifyOnExit: exit, timeWindow: window,
+                           activeDays: days, deadline: deadline,
+                           candidates: candidates.map { NLPlaceChoice(place: $0, source: .search) }))
+    }
+    private let station = PlaceCandidate(id: UUID(), name: "駅", subtitle: "", latitude: 35.5, longitude: 139.5, iconName: "mappin.fill")
+    private let window = NLTimeWindow(startMinutes: 960, endMinutes: 1140)
+
+    @Test("読み取れたら、仮置きの場所に動き、確認が要る。文章に無い項目は触らない")
+    func draftPlacesAndKeeps() {
+        var current = fields(title: "")
+        current.notifyOnExit = false        // 既存の設定
+        let r = NLFlowReducer.reduce(flow: NLFlow(), current: current, titleAtStart: "",
+                                     outcome: draft(entry: false, candidates: [station]))
+        #expect(r.fields.title == "牛乳")
+        #expect(r.fields.place.latitude == 35.5 && r.fields.place.name == "駅")
+        #expect(r.flow.needsConfirmation)
+        #expect(r.fields.notifyOnEntry == false)
+        #expect(r.fields.notifyOnExit == false)   // nil なので既存のまま
+        #expect(r.fields.timeWindow == nil)
+    }
+
+    @Test("2 回目が失敗したら、1 回目の場所・時間帯・曜日・期限を残さず、確認も要らない状態に戻る")
+    func secondFailureReverts() {
+        let first = NLFlowReducer.reduce(flow: NLFlow(), current: fields(), titleAtStart: "",
+                                         outcome: draft(window: window, days: [1, 2], deadline: Date(timeIntervalSince1970: 2_000_000_000),
+                                                        candidates: [station]))
+        #expect(first.fields.timeWindow == window && first.flow.needsConfirmation)
+        let second = NLFlowReducer.reduce(flow: first.flow, current: first.fields, titleAtStart: first.fields.title,
+                                          outcome: .fallback(title: "別の文"))
+        #expect(second.fields.place == home)                 // 仮置きの座標は残らない
+        #expect(second.fields.timeWindow == nil && second.fields.activeDays == nil && second.fields.deadline == nil)
+        #expect(second.fields.title == "別の文")
+        #expect(second.flow.needsConfirmation == false && second.flow.choices.isEmpty)
+        #expect(second.notice == .usedAsTitle)
+    }
+
+    @Test("2 回目が成功したら、1 回目だけが書いた項目は戻してから書く（nil の項目は 1 回目の値を残さない）")
+    func secondSuccessReplaces() {
+        let first = NLFlowReducer.reduce(flow: NLFlow(), current: fields(), titleAtStart: "",
+                                         outcome: draft(window: window, candidates: [station]))
+        let other = PlaceCandidate(id: UUID(), name: "郵便局", subtitle: "", latitude: 36, longitude: 140, iconName: "mappin.fill")
+        let second = NLFlowReducer.reduce(flow: first.flow, current: first.fields, titleAtStart: first.fields.title,
+                                          outcome: draft(title: "荷物", days: [5], candidates: [other]))
+        #expect(second.fields.timeWindow == nil)
+        #expect(second.fields.activeDays == [5])
+        #expect(second.fields.place.name == "郵便局")
+        #expect(second.flow.needsConfirmation)
+    }
+
+    @Test("2 回目が取り消されたら、何も変えない")
+    func cancelledKeeps() {
+        let first = NLFlowReducer.reduce(flow: NLFlow(), current: fields(), titleAtStart: "", outcome: draft(candidates: [station]))
+        let second = NLFlowReducer.reduce(flow: first.flow, current: first.fields, titleAtStart: "", outcome: .cancelled)
+        #expect(second.fields == first.fields && second.flow == first.flow)
+    }
+
+    @Test("手で直した項目は、次の読み取りで戻さない")
+    func manualEditsKept() {
+        let first = NLFlowReducer.reduce(flow: NLFlow(), current: fields(), titleAtStart: "",
+                                         outcome: draft(days: [1], candidates: [station]))
+        var edited = first.fields
+        edited.activeDays = [2, 3]           // 手で直した
+        let second = NLFlowReducer.reduce(flow: first.flow, current: edited, titleAtStart: edited.title,
+                                          outcome: .fallback(title: "x"))
+        #expect(second.fields.activeDays == [2, 3])
+    }
+
+    @Test("読み取り中に手で打った題は上書きしない")
+    func typedTitleKept() {
+        var current = fields(title: "")
+        current.title = "手で打った"          // 読み取りの開始時 (titleAtStart) は空
+        let r = NLFlowReducer.reduce(flow: NLFlow(), current: current, titleAtStart: "", outcome: draft(candidates: [station]))
+        #expect(r.fields.title == "手で打った")
+        let f = NLFlowReducer.reduce(flow: NLFlow(), current: current, titleAtStart: "", outcome: .fallback(title: "文"))
+        #expect(f.fields.title == "手で打った")
+    }
+
+    @Test("候補なしの読み取りは、場所を動かさず、確認は要る")
+    func noCandidates() {
+        let r = NLFlowReducer.reduce(flow: NLFlow(), current: fields(), titleAtStart: "", outcome: draft())
+        #expect(r.fields.place == home)
+        #expect(r.flow.needsConfirmation)
+    }
+
+    @Test("確認・候補の選択・地図での選び直しで、確認済みになる")
+    func confirmations() {
+        let r = NLFlowReducer.reduce(flow: NLFlow(), current: fields(), titleAtStart: "", outcome: draft(candidates: [station]))
+        #expect(NLFlowReducer.confirm(r.flow).needsConfirmation == false)
+        #expect(NLFlowReducer.pickedOnMap(r.flow).needsConfirmation == false)
+        let choice = NLPlaceChoice(place: station, source: .search)
+        let s = NLFlowReducer.select(choice, flow: r.flow, current: r.fields)
+        #expect(s.flow.needsConfirmation == false && s.flow.selectedID == choice.id)
+    }
+
+    @Test("逆ジオコーディングの結果: 仮置き中でも、元の場所の名前を控えて、戻したときに使う")
+    func geocodedDuringProvisional() {
+        let r = NLFlowReducer.reduce(flow: NLFlow(), current: fields(), titleAtStart: "", outcome: draft(candidates: [station]))
+        // 仮置き中に、元の座標 (35.0, 139.0) の名前が返ってくる
+        let g = NLFlowReducer.geocoded(name: "渋谷区", latitude: 35.0, longitude: 139.0, flow: r.flow, current: r.fields)
+        #expect(g.fields.place.name == "駅")                       // 画面は仮置きの名前のまま
+        #expect(g.flow.applied?.before.place.name == "渋谷区")
+        let back = NLFlowReducer.reduce(flow: g.flow, current: g.fields, titleAtStart: "", outcome: .fallback(title: "x"))
+        #expect(back.fields.place.name == "渋谷区")                // "Loading..." のままにならない
+    }
+
+    @Test("逆ジオコーディングの結果: 画面がその座標のままなら名前を入れる")
+    func geocodedPlain() {
+        let g = NLFlowReducer.geocoded(name: "渋谷区", latitude: 35.0, longitude: 139.0, flow: NLFlow(), current: fields())
+        #expect(g.fields.place.name == "渋谷区")
+        let other = NLFlowReducer.geocoded(name: "渋谷区", latitude: 36.0, longitude: 139.0, flow: NLFlow(), current: fields())
+        #expect(other.fields.place.name == "Loading...")           // 別の座標の結果は入れない
     }
 }

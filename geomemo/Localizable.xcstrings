@@ -144,12 +144,32 @@
         }
       }
     },
+    "days of the week" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "曜日"
+          }
+        }
+      }
+    },
     "e.g. Buy milk when I reach the station" : {
       "localizations" : {
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "例: 駅に着いたら牛乳を買う"
+          }
+        }
+      }
+    },
+    "expiry date" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "期限"
           }
         }
       }
@@ -184,6 +204,16 @@
         }
       }
     },
+    "Place search uses Apple Maps." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "場所の検索には Apple のマップを使います。"
+          }
+        }
+      }
+    },
     "Read your sentence. Check the place on the map before saving." : {
       "localizations" : {
         "ja" : {
@@ -210,6 +240,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "お気に入りの場所"
+          }
+        }
+      }
+    },
+    "Some details could not be set (%@). You can set them under Details. Check the place on the map before saving." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "設定できなかった項目があります（%@）。「詳細」で設定してください。保存する前に、地図で場所を確認してください。"
           }
         }
       }
@@ -3243,6 +3283,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "木曜日"
+          }
+        }
+      }
+    },
+    "time of day" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "時間帯"
           }
         }
       }
