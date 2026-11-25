@@ -11,6 +11,7 @@ struct ListTabView: View {
     let memos: [GeoMemo]
     @Environment(\.modelContext) private var modelContext
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
 
     @ObservedObject private var locationManager = LocationManager.shared
     @State private var selectedTab: FilterTab = .all
@@ -188,21 +189,23 @@ struct ListTabView: View {
     // MARK: - List Navigation Bar
     private var listNavigationBar: some View {
         HStack(spacing: 12) {
-            // マップへ戻るボタン
-            Button(action: {
-                HapticManager.impact(.light)
-                withAnimation(.easeInOut(duration: 0.3)) { showList = false }
-            }) {
-                HStack(spacing: 4) {
-                    Image("ph-arrow-left-bold")
-                        .resizable()
-                        .frame(width: 18, height: 18)
-                    Text("MAP")
-                        .font(.body.weight(.bold))
+            // マップへ戻るボタン（2 ペインではマップが横に見えているので出さない）
+            if RootPaneLayout.showsPaneToggle(isSideBySide: horizontalSizeClass == .regular) {
+                Button(action: {
+                    HapticManager.impact(.light)
+                    withAnimation(.easeInOut(duration: 0.3)) { showList = false }
+                }) {
+                    HStack(spacing: 4) {
+                        Image("ph-arrow-left-bold")
+                            .resizable()
+                            .frame(width: 18, height: 18)
+                        Text("MAP")
+                            .font(.body.weight(.bold))
+                    }
+                    .foregroundColor(Brand.primaryText)
+                    .frame(minHeight: 44)
+                    .contentShape(Rectangle())
                 }
-                .foregroundColor(Brand.primaryText)
-                .frame(minHeight: 44)
-                .contentShape(Rectangle())
             }
 
             Spacer()

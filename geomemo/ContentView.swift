@@ -8,6 +8,21 @@ import os
 
 // Brand colors and Color(hex:) are defined in Theme.swift
 
+// MARK: - Root Pane Layout
+
+/// マップ／リストのどちらを見せるか、切り替えボタンを出すかの判定（純粋ロジック）。
+/// 2 ペイン（regular 幅）では両ペインが常に見えるので `showList` は無視し、切り替えボタンも出さない。
+/// `showList` は compact（1 ペイン）用の状態として残し、折りたたみ⇄展開をまたいでも 2 ペインが崩れないようにする。
+enum RootPaneLayout {
+    static func isListVisible(isSideBySide: Bool, showList: Bool) -> Bool {
+        isSideBySide || showList
+    }
+
+    static func showsPaneToggle(isSideBySide: Bool) -> Bool {
+        !isSideBySide
+    }
+}
+
 // MARK: - Main Content View
 struct ContentView: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -68,7 +83,7 @@ struct ContentView: View {
             .ignoresSafeArea(edges: .bottom)
 
             // リスト画面（compact: 右からスライドインして全面を覆う / regular: 右ペイン）
-            if showList {
+            if RootPaneLayout.isListVisible(isSideBySide: isSideBySide, showList: showList) {
                 ListTabView(
                     memos: memos,
                     intentShowFavorites: $intentShowFavorites,

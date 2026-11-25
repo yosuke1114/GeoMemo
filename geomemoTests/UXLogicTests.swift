@@ -139,3 +139,22 @@ struct BrandContrastTests {
         #expect(ratio(MemoColor.amber.color, Color.white, dark: false) >= 3.0)
     }
 }
+
+// MARK: - マップ／リストの 2 ペイン切り替え
+
+@Suite("RootPaneLayout")
+struct RootPaneLayoutTests {
+    @Test("2 ペインでは showList に関係なくリストを出し、切り替えボタンは出さない")
+    func sideBySide() {
+        #expect(RootPaneLayout.isListVisible(isSideBySide: true, showList: false))
+        #expect(RootPaneLayout.isListVisible(isSideBySide: true, showList: true))
+        #expect(!RootPaneLayout.showsPaneToggle(isSideBySide: true))
+    }
+
+    @Test("1 ペインでは showList に従い、切り替えボタンを出す")
+    func compact() {
+        #expect(!RootPaneLayout.isListVisible(isSideBySide: false, showList: false))
+        #expect(RootPaneLayout.isListVisible(isSideBySide: false, showList: true))
+        #expect(RootPaneLayout.showsPaneToggle(isSideBySide: false))
+    }
+}

@@ -441,24 +441,24 @@ struct MapTabView: View {
                     }
                     .accessibilityLabel(String(localized: "Current location"))
 
-                    // リスト画面へ遷移するボタン
-                    Button(action: {
-                        HapticManager.impact(.light)
-                        // compact ではリストがこのボタンを覆うので常に「開く」。
-                        // regular（2 ペイン）ではリストペインの開閉トグルとして働く。
-                        withAnimation(.easeInOut(duration: 0.3)) { showList.toggle() }
-                    }) {
-                        Image("ph-list-bullets")
-                            .resizable()
-                            .frame(width: 22, height: 22)
-                            .foregroundColor(Brand.primaryText)
-                            .frame(width: 48, height: 48)
-                            .background(Brand.background)
-                            .clipShape(Circle())
-                            .overlay(Circle().stroke(Brand.border, lineWidth: 1))
+                    // リスト画面へ遷移するボタン（compact のみ。2 ペインではリストが常に右に見えているので出さない）
+                    if RootPaneLayout.showsPaneToggle(isSideBySide: horizontalSizeClass == .regular) {
+                        Button(action: {
+                            HapticManager.impact(.light)
+                            withAnimation(.easeInOut(duration: 0.3)) { showList.toggle() }
+                        }) {
+                            Image("ph-list-bullets")
+                                .resizable()
+                                .frame(width: 22, height: 22)
+                                .foregroundColor(Brand.primaryText)
+                                .frame(width: 48, height: 48)
+                                .background(Brand.background)
+                                .clipShape(Circle())
+                                .overlay(Circle().stroke(Brand.border, lineWidth: 1))
+                        }
+                        .accessibilityIdentifier("listViewButton")
+                        .accessibilityLabel(String(localized: "List"))
                     }
-                    .accessibilityIdentifier("listViewButton")
-                    .accessibilityLabel(String(localized: "List"))
 
                     // 受け取るだけの人は「ADD MEMO」が無いので、メモの作成は小さい「＋」に残す
                     if homeMode == .receiverOnly {
